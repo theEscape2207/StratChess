@@ -155,8 +155,7 @@ void UciHandler::cmd_uci()
 	send("option name Threads type spin default 1 min 1 max " + std::to_string(AIPerplex::MAX_THREADS));
 	// Hash budgets TT entry bytes. Arbitrary values round down to a power-of-two
 	// bucket count; the exact fits are the powers of two from 1 to 1024, which
-	// the 192 default and the 1536 cap are not. The separately queryable
-	// lock_bytes() is additional memory.
+	// the 192 default and the 1536 cap are not.
 	send("option name Hash type spin default " + std::to_string(AIPerplex::DEFAULT_HASH_MB) + " min " +
 	     std::to_string(AIPerplex::MIN_HASH_MB) + " max " + std::to_string(AIPerplex::MAX_HASH_MB));
 	for (const auto& option : SearchTuningSchema::UciOptionLines())

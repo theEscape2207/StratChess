@@ -166,6 +166,10 @@ whose violation is silent.
   it is every legal evasion and `MoveSorter::ScoreMoves` writes an order into a `scored_idx` array
   instead, so quiet evasions are ranked by history rather than by `-piece/16` (#320). Quiescence
   passes `Move::EmptyMove()` as the hash move in both phases and must keep doing so.
+- **A probed TT entry may belong to another position** — through a key collision, or a slot whose
+  two words racing Lazy SMP stores mixed. Its `best_move` is only a hint, matched against moves the
+  engine generated. A change that searches the hash move before generating (a staged move generator)
+  must check it is pseudo-legal in this position first.
 - **`ScoreMoves` applies one capture-tier policy to both its callers** — main `pvs()` and in-check
   quiescence. `See::see_ge(board, mv, 0)` splits captures into SEE >= 0 (above the killers, with all
   promotions) and SEE < 0 (below the killers, still above every quiet); `MoveHelper::Value()` scores

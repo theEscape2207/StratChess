@@ -34,7 +34,7 @@ Review the diff or files provided and evaluate:
 
 ### Invariants That Must Hold
 - `sizeof(Move) == 2` (16-bit layout — from/to/flags only; moving/captured piece NOT stored)
-- TT access is thread-safe (per-bucket `shared_mutex`)
+- TT access is thread-safe: lock-free, every entry access a relaxed atomic. A probed entry may belong to another position, so its move stays a hint matched against generated moves
 - No raw board mutation without `DoMove`/`UndoMove` symmetry
 - Deterministic behavior: same position + same depth = same result
 - `in_check` must be computed from the position **before** any move is made

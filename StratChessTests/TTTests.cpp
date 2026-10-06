@@ -2,7 +2,7 @@
 //
 // Tests the TT in complete isolation — no Board, no engine startup required.
 // Covers store/probe round-trips, same-key overwrite, mate-score normalization,
-// clear(), and the atomic diagnostic counters (entry_count, pv_count).
+// clear(), the XOR-validated slot encoding and concurrent probe/store.
 //
 // See Docs/TestDesign.md for the rationale.
 
@@ -11,6 +11,12 @@
 #include "AIPerplex.h" // DEFAULT_HASH_MB, for the equal-capacity invariant only
 #include "defines.h"
 
+#include <array>
+#include <latch>
+#include <random>
+#include <thread>
+#include <vector>
+
 #if defined(__linux__)
 #	include <malloc.h>
 #endif
@@ -18,9 +24,21 @@
 class TranspositionTableTestFixture {
   public:
 	using Entry = TranspositionTable::PackedEntry;
+	using Words = std::array<std::uint64_t, 2>;
 
-	// Single-threaded tests only: this hands out a reference with no bucket lock held.
-	static const Entry& first_entry(const TranspositionTable& table) { return table.table[0].entries[0]; }
+	static Entry first_entry(const TranspositionTable& table)
+	{
+		return TranspositionTable::load(table.table[0].slots[0]);
+	}
+
+	static Words encode(const Entry& entry) { return TranspositionTable::encode(entry); }
+
+	// Writes one word of the table's first slot, as one half of a store would.
+	static void write_word(TranspositionTable& table, size_t word, std::uint64_t value)
+	{
+		auto& target = table.table[0].slots[0];
+		(word == 0 ? target.key_xor_data : target.data).store(value, std::memory_order_relaxed);
+	}
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -96,12 +114,20 @@ TEST_CASE("TT - packed entry defaults and table clear reset reserved metadata", 
 	CHECK(initial.age == 0);
 
 	TranspositionTable tt(0);
+	const Entry fresh = TranspositionTableTestFixture::first_entry(tt);
+	CHECK(fresh.key == 0);
+	CHECK(fresh.value == 0);
+	CHECK(fresh.depth == 0);
+	CHECK(fresh.best_move.is_null());
+	CHECK(fresh.metadata == 0x10);
+	CHECK(fresh.age == 0);
+
 	tt.newSearch();
 	tt.store(KEY_A, 123, 4, 0, Move(e2, e4, MoveFlags::QUIET), BoundType::UPPER, NodeType::PV_NODE,
 	         SearchPhase::QUIESCENCE);
 	REQUIRE(tt.clear());
 
-	const Entry& cleared = TranspositionTableTestFixture::first_entry(tt);
+	const Entry cleared = TranspositionTableTestFixture::first_entry(tt);
 	CHECK(cleared.key == 0);
 	CHECK(cleared.value == 0);
 	CHECK(cleared.depth == 0);
@@ -326,53 +352,6 @@ TEST_CASE("TT - clear removes all entries; subsequent probes return nullopt", "[
 	REQUIRE_FALSE(tt.probe(KEY_B, 0).has_value());
 }
 
-TEST_CASE("TT - entry_count increments when a new key is stored", "[tt]")
-{
-	TranspositionTable tt(1);
-	const size_t before = tt.count_entries();
-
-	do_store(tt, KEY_A, 100);
-
-	REQUIRE(tt.count_entries() == before + 1);
-}
-
-TEST_CASE("TT - entry_count does not increment when overwriting the same key", "[tt]")
-{
-	TranspositionTable tt(1);
-	do_store(tt, KEY_A, 100);
-	const size_t after_first = tt.count_entries();
-
-	do_store(tt, KEY_A, 200); // overwrite — same slot, not new entry
-
-	REQUIRE(tt.count_entries() == after_first);
-}
-
-TEST_CASE("TT - pv_count tracks PV_NODE entries only", "[tt]")
-{
-	TranspositionTable tt(1);
-	const size_t before = tt.count_pv_nodes();
-
-	// PV node — should increment pv_count
-	tt.store(KEY_A, 100, 5, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
-	REQUIRE(tt.count_pv_nodes() == before + 1);
-
-	// CUT node — should NOT increment pv_count
-	tt.store(KEY_B, 200, 5, 0, no_move(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
-	REQUIRE(tt.count_pv_nodes() == before + 1);
-}
-
-TEST_CASE("TT - clear resets entry_count and pv_count to zero", "[tt]")
-{
-	TranspositionTable tt(1);
-	do_store(tt, KEY_A, 100);
-	do_store(tt, KEY_B, 200);
-
-	REQUIRE(tt.clear());
-
-	REQUIRE(tt.count_entries() == 0);
-	REQUIRE(tt.count_pv_nodes() == 0);
-}
-
 TEST_CASE("TT - clear reports no work for a freshly constructed table", "[tt]")
 {
 	TranspositionTable tt(1);
@@ -387,6 +366,160 @@ TEST_CASE("TT - repeated clear reports no work after the table is empty", "[tt]"
 
 	REQUIRE(tt.clear());
 	REQUIRE_FALSE(tt.clear());
+}
+
+// ── Lock-free slots ───────────────────────────────────────────────────────────
+//
+// A slot is two atomic words, key ^ payload and payload. Racing stores can leave one word from
+// each; these pin what such a slot decodes to.
+
+namespace {
+	using SlotEntry = TranspositionTableTestFixture::Entry;
+
+	SlotEntry make_entry(uint64_t key, int16_t value, int16_t depth, Move move)
+	{
+		SlotEntry entry;
+		entry.key = key;
+		entry.value = value;
+		entry.depth = depth;
+		entry.best_move = move;
+		entry.set_bound(BoundType::LOWER);
+		entry.set_node_type(NodeType::CUT_NODE);
+		return entry;
+	}
+
+	SlotEntry entry_a() { return make_entry(KEY_A, 100, 5, Move(e2, e4, MoveFlags::QUIET)); }
+	SlotEntry entry_b() { return make_entry(KEY_B, 200, 7, Move(d2, d4, MoveFlags::QUIET)); }
+
+	// Writes one word of the entry's encoding into the table's first slot.
+	void write_word_of(TranspositionTable& tt, size_t word, const SlotEntry& entry)
+	{
+		TranspositionTableTestFixture::write_word(tt, word, TranspositionTableTestFixture::encode(entry)[word]);
+	}
+
+	// A slot holding word 0 of one entry and word 1 of another claims neither key, but the pseudo-key
+	// that the two words decode to, carrying the payload of word 1's entry.
+	void check_mixed_slot(const TranspositionTable& tt, const SlotEntry& word0_entry, const SlotEntry& word1_entry)
+	{
+		CHECK_FALSE(tt.probe(word0_entry.key, 0).has_value());
+		CHECK_FALSE(tt.probe(word1_entry.key, 0).has_value());
+
+		const uint64_t pseudo_key = TranspositionTableTestFixture::encode(word0_entry)[0] ^
+		                            TranspositionTableTestFixture::encode(word1_entry)[1];
+		REQUIRE(pseudo_key != word0_entry.key);
+		REQUIRE(pseudo_key != word1_entry.key);
+		const auto result = tt.probe(pseudo_key, 0);
+		REQUIRE(result.has_value());
+		CHECK(result->value == word1_entry.value);
+		CHECK(result->depth == word1_entry.depth);
+		CHECK(result->best_move == word1_entry.best_move);
+	}
+} // namespace
+
+TEST_CASE("TT - a slot holding words from two entries decodes to a pseudo-key", "[tt]")
+{
+	TranspositionTable tt(0);
+	write_word_of(tt, 0, entry_a());
+	write_word_of(tt, 1, entry_b());
+
+	check_mixed_slot(tt, entry_a(), entry_b());
+}
+
+TEST_CASE("TT - two interleaved stores into one slot leave a mixed pair", "[tt]")
+{
+	TranspositionTable tt(0);
+
+	SECTION("A's payload, then all of B, then A's key word")
+	{
+		write_word_of(tt, 1, entry_a());
+		write_word_of(tt, 1, entry_b());
+		write_word_of(tt, 0, entry_b());
+		write_word_of(tt, 0, entry_a());
+		check_mixed_slot(tt, entry_a(), entry_b());
+	}
+	SECTION("A's key word, then all of B, then A's payload")
+	{
+		write_word_of(tt, 0, entry_a());
+		write_word_of(tt, 0, entry_b());
+		write_word_of(tt, 1, entry_b());
+		write_word_of(tt, 1, entry_a());
+		check_mixed_slot(tt, entry_b(), entry_a());
+	}
+}
+
+TEST_CASE("TT - concurrent probes return only the probed key's payload", "[tt][smp]")
+{
+	// One bucket, so all four threads contend for four slots and every probe compares the full key.
+	TranspositionTable tt(0);
+	tt.newSearch();
+
+	std::mt19937_64 key_rng(747); // NOLINT(bugprone-random-generator-seed): a reproducible key pool
+	std::array<uint64_t, 64> keys{};
+	for (auto& key : keys) {
+		do
+			key = key_rng();
+		while (key == 0);
+	}
+
+	// Every payload field is a function of the key, and the value stays outside the mate range.
+	struct Payload {
+		int16_t value;
+		int16_t depth;
+		Move move;
+		BoundType bound;
+		NodeType node_type;
+	};
+	const auto payload_of = [](uint64_t key) {
+		return Payload{static_cast<int16_t>(static_cast<int>(key % 2000) - 1000), static_cast<int16_t>(key % 20 + 1),
+		               Move(static_cast<uint16_t>((key >> 20) & 0x0FFF)), static_cast<BoundType>((key >> 40) % 3),
+		               static_cast<NodeType>((key >> 44) % 3)};
+	};
+
+	constexpr int THREADS = 4;
+	constexpr int ITERATIONS = 100'000;
+	struct Tally {
+		long probes = 0;
+		long hits = 0;
+		long wrong = 0;
+	};
+	std::array<Tally, THREADS> tallies{};
+	std::latch start(THREADS);
+	{
+		std::vector<std::jthread> workers;
+		for (int t = 0; t < THREADS; ++t) {
+			workers.emplace_back([&, t] {
+				std::mt19937 rng(static_cast<unsigned>(t + 1));
+				Tally& tally = tallies[static_cast<size_t>(t)];
+				start.arrive_and_wait();
+				for (int i = 0; i < ITERATIONS; ++i) {
+					const uint64_t stored = keys[rng() % keys.size()];
+					const Payload p = payload_of(stored);
+					tt.store(stored, p.value, p.depth, 0, p.move, p.bound, p.node_type, SearchPhase::MAIN);
+
+					const uint64_t probed = (rng() & 1) ? stored : keys[rng() % keys.size()];
+					const auto result = tt.probe(probed, 0);
+					++tally.probes;
+					if (!result)
+						continue;
+					++tally.hits;
+					const Payload expected = payload_of(probed);
+					tally.wrong += result->value != expected.value || result->depth != expected.depth ||
+					               result->best_move != expected.move || result->bound != expected.bound ||
+					               result->node_type != expected.node_type;
+				}
+			});
+		}
+	}
+
+	Tally total;
+	for (const Tally& tally : tallies) {
+		total.probes += tally.probes;
+		total.hits += tally.hits;
+		total.wrong += tally.wrong;
+	}
+	INFO("probes " << total.probes << ", hits " << total.hits << ", wrong payloads " << total.wrong);
+	CHECK(total.wrong == 0);
+	CHECK(total.hits * 10 >= total.probes);
 }
 
 // ── Allocation reporting ──────────────────────────────────────────────────────
@@ -471,8 +604,6 @@ TEST_CASE("TT - byte accounting is self-consistent", "[tt]")
 
 	REQUIRE(tt.bucket_count() > 0);
 	REQUIRE(tt.entry_bytes() == tt.bucket_count() * 64); // 4 x 16-byte packed entries
-	REQUIRE(tt.lock_bytes() == tt.bucket_count() * sizeof(std::shared_mutex));
-	REQUIRE(tt.allocated_bytes() == tt.entry_bytes() + tt.lock_bytes());
 	REQUIRE(tt.memory_mb() == tt.entry_bytes() / (size_t{1024} * 1024));
 }
 
@@ -775,19 +906,22 @@ TEST_CASE("TT - an accepted same-key store with a move replaces the stored one",
 	CHECK(result->best_move == OTHER_MOVE);
 }
 
-TEST_CASE("TT - a declined same-key store leaves the counters alone", "[tt]")
+TEST_CASE("TT - a declined same-key store leaves the stored entry whole", "[tt]")
 {
 	TranspositionTable tt(0);
 	tt.newSearch();
 
 	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
-	REQUIRE(tt.count_entries() == 1);
-	REQUIRE(tt.count_pv_nodes() == 1);
+	REQUIRE(tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE) ==
+	        TTStoreOutcome::Declined);
 
-	tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
-
-	CHECK(tt.count_entries() == 1);
-	CHECK(tt.count_pv_nodes() == 1); // the PV entry is still there, so it is still counted
+	const auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->value == 500);
+	CHECK(result->depth == 12);
+	CHECK(result->phase == SearchPhase::MAIN);
+	CHECK(result->node_type == NodeType::PV_NODE);
+	CHECK(result->best_move == HASH_MOVE);
 }
 
 TEST_CASE("TT - a same-key store still wins once the stored entry is generations old", "[tt]")

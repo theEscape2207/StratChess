@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-06 | 994e288, lock-free transposition table (#747; the lab builds GCC, where the locks cost 32.9% of CPU against 9.4% on the shipping clang-cl) | 79c3217 | 19980 | 10+0.1 | **+18.31 +/- 3.54** | gain |
 | 2026-10-06 | 16c938c, CONFIRM `LmrHistoryDivisor=16` (#735; selected by the 32/16/1 screen below, fresh openings 19,981-32,328) | 16c938c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 24696 | 10+0.1 | **+2.98 +/- 3.23** | inconclusive @ 24696 |
 | 2026-10-06 | d1d6f9c, SCREEN arm B: `LmrHistoryDivisor=16` (#735; best of three, uncorrected; not confirmed, see the CONFIRM row) | d1d6f9c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+6.99 +/- 6.16** | gain |
 | 2026-10-06 | d1d6f9c, SCREEN arm C: `LmrHistoryDivisor=1` (#735) | d1d6f9c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+5.22 +/- 6.27** | inconclusive @ 6660 |

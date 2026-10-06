@@ -64,7 +64,7 @@ tools box is a collection of consumers: perft does not invoke evaluation or the 
 | `IterationPolicy` | Main-thread iteration acceptance, retained-result updates and continuation | Two pure value transitions; no Board, TT, clock or callback access. The driver supplies observations and owns side effects. |
 | `ThreadData` | Per-worker position, PV, counters, history and recursion scratch | Includes several lifetimes: per-node, per-search and state retained between moves. Not a purely temporary search record. |
 | `SearchControl` | Resolve/apply limits, stop latch, time and node checks | Shared stop condition; main worker polls limits. |
-| `TranspositionTable` | Cache searched scores/bounds and ordering hints | Packed entries, four per aligned bucket, separate per-bucket locks; receives keys, not Boards. |
+| `TranspositionTable` | Cache searched scores/bounds and ordering hints | Packed entries, four per aligned bucket, each two XOR-validated relaxed atomic words, no locks; receives keys, not Boards. |
 | `Evaluator` | Static score and explanatory breakdown | Pure per-position term calculations plus a draw-score pair configured before search workers start. |
 | `SearchTuningSchema` | Validate and bind configuration | `SearchTuning.def` is the catalogue; JSON and UCI exposure are deliberately not identical. |
 | `UciHandler` / `UciWriter` | Protocol parsing, lifecycle coordination and serialized output | Owns a Board, concrete search instance and a separate unconfigured evaluator for `eval`. |
@@ -128,7 +128,7 @@ the implementation and [search contracts](EngineContracts.md#search-internals).
 | Board, PV, node counters, telemetry | One `ThreadData` per worker | Board copied from root; counters reset for each search. Mutable only by that worker while searching. |
 | History and continuation history | Same worker state | Retained and aged within a game, reset for a new game. Ordinary and continuation history have different ageing schedules. |
 | Excluded move, continuation keys, null-move flags | Worker recursion state | Ply-indexed scratch. Singular verification re-enters at the same ply and must restore the surrounding frame's state. |
-| TT entries | Shared table | Concurrent probes/stores use bucket locks. Whole-table lifecycle operations have additional caller constraints. |
+| TT entries | Shared table | Concurrent probes/stores are lock-free; racing stores can lose an entry, and a probe may return another position's entry, like a key collision. Whole-table lifecycle operations have additional caller constraints. |
 | Limits and abort latch | SearchControl | One search; stop can be requested concurrently. |
 | Retained iteration result and soft-limit extension | Local `Engine::IterationState` in main iterative deepening | One search; passed through the policy's value transitions. Helpers do not use it. |
 | Iteration observer and completion callback | One search/launch | Observations are snapshots. Completion runs after search has finished, on the launch thread. |
@@ -174,7 +174,7 @@ support node-identical comparisons. Timed or externally interrupted searches nee
 the same point even at one thread. Lazy SMP adds scheduling-dependent shared-TT interactions;
 the [equivalence check](../Scripts/Compare-SearchEquivalence.ps1) deliberately uses one thread.
 
-TT entry and lock storage uses a Linux allocator that requests huge-page backing for sufficiently
+TT entry storage uses a Linux allocator that requests huge-page backing for sufficiently
 large allocations. `MADV_HUGEPAGE` is advisory; Windows uses the standard allocator path.
 See [TranspositionTable.cpp](../StratEngine/TranspositionTable.cpp) and
 [TranspositionTable.h](../StratEngine/TranspositionTable.h) when comparing platform-sensitive costs.
