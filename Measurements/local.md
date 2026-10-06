@@ -45,6 +45,7 @@ comparable with a Linux CI row**: different compiler, different machine, differe
 | 2026-09-03 | candidate-0b5f3fb (#97 PR 3: king attack pressure) | 9cdd52e (merge-base) | 2000 | 10+0.1 | 12.69 +/- 11.04 | inconclusive @ 2000 |
 | 2026-09-03 | candidate-62c12eb (#97 PR 3, Gain leg) | 9cdd52e (merge-base) | 2500 | 10+0.1 | 7.64 +/- 10.03 | inconclusive @ 2500 |
 | 2026-09-16 | candidate-4e02d0a | 4e02d0a | 20 | 10+0.1 | -52.51 +/- 159.22 | smoke |
+| 2026-10-06 | candidate-c82dc6e | 79c3217 | 1400 | 10+0.1 | 8.19 +/- 12.95 | inconclusive @ 1400 |
 
 ## Row detail
 
@@ -203,3 +204,7 @@ Reference is the merge-base build passed as `-ReferenceExe` with `-ReferenceTag 
 ### 2026-09-16 -- candidate-4e02d0a (20 games)
 
 **Plumbing smoke, not strength data.** Both sides are the same `4e02d0a` clang-cl binary with different UCI tuning options, so the -52.51 is noise between two option sets over 20 games. Candidate: `option.ReverseFutility=false option.LateMovePruning=false`. Reference: `option.ReverseFutilityMargin=150 option.FrontierFutilityMargin=250`. `Threads=1`, 192 MB hash, `EngineTesting\openings-large.pgn` sequential, concurrency 6; 5W/8L/7D, no errors. A separate 2-game fastchess trace (`-log level=trace engine=true`) with the same engine specs showed each engine receiving its `setoption` lines and echoing `info string <Name> <value>`.
+
+### 2026-10-06 -- candidate-c82dc6e (1400 games)
+
+**Indicative only: the lock-free transposition table (#747, PR #748) on the shipping clang-cl build**, item 9 of its validation; a fixed batch sized for about +/-16, gating nothing. Candidate is `main` at c82dc6e (the #748 merge), reference the `79c3217` build it forked from, passed as `-ReferenceExe` with `-ReferenceTag 79c3217` (#309). 393W/360L/647D (51.18%), Ptnml(0-2) [39, 167, 270, 170, 54], LOS 89.26%, nElo +11.52 +/- 18.20, wall time 01:59:12 at `-Concurrency 6`; 95% interval [-4.8, +21.1]. `Threads=1`, 192 MB hash, `EngineTesting\openings-large.pgn`. No time losses, illegal moves or disconnects; 280 "PV continues after threefold repetition" compliance warnings, reporting-only. The lab row for the same change (`ci-per-change.md`, +18.31 +/- 3.54) is GCC, where the locks cost about 3.5x the CPU share they do here, so the two are not on one scale.
