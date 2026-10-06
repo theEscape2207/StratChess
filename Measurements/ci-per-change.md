@@ -11,7 +11,8 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
-| 2026-10-06 | d1d6f9c, SCREEN arm B: `LmrHistoryDivisor=16` (#735; best of three, uncorrected, confirmation pending) | d1d6f9c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+6.99 +/- 6.16** | gain |
+| 2026-10-06 | 16c938c, CONFIRM `LmrHistoryDivisor=16` (#735; selected by the 32/16/1 screen below, fresh openings 19,981-32,328) | 16c938c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 24696 | 10+0.1 | **+2.98 +/- 3.23** | inconclusive @ 24696 |
+| 2026-10-06 | d1d6f9c, SCREEN arm B: `LmrHistoryDivisor=16` (#735; best of three, uncorrected; not confirmed, see the CONFIRM row) | d1d6f9c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+6.99 +/- 6.16** | gain |
 | 2026-10-06 | d1d6f9c, SCREEN arm C: `LmrHistoryDivisor=1` (#735) | d1d6f9c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+5.22 +/- 6.27** | inconclusive @ 6660 |
 | 2026-10-06 | d1d6f9c, SCREEN arm A: `LmrHistoryDivisor=32` (#735) | d1d6f9c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **-0.89 +/- 6.17** | inconclusive @ 6660 |
 | 2026-10-05 | 9ab1759, arm C: `LmrHistoryDivisor=64`, shipped as the default (#730; best of three, uncorrected) | 2201b87 | 6660 | 10+0.1 | **+10.23 +/- 6.25** | gain |
@@ -67,6 +68,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-06 -- LMR history divisor 16, confirmation (#735) (24696 games)
+
+**The default stays at 64; Slice A of #735 closes.** [Run `37455930663`](https://github.com/theEscape2207/StratChess/actions/runs/37455930663), openings 19,981-32,328, after the screen's range, so none of the screen's openings recur. The candidate is 16c938c, whose engine sources are identical to the screen's d1d6f9c. All 18 shards are green, and their logs show 24,696 games with zero time losses, illegal moves or disconnects; PV-compliance warnings (#310) appear and are reporting-only. Pooled Ptnml(0-2): [964, 2812, 4652, 2888, 1032]; 13 of 18 shards favour 16 by score. The [stopping rule in #735](https://github.com/theEscape2207/StratChess/issues/735#issuecomment-6011562291) moves the default only if the confirmation's lower bound is above 0; it is -0.25 ([-0.25, +6.21]), so it fails by a hair. The screen's +6.99 shrank to +2.98 on fresh openings, as winner's curse predicts; both intervals sit above -1, so 16 is not shown to be worse, only not shown to be better.
 
 ### 2026-10-06 -- LMR history divisor below 64 (#735) (6660 games per arm)
 
