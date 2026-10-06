@@ -179,9 +179,35 @@ def render_summary(path):
                    f"| {interval_text(elo, err)} | {favoured} of {shards} |")
     if len(rows) > 1:
         out.append("")
-        out.append(f"The best arm is the best of {len(rows)}, so its estimate is biased upward. "
-                   "Confirm it on fresh openings before changing a default.")
+        out.append(selection_note(best, rows))
     return "\n".join(out)
+
+
+# Expected maximum of k iid standard normals: the upward bias of the best of k
+# arms that share one true effect.
+EXPECTED_MAX_OF_NORMALS = {2: 0.56, 3: 0.85, 4: 1.03, 5: 1.16, 6: 1.27}
+
+
+def selection_note(best, rows):
+    """Rough guide to how far selection inflates the best arm, from its lead in sigma.
+
+    A heuristic resting on three screen-to-confirmation pairs, not a calibrated model.
+    """
+    sigma = best[2] / Z_95
+    if sigma == 0:
+        return "The best arm has no error bar to judge its lead by."
+    runner_up = max(row[1] for row in rows if row[0] != best[0])
+    lead = (best[1] - runner_up) / sigma
+    if lead > 2:
+        return (f"The best arm leads the next by {lead:.1f} sigma; selection bias is probably "
+                "small. Confirm it on fresh openings before changing a default.")
+    # Arms within 2 sigma of the best are treated as tied with it.
+    tied = sum(1 for row in rows if (best[1] - row[1]) / sigma <= 2)
+    bias = EXPECTED_MAX_OF_NORMALS[min(tied, 6)] * sigma
+    return (f"The best arm leads the next by {lead:.1f} sigma ({tied} arms within 2 sigma), "
+            f"so selection may inflate it by roughly {bias:.1f} Elo, to a rough "
+            f"{best[1] - bias:+.1f} on fresh openings. A rough guide for sizing a "
+            "confirmation, not a prediction.")
 
 
 # Real (counts, elo, half_width) triples printed by the pinned fastchess build on
@@ -285,9 +311,17 @@ def self_test():
             subprocess.run([sys.executable, os.path.abspath(__file__), "--label", arm,
                             "--summary-tsv", tsv, logs[0]], capture_output=True, check=True)
         table = render_summary(tsv)
-        good = "| B (best) | 4 |" in table and "best of 2" in table and "| A |" in table
+        good = "| B (best) | 4 |" in table and "| A |" in table and "sigma" in table
         ok &= good
         print(f"{'ok' if good else 'FAIL'} cross-arm summary flags the best arm")
+        close = selection_note(("B", 6.99, 6.16), [("A", -0.89, 6.17), ("B", 6.99, 6.16),
+                                                    ("C", 5.22, 6.27)])
+        clear = selection_note(("C", 19.51, 5.38), [("A", 7.00, 5.27), ("B", 8.61, 5.43),
+                                                     ("C", 19.51, 5.38)])
+        good = ("0.6 sigma (2 arms" in close and "roughly 1.8 Elo" in close
+                and "+5.2" in close and "4.0 sigma" in clear and "probably small" in clear)
+        ok &= good
+        print(f"{'ok' if good else 'FAIL'} selection note discounts close winners only")
     print("\nself-test:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 

@@ -21,7 +21,9 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 spans 0, the shards favouring the candidate by score (the `Measurements/README.md` rule), and, when
 the interval spans 0, the games the estimate would need to exclude it. The shard table is in
 numeric order with each shard's score and side. A multi-arm run opens with one table across the
-arms, flagging the best as best-of-N. These were counted by hand for every ledger row until now.
+arms, with a rough note on how far selection may inflate the best: little when it leads the next
+arm by more than 2 sigma, otherwise the expected maximum of the tied arms (a heuristic from three
+screen-to-confirmation pairs). These were counted by hand for every ledger row until now.
 
 ## 2026-10-06: Strength lab `threads` input (#747 slice 3)
 
