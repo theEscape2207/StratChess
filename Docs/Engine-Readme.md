@@ -409,8 +409,12 @@ byte and three bits stay reserved. `probe()` returns the unpacked `TTEntry` abov
 the table sees the packed form. Static assertions pin every offset, the 16-byte size and the 64/64
 bucket size and alignment: changing any of them changes capacity, and therefore search results.
 
-**Concurrency**: one `std::shared_mutex` per bucket — probes take a shared lock, stores take the
-exclusive side. Whether that cost is worth removing is an open measurement question.
+**Concurrency**: lock-free. Each entry is two relaxed atomic words, `key ^ payload` and `payload`,
+and a probe accepts a slot only if they decode to its key. Racing stores can lose an entry, or leave
+a slot holding one word from each store; that slot decodes to a pseudo-key, which under the
+random-Zobrist model matches a probe no more often than a stored key does. So, as with a key
+collision, a probe may return another position's entry, and its move is only an ordering hint.
+`clear()` takes a table-wide mutex and requires that no search stores concurrently.
 
 **Replacement Strategy**: `replacementScore()` weighs depth, age, node type and search phase — PV
 entries get a bonus, quiescence depth is scaled down to a main-search equivalent, and older entries
@@ -420,8 +424,8 @@ discard a deeper one. An equal score is settled on the raw phase, depth and boun
 away, and only a store that nothing separates from the entry it lands on overwrites. A store that
 wins the slot but carries no move keeps the one already there.
 
-**Size**: the UCI `Hash` option budgets *entry* bytes (default 192 MB, min 1, max 1536); the
-per-bucket locks are additional. `requested_memory_mb()` reports what was asked for and `memory_mb()`
+**Size**: the UCI `Hash` option budgets *entry* bytes (default 192 MB, min 1, max 1536), which
+are all the table allocates. `requested_memory_mb()` reports what was asked for and `memory_mb()`
 what was actually allocated — they differ because the bucket count is rounded *down* to a power of
 two, so a request that is not an exact fit allocates less than it asks for. With 64-byte buckets
 every power of two from 1 to 1024 MB is an exact fit. **The 192 default is not one**: it lands on

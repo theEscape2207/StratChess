@@ -137,9 +137,10 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 - Losing mate round-trip: same for negative mate
 - Mate score ply adjustment: probe at different ply returns adjusted distance
 - `clear()`: removes all entries; subsequent probes return `nullopt`
-- `entry_count` increments on new key, does not increment on overwrite
-- `pv_count` tracks `PV_NODE` entries correctly
-- `clear()` resets both counters to zero
+- Slot encoding: a slot holding one word from each of two entries misses both keys and decodes to
+  their pseudo-key, whichever store's word landed last
+- Concurrent probe/store (`[tt][smp]`): four threads on one bucket; every hit carries the probed
+  key's payload, and at least 10% of probes hit
 - `hashfull`: samples 1,000 entries, counts the current search's single generation (across the
   255 → 0 wrap too), excludes the previous search's content, and falls for the same workload when `Hash` is larger
 
