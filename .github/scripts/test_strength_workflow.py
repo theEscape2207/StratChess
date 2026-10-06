@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 repo = Path(__file__).resolve().parents[2]
 workflow = (repo / '.github/workflows/strength.yml').read_text(encoding='utf-8')
@@ -61,6 +62,19 @@ def self_test():
             result = subprocess.run([bash, '-n', path.as_posix()], text=True, capture_output=True)
             assert result.returncode == 0, (name, result.stderr)
         print(f'PASS: Bash syntax for {len(shell_blocks)} strength workflow blocks')
+        # A broken sampler fails nothing in a real run; it just leaves the evidence empty.
+        samples = root / 'cpu.tsv'
+        sampler = subprocess.Popen([bash, (repo / '.github/scripts/cpu_sampler.sh').as_posix(), '1', samples.as_posix()])
+        try:
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline and len(samples.read_text().splitlines() if samples.exists() else []) < 2:
+                time.sleep(0.2)
+        finally:
+            sampler.kill()
+            sampler.wait()
+        rows = samples.read_text().splitlines()
+        assert len(rows) >= 2 and re.fullmatch(r'\d+\t[\d.]+\t[\d.]+\t\d+(,\d+)*\t[\d.]+', rows[1]), rows
+        print('PASS: the CPU sampler writes well-formed rows')
         (root / '.github').mkdir()
         shutil.copytree(repo / '.github/scripts', root / '.github/scripts')
         (root / 'outputs').mkdir()
@@ -125,6 +139,9 @@ def self_test():
                     pgn += f'[Event "fixture"]\n[Round "{round_no}"]\n[White "{white}"]\n[Black "{black}"]\n[FEN "{fen}"]\n[Result "1/2-1/2"]\n\n1/2-1/2\n\n'
                 (target / 'match.pgn').write_text(pgn)
                 (target / 'match.log').write_text('Ptnml(0-2): [0, 0, 2, 0, 0]\n')
+                if shard == 0:
+                    (target / 'cpu.tsv').write_text('elapsed_s\tbusy_pct\tsteal_pct\tper_cpu_busy_pct\tload_1m\n'
+                                                    '60\t75.0\t0.5\t90,80,70,60\t3.10\n')
             run(root, 'Verify the complete batch', env)
             run(root, 'Pool the result', env)
             pooled = root / 'outputs/pooled.md'
@@ -140,6 +157,7 @@ def self_test():
             run(root, 'Report', env)
             report = (root / 'outputs/report.md').read_text(encoding='utf-8')
             assert 'DISCARDED' in report and '**Pooled:' not in report and 'Threads=4 |' in report
+            assert 'on 1 of 2 shards' in report and '| Busy, all vCPUs | 75.0% |' in report, 'CPU summary missing'
             print('PASS: failure summary contains no partial Elo')
         (root / 'evidence/comparison.md').unlink()
         run(root, 'Verify the complete batch', env, expected=1)
