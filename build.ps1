@@ -121,6 +121,17 @@ function Assert-ArtifactFresh {
     if ($verdict.Fresh) { return }
     if ($verdict.Reason -eq 'missing' -and -not $Fatal) { return }
 
+    if ($Fatal -and $verdict.Reason -eq 'stale') {
+        $generator = Join-Path $BuildDir 'build.ninja'
+        $generatedAt = (Test-Path $generator) ? (Get-Item $generator).LastWriteTime : $null
+        if (Test-StaleOnlyByRegeneration -ArtifactWriteTime $writeTime -Sources $Sources -GeneratorWriteTime $generatedAt) {
+            # Ninja just found the binary current, so restore the mtime ordering that every
+            # later check, here and in Get-BuildArtifact.ps1, reads as fresh.
+            (Get-Item $ArtifactPath).LastWriteTime = Get-Date
+            return
+        }
+    }
+
     $name = Split-Path $ArtifactPath -Leaf
     $newer = Split-Path $verdict.NewestSourcePath -Leaf
     if ($Fatal) {
@@ -202,6 +213,25 @@ function Invoke-SelfTest {
            Reason   = 'no-sources' }
     )
 
+    # A CMakeLists.txt edit that ninja regenerated for and found nothing to rebuild leaves a
+    # current binary behind it. The other cases are the falsification: a newer source file,
+    # a regeneration that never happened, or a preset edit must all stay fatal.
+    $cmakeLists = [pscustomobject]@{ Path = 'CMakeLists.txt'; WriteTime = $t0.AddSeconds(1); RegeneratesBuild = $true }
+    $regenerationCases = @(
+        @{ Name = 'binary behind only a regenerated CMakeLists.txt is current'
+           Sources = @($cmakeLists); Generated = $t0.AddSeconds(2); Expected = $true }
+        @{ Name = 'binary behind CMakeLists.txt that ninja never regenerated for is stale'
+           Sources = @($cmakeLists); Generated = $t0; Expected = $false }
+        @{ Name = 'binary behind a source file as well is stale'
+           Sources = @($cmakeLists, [pscustomobject]@{ Path = 'a.cpp'; WriteTime = $t0.AddSeconds(1); RegeneratesBuild = $false })
+           Generated = $t0.AddSeconds(2); Expected = $false }
+        @{ Name = 'binary behind CMakePresets.json is stale'
+           Sources = @([pscustomobject]@{ Path = 'CMakePresets.json'; WriteTime = $t0.AddSeconds(1); RegeneratesBuild = $false })
+           Generated = $t0.AddSeconds(2); Expected = $false }
+        @{ Name = 'binary with no build.ninja beside it is stale'
+           Sources = @($cmakeLists); Generated = $null; Expected = $false }
+    )
+
     # Source-set partitioning, against the real tree. Falsifies the bug the split exists
     # for: with one shared set, a test-only file is "newer than" the main binary that no
     # rebuild of it can ever answer, so build.ps1 fails fatally from then on.
@@ -262,6 +292,16 @@ function Invoke-SelfTest {
             Write-Host "PASS: $($case.Name)" -ForegroundColor Green
         } else {
             Write-Host "FAIL: $($case.Name) ($detail)" -ForegroundColor Red
+            $failures++
+        }
+    }
+
+    foreach ($case in $regenerationCases) {
+        $actual = Test-StaleOnlyByRegeneration -ArtifactWriteTime $t0 -Sources $case.Sources -GeneratorWriteTime $case.Generated
+        if ($actual -eq $case.Expected) {
+            Write-Host "PASS: $($case.Name)" -ForegroundColor Green
+        } else {
+            Write-Host "FAIL: $($case.Name) (expected $($case.Expected), got $actual)" -ForegroundColor Red
             $failures++
         }
     }

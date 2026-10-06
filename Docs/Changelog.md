@@ -15,6 +15,19 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-07: `build.ps1` no longer fails a correct build after a `CMakeLists.txt` edit
+
+### Fixed
+
+- An edit to `CMakeLists.txt` that changes no compile or link command makes ninja regenerate
+  `build.ninja` and leave both executables alone. Their mtime then stayed behind `CMakeLists.txt`,
+  so `build.ps1` failed with "older than CMakeLists.txt even after building it" and no compiler
+  error, until someone deleted the executables. When `CMakeLists.txt` is the only newer source and
+  `build.ninja` is newer still, the build now moves the executable's mtime forward
+  (`Test-StaleOnlyByRegeneration` in `Scripts/BuildFreshness.ps1`). A newer source file, a
+  regeneration that never happened, or a `CMakePresets.json` edit still fails.
+- `Get-BuildArtifact.ps1` reads the same mtimes, so it no longer reports those executables stale.
+
 ## 2026-10-07: Catch2 v3.16.0, and a dependency-handling doc
 
 ### Changed
