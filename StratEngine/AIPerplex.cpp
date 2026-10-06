@@ -838,8 +838,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const eColor side = td.board.GetCurrentColor();
 
 	const ContinuationRows cont_rows = td.continuation_rows(ply, tuning_.continuation_history_plies);
-	// Only the first entry is ordered now; the loop orders the rest when it reaches them, since most
-	// nodes never search a second move.
+	// Orders only [0]; the loop orders the rest on reaching si == 1, since most nodes never search a
+	// second move.
 	MoveSorter::ScoreMovesBestFirst(move_list, n, td.board, side, hash_move, td.killers[ply][0], td.killers[ply][1],
 	                                td.history, scored_idx, cont_rows);
 
@@ -1253,7 +1253,7 @@ int AIPerplex::adjust_score_for_game_state(ThreadData& td, bool move_found, int 
 // In check the list is every legal evasion, so that same sort would score each quiet evasion as
 // -piece/16 and sink the heaviest quiet to the bottom. The king is the heaviest piece that can move
 // and a king evasion is very often the only legal reply, so the move most likely to be best was
-// searched last. ScoreMoves — the scorer pvs() already uses — scores quiet moves by history
+// searched last. ScoreMoves — the scoring pvs() shares — scores quiet moves by history
 // instead, so a king evasion rises on measured merit rather than by fiat.
 //
 // ScoreMoves reports an order rather than permuting, so the scratch arrays that turn it into one

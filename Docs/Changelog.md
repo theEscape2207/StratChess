@@ -15,7 +15,7 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
-## 2026-10-05: Lazy move ordering in pvs() (#725)
+## 2026-10-06: Lazy move ordering in pvs() (#725)
 
 `pvs()` now brings only its first move into order before searching it
 (`MoveSorter::ScoreMovesBestFirst`, one linear pass), and sorts the rest (`OrderRemaining`) only when
