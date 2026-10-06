@@ -198,5 +198,6 @@ keeping its code is a new change.
 - PS7 syntax inlined into the Git Bash tool fails silently. Write non-trivial PowerShell to a
   `.ps1` file and run it with `pwsh -ExecutionPolicy Bypass -File`.
 - **Editing `.ps1` files**: multi-line `sed`/bash substitutions mangle backslashes and
-  line-continuation backticks — use a small Python script written to a temp file. Validate without
+  line-continuation backticks — use a small Python script written to a temp file, with raw
+  strings (`r"..."`): in a plain string `\v` and `\b` become control characters. Validate without
   executing: `[System.Management.Automation.Language.Parser]::ParseInput($c, [ref]$t, [ref]$errors)`.
