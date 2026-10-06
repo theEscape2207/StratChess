@@ -1,6 +1,6 @@
 ---
 name: measure-strength
-description: Measure engine strength (Elo) or search speed (nps) — choosing between Run-Bench, a
+description: Measure engine strength (Elo), search speed (nps) or where the time goes — choosing between Run-Bench, a
   local Run-EloMatch batch, a local SPRT and the CI strength lab, plus the rules that silently
   invalidate a result. Use when asked to measure, benchmark, run a match or the strength lab, check
   for a regression, or decide whether a change is worth its cost.
@@ -46,7 +46,8 @@ rule in existing task records; `Measurements/README.md` defines how the result l
 Elo result, or what a #636 child is judged by): `Compare-SearchProfile.ps1 -Before -After` on two
 `-DSTRAT_SEARCH_PROFILE=1` builds. It prints ordering, LMR, node types, pruning, quiescence,
 iterations and stability, pooled and by endgame group. It measures no time: a speed change with an
-unchanged tree is `Run-Bench.ps1` or a sampling profiler's question. It gives direction, never a
+unchanged tree is `Run-Bench.ps1`'s question, and where the time goes is
+`Measure-CpuProfile.ps1 -Before -After`'s. It gives direction, never a
 verdict: gate on wall clock and Elo as above. Screen with
 `-Seeds 8 -Depth 12 -Positions Tests/profile-screen.fen` (~24 min; catches a 5% late-cut change 97% of the time, a 3% one about 3 times in 5) and
 read the Screen block's ±2 SE. One run per side carries tree noise larger than a typical ordering
