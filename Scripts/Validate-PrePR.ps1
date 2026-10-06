@@ -197,6 +197,10 @@ $script:SelfTestCoverers = @{
     # The linker-map reader, dot-sourced by Test-CodeAlignment.ps1 and New-OrderedBuildPair.ps1.
     # Test-CodeAlignment.ps1 -SelfTest asserts its row parsing.
     'Scripts/LinkerMap.ps1'      = 'Scripts/Test-CodeAlignment.ps1'
+
+    # The quiet-machine plan and banners, dot-sourced by measuring scripts.
+    # Measure-CpuProfile.ps1 -SelfTest asserts their formatting and ETA arithmetic.
+    'Scripts/QuietWindow.ps1'    = 'Scripts/Measure-CpuProfile.ps1'
 }
 
 # Pure: takes the facts, returns the violations. The walk that produces the facts is
