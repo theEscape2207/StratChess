@@ -15,6 +15,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-06: Strength lab records runner CPU use
+
+Each match shard runs `.github/scripts/cpu_sampler.sh` beside fastchess. Once a minute it records
+busy and steal across all vCPUs, busy per vCPU and the load average into `cpu.tsv` in the shard
+artifact. `summarize_cpu.py` pools the shards into a "Runner CPU use" table in the lab report and PR
+comment. It is evidence for sizing `concurrency` and `threads`: the runners' 4 vCPU are 2 physical
+cores with SMT (`lscpu`). A missing sample file is reported and never fails a run.
+
 ## 2026-10-06: Strength lab summary prints interval bounds and shard agreement
 
 `pool_pentanomial.py` now prints, under each pooled figure, the interval's bounds and whether it

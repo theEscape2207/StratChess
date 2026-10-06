@@ -347,6 +347,11 @@ as **one artifact**, so every shard provably plays the same two binaries against
 The normal PR gate also runs these Python self-tests and workflow boundary fixtures in its Linux
 Release leg, so harness failures can be checked without dispatching a strength match.
 
+**CPU evidence.** Each shard runs `.github/scripts/cpu_sampler.sh` beside fastchess, which samples
+`/proc/stat` once a minute into `cpu.tsv` in the shard artifact: busy and steal across all vCPUs,
+busy per vCPU and load average. `summarize_cpu.py` pools the shards into a table in the report.
+It is evidence only and never fails a run. The hosted runner's 4 vCPU are 2 physical cores with SMT.
+
 `.github/scripts/test_strength_workflow.py` runs the workflow's Bash blocks against complete and
 incomplete fixture batches and models directory-upload relative paths. This protects the evidence
 layout as well as the Python helpers: a misplaced retained book must fail locally before a match.
