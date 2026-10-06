@@ -15,6 +15,31 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-06: Lock-free transposition table (#747)
+
+`TranspositionTable` no longer takes a per-bucket `std::shared_mutex` on every probe and store. At
+`Threads=1` the locks cost 9.4% of CPU on clang-cl and 32.9% on Linux/GCC (#719). Each 16-byte entry
+is now two relaxed `std::atomic<uint64_t>` words, `key ^ payload` and `payload`, and a probe accepts
+a slot only if the two words decode to its key. The bucket layout, the replacement policy and the
+Threads=1 search are unchanged. The lock array is gone: 16 MiB on Windows and 112 MiB on Linux at
+`Hash=192`.
+
+Racing stores can lose an entry, or leave a slot holding one word from each store. Such a slot decodes
+to a pseudo-key, which under the random-Zobrist model matches a probe no more often than a stored key
+does. The owner accepted that residual risk at design review. A probed move stays a hint, matched
+against generated moves. `entry_count`/`pv_count` are removed: without the bucket lock they could not
+be kept exact, and only tests read them. `clear()`'s early-out reads a `written_since_clear` flag.
+
+- **Equivalence:** identical node counts and best moves against 79c3217 (6 positions, depth 12).
+- **nps (clang-cl, ships):** +3.28% [+2.61, +3.95] on the placement-equalised pair with an A/A control
+  (Speedup), against the 9.4% ceiling. **Linux GCC 15:** +10.0% (paired median of 12 rounds, context
+  only), against a 1.49× ceiling.
+- **Codegen:** no `lock`-prefixed instruction or fence in `pvs`, `quiescence`, `probe` or `store` on
+  either toolchain.
+- **Tests:** deterministic mixed-pair tests and a `[tt][smp]` four-thread stress test. Both fail with
+  the XOR removed, and the TT tests are TSan-clean on GCC 15.
+- **Tactical stability, `Threads=4`:** 36/36 in all 10 runs, the same as before.
+
 ## 2026-10-06: Measure-CpuProfile.ps1, a before/after CPU profile of two refs (#740)
 
 `Scripts/Measure-CpuProfile.ps1 -Before <ref> -After <ref>` codifies the hand-run profiles of #719
