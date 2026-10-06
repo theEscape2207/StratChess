@@ -838,8 +838,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const eColor side = td.board.GetCurrentColor();
 
 	const ContinuationRows cont_rows = td.continuation_rows(ply, tuning_.continuation_history_plies);
-	MoveSorter::ScoreMoves(move_list, n, td.board, side, hash_move, td.killers[ply][0], td.killers[ply][1], td.history,
-	                       scored_idx, cont_rows);
+	// Orders only [0]; the loop orders the rest on reaching si == 1, since most nodes never search a
+	// second move.
+	MoveSorter::ScoreMovesBestFirst(move_list, n, td.board, side, hash_move, td.killers[ply][0], td.killers[ply][1],
+	                                td.history, scored_idx, cont_rows);
 
 	// Singular extension: if the transposition table's move is much better than every
 	// alternative, search it one ply deeper. The verification runs HERE, before the move
@@ -848,7 +850,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// the verification has to search this position, at this ply.
 	//
 	// Hoisting costs the exactness of "first legal move", so eligibility instead requires
-	// the hash move to be sorted first (ScoreMoves guarantees that whenever one exists) and
+	// the hash move to be sorted first (ScoreMovesBestFirst guarantees that whenever one exists) and
 	// the loop re-checks that it was also the first LEGAL one before applying the extension.
 	// A hash move that fails legality wastes one verification and grants nothing.
 	int singular_extension = 0;
@@ -929,6 +931,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	// Iterate by sorted index — no rebuild of move_list needed
 	for (int si = 0; si < n; ++si) {
+		// First, before any continue: nothing may read scored_idx beyond [0] until the tail is ordered.
+		if (si == 1)
+			MoveSorter::OrderRemaining(move_list, scored_idx, 1, n);
 		const Move& move = move_list[scored_idx[si].second];
 
 		// The move a verification search is proving the alternatives against is not one of
@@ -1022,7 +1027,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				                       depth >= tuning_.lmr_min_depth && !td.board.InCheck();
 
 				if (apply_lmr) {
-					// scored_idx still holds the score ScoreMoves gave this move before the loop.
+					// scored_idx still holds the score ScoreMovesBestFirst gave this move before the loop.
 					const int R = lmr_reduction(depth, move_number, scored_idx[si].first, tuning_.lmr_history_divisor);
 					assert(depth - 1 - R >= 1 || tuning_.lmr_min_depth < 3);
 					record_lmr_reach(td.telemetry.lmr, depth, move_number, scored_idx[si].first, R);
@@ -1248,7 +1253,7 @@ int AIPerplex::adjust_score_for_game_state(ThreadData& td, bool move_found, int 
 // In check the list is every legal evasion, so that same sort would score each quiet evasion as
 // -piece/16 and sink the heaviest quiet to the bottom. The king is the heaviest piece that can move
 // and a king evasion is very often the only legal reply, so the move most likely to be best was
-// searched last. ScoreMoves — the scorer pvs() already uses — scores quiet moves by history
+// searched last. ScoreMoves — the scoring pvs() shares — scores quiet moves by history
 // instead, so a king evasion rises on measured merit rather than by fiat.
 //
 // ScoreMoves reports an order rather than permuting, so the scratch arrays that turn it into one

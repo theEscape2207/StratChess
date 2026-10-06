@@ -16,6 +16,7 @@
 #include "MoveHelper.h"
 #include "See.h"
 #include "defines.h"
+#include <algorithm>
 #include <climits>
 #include <vector>
 
@@ -341,6 +342,124 @@ TEST_CASE("Sort - Quiet move with positive history scores exactly that history v
 	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
 
 	REQUIRE(FindScore(scored_idx, moveList, n, quiet_move) == 42);
+}
+
+using ScoredIdx = std::array<std::pair<int, int>, MoveList::MAX_MOVES>;
+
+// The order every entry point must produce, computed without Sort.cpp's comparator: the scored pairs
+// back in generation order, then stably sorted by score, descending.
+static std::vector<std::pair<int, int>> ReferenceOrder(const ScoredIdx& scored_idx, int n)
+{
+	std::vector<std::pair<int, int>> ref(scored_idx.begin(), scored_idx.begin() + n);
+	std::ranges::sort(ref, {}, &std::pair<int, int>::second);
+	std::ranges::stable_sort(ref, std::ranges::greater{}, &std::pair<int, int>::first);
+	return ref;
+}
+
+static std::vector<std::pair<int, int>> Prefix(const ScoredIdx& scored_idx, int n)
+{
+	return {scored_idx.begin(), scored_idx.begin() + n};
+}
+
+// ScoreMoves, and ScoreMovesBestFirst followed by OrderRemaining(.., 1, n), both give the reference
+// order; before OrderRemaining only [0] is promised. Returns whether the best-first tail was out of order.
+static bool CheckEveryPathGivesReferenceOrder(const MoveList& moveList, const Board& board, eColor side,
+                                              const Move& hash_move, const Move& killer0, const Move& killer1,
+                                              const int32_t (&history)[2][64][64])
+{
+	const int n = static_cast<int>(moveList.size());
+
+	ScoredIdx full;
+	MoveSorter::ScoreMoves(moveList, n, board, side, hash_move, killer0, killer1, history, full);
+	const auto ref = ReferenceOrder(full, n);
+	REQUIRE(Prefix(full, n) == ref);
+
+	ScoredIdx lazy;
+	MoveSorter::ScoreMovesBestFirst(moveList, n, board, side, hash_move, killer0, killer1, history, lazy);
+	bool tail_was_unordered = false;
+	if (n > 0) {
+		REQUIRE(lazy[0] == ref[0]);
+		REQUIRE(std::is_permutation(lazy.begin() + 1, lazy.begin() + n, ref.begin() + 1));
+		tail_was_unordered = Prefix(lazy, n) != ref;
+	}
+	MoveSorter::OrderRemaining(moveList, lazy, 1, n);
+	REQUIRE(Prefix(lazy, n) == ref);
+	return tail_was_unordered;
+}
+
+// Kiwipete: 48 legal moves, beyond both libraries' small-sort paths, with winning and losing captures
+// (Qf3xf6 is recaptured by the g7 bishop) and castling.
+static constexpr const char* FEN_KIWIPETE = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
+TEST_CASE("Sort - lazy ordering matches the full order with a cold history table", "[sort]")
+{
+	// Every quiet ties at 0. The hash move is the last move generated, so swapping it into [0] sends
+	// the first-generated move to the end of a tied block, out of generation order.
+	const Board board(FEN_KIWIPETE);
+	MoveList moveList;
+	MoveGenerator::ComputeLegalMoves(board, moveList);
+	REQUIRE(moveList.size() > 32);
+	REQUIRE(std::ranges::any_of(moveList,
+	                            [&](const Move& m) { return MoveHelper::IsCapture(m) && !See::see_ge(board, m, 0); }));
+
+	const Move hash_move = moveList[moveList.size() - 1];
+	REQUIRE(!MoveHelper::IsCapture(hash_move));
+	const Move killer0 = FindBySquares(moveList, a2, a3);
+	const Move killer1 = FindBySquares(moveList, g2, g3);
+	int32_t history[2][64][64] = {};
+
+	REQUIRE(CheckEveryPathGivesReferenceOrder(moveList, board, WHITE, hash_move, killer0, killer1, history));
+}
+
+TEST_CASE("Sort - lazy ordering matches the full order with history ties among the quiets", "[sort]")
+{
+	const Board board(FEN_KIWIPETE);
+	MoveList moveList;
+	MoveGenerator::ComputeLegalMoves(board, moveList);
+
+	int32_t history[2][64][64] = {};
+	for (int from = 0; from < 64; ++from) {
+		for (int to = 0; to < 64; ++to)
+			history[WHITE][from][to] = (from * 7 + to) % 5 * 100; // five values, so many ties
+	}
+	const Move no_move;
+	CheckEveryPathGivesReferenceOrder(moveList, board, WHITE, no_move, no_move, no_move, history);
+}
+
+TEST_CASE("Sort - lazy ordering matches the full order with promotions", "[sort]")
+{
+	const Board board("r3k3/1P4P1/8/3pP3/2P5/8/8/4K3 w - d6 0 1");
+	MoveList moveList;
+	MoveGenerator::ComputeLegalMoves(board, moveList);
+	REQUIRE(std::ranges::any_of(moveList, [](const Move& m) { return MoveHelper::IsPromote(m); }));
+
+	const Move no_move;
+	int32_t history[2][64][64] = {};
+	CheckEveryPathGivesReferenceOrder(moveList, board, WHITE, no_move, no_move, no_move, history);
+}
+
+TEST_CASE("Sort - lazy ordering on lists of zero, one and two moves", "[sort]")
+{
+	const Board board(FEN_SORT);
+	MoveList generated;
+	MoveGenerator::ComputeLegalMoves(board, generated);
+	const Move quiet = FindBySquares(generated, e1, d1);
+	const Move killer = FindBySquares(generated, e1, f1);
+	const Move no_move;
+	int32_t history[2][64][64] = {};
+
+	MoveList empty;
+	CheckEveryPathGivesReferenceOrder(empty, board, WHITE, no_move, killer, no_move, history);
+
+	MoveList single;
+	single.push(quiet);
+	CheckEveryPathGivesReferenceOrder(single, board, WHITE, no_move, killer, no_move, history);
+
+	// The killer is generated second, so best-first must swap it into [0].
+	MoveList pair;
+	pair.push(quiet);
+	pair.push(killer);
+	CheckEveryPathGivesReferenceOrder(pair, board, WHITE, no_move, killer, no_move, history);
 }
 
 // SortMovesByValue reads only the moving and the captured piece, so these lists pair pieces freely

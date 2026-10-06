@@ -13,7 +13,7 @@
 #include <cstdio>
 
 namespace {
-	// Profile builds only: STRAT_PROFILE_TIEBREAK_SEED=N (1..2^32-1) breaks ScoreMoves' ties by a seeded
+	// Profile builds only: STRAT_PROFILE_TIEBREAK_SEED=N (1..2^32-1) breaks move-ordering ties by a seeded
 	// hash of the move instead of generation order — a neutral ordering perturbation that measures how
 	// much a profile screen moves with no real ordering change. Read once, before main().
 	uint32_t read_profile_tie_break_seed()
@@ -47,6 +47,24 @@ namespace {
 		x *= 0xC2B2AE35u;
 		x ^= x >> 16;
 		return x;
+	}
+
+	// The one order every ScoreMoves entry point produces: score descending, then generation order.
+	// std::sort is not stable, and equal scores are common — an in-check quiescence node with a cold
+	// history table scores every quiet evasion 0 — so without the index the whole tied block is
+	// permuted arbitrarily, and differently across stdlib versions. A profile build's tie-break seed
+	// replaces generation order; the shipping build folds it to 0. A strict total order on distinct
+	// moves, so the first entry is unique and sorting the rest after it reproduces the full sort.
+	auto score_order(const MoveList& moveList)
+	{
+		return [&moveList, seed = kSearchProfileCompiled ? kProfileTieBreakSeed : 0u](const std::pair<int, int>& a,
+		                                                                              const std::pair<int, int>& b) {
+			if (a.first != b.first)
+				return a.first > b.first;
+			if (seed != 0)
+				return tie_break_key(moveList[a.second], seed) < tie_break_key(moveList[b.second], seed);
+			return a.second < b.second;
+		};
 	}
 } // namespace
 
@@ -92,9 +110,10 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, const Board& board)
 // This applies to interior PV nodes. Ordering the ROOT's moves by the previous iteration's
 // scores is a separate question with a different answer available to it, and nothing here
 // forecloses it.
-void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board, eColor side, const Move& hash_move,
-                            const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
-                            std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx, ContinuationRows cont)
+void MoveSorter::ScoreUnordered(const MoveList& moveList, int n, const Board& board, eColor side, const Move& hash_move,
+                                const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
+                                std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
+                                ContinuationRows cont)
 {
 	assert(n >= 0 && n <= static_cast<int>(MoveList::MAX_MOVES));
 
@@ -139,19 +158,41 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 		}
 		out_scored_idx[i] = {s, i};
 	}
+}
 
-	// Ties break on generation order. std::sort is not stable, and equal scores are common — an
-	// in-check quiescence node with a cold history table scores every quiet evasion 0 — so without
-	// this the whole tied block is permuted arbitrarily, and differently across stdlib versions.
-	// A profile build's tie-break seed replaces generation order; the shipping build folds it to 0.
-	const uint32_t seed = kSearchProfileCompiled ? kProfileTieBreakSeed : 0;
-	std::sort(out_scored_idx.begin(), out_scored_idx.begin() + n, [&](const auto& a, const auto& b) {
-		if (a.first != b.first)
-			return a.first > b.first;
-		if (seed != 0)
-			return tie_break_key(moveList[a.second], seed) < tie_break_key(moveList[b.second], seed);
-		return a.second < b.second;
-	});
+void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board, eColor side, const Move& hash_move,
+                            const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
+                            std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx, ContinuationRows cont)
+{
+	ScoreUnordered(moveList, n, board, side, hash_move, killer0, killer1, history, out_scored_idx, cont);
+	OrderRemaining(moveList, out_scored_idx, 0, n);
+}
+
+void MoveSorter::ScoreMovesBestFirst(const MoveList& moveList, int n, const Board& board, eColor side,
+                                     const Move& hash_move, const Move& killer0, const Move& killer1,
+                                     const int32_t (&history)[2][64][64],
+                                     std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
+                                     ContinuationRows cont)
+{
+	ScoreUnordered(moveList, n, board, side, hash_move, killer0, killer1, history, out_scored_idx, cont);
+	if (n < 2)
+		return;
+	const auto before = score_order(moveList);
+	int best = 0;
+	for (int i = 1; i < n; ++i) {
+		if (before(out_scored_idx[i], out_scored_idx[best]))
+			best = i;
+	}
+	std::swap(out_scored_idx[0], out_scored_idx[best]);
+}
+
+void MoveSorter::OrderRemaining(const MoveList& moveList,
+                                std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx, int first, int n)
+{
+	assert(first >= 0 && n <= static_cast<int>(MoveList::MAX_MOVES));
+	if (n - first < 2)
+		return;
+	std::sort(scored_idx.begin() + first, scored_idx.begin() + n, score_order(moveList));
 }
 
 // A quiet's moving piece is the one on its from-square.

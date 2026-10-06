@@ -494,7 +494,7 @@ The counters are compiled out of the default build, and a profile build stays no
 The wording is a parsed contract: never reword a line.
 
 A profile build also reads `STRAT_PROFILE_TIEBREAK_SEED` once at startup. A non-zero seed breaks
-`ScoreMoves` score ties by a seeded hash of the move instead of generation order, and the engine
+`MoveSorter` score ties by a seeded hash of the move instead of generation order, and the engine
 prints `info string tiebreak seed N` before anything else; a value that is not an unsigned 32-bit
 integer exits with a diagnostic. It is a neutral reordering, the noise source that
 `Compare-SearchProfile.ps1 -Seeds` averages over. Unset or 0 leaves the build node-identical. The
@@ -504,7 +504,9 @@ test binary is a profile build too, so a seed left set in the shell reorders eve
 
 ### 5. Move Ordering
 
-**Current Implementation**: `MoveSorter::ScoreMoves` in `Sort.cpp/h`, called by search.
+**Current Implementation**: `MoveSorter` in `Sort.cpp/h`. `pvs()` orders lazily: `ScoreMovesBestFirst`
+puts only the first move in order, and `OrderRemaining` sorts the rest when the loop reaches them.
+In-check quiescence uses `ScoreMoves`, which sorts the whole list. The order is the same either way.
 
 **Order of Priority**:
 1. **Hash move** (from TT)
