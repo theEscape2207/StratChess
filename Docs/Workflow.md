@@ -501,10 +501,8 @@ samples by caller. Its `-?` help carries the traps it encodes: Release writes no
 `pvs`, `quiescence` and the TT functions behind unrelated public symbols, so it builds a `/Z7`
 variant; collection costs about 30% nps, so shares are approximate.
 
-**Linux (WSL Ubuntu-26.04, GCC 15, the strength lab's build).** The same script with `-Linux`:
-GCC Release plus `-g`, built on WSL's ext4 from a `git archive`, sampled with
-`perf record -F 1000 -e cycles:u`. `perf_event_paranoid` is 2, so it samples user space only; the
-engine spends nothing in the kernel. No `-Callers`: it records no call graphs. For a stack view by
+**Linux (WSL Ubuntu-26.04, GCC 15, the strength lab's build).** The same script with `-Linux`;
+its `-?` help carries the WSL traps. No `-Callers`: it records no call graphs. For a stack view by
 hand, add `--call-graph dwarf` to `perf record` and `-g caller` to `perf report`.
 
 **Reading the two side by side.** The platforms differ in more than codegen: clang-cl inlines the
