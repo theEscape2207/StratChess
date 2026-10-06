@@ -23,6 +23,16 @@ artifact. `summarize_cpu.py` pools the shards into a "Runner CPU use" table in t
 comment. It is evidence for sizing `concurrency` and `threads`: the runners' 4 vCPU are 2 physical
 cores with SMT (`lscpu`). A missing sample file is reported and never fails a run.
 
+## 2026-10-06: Strength lab summary prints interval bounds and shard agreement
+
+`pool_pentanomial.py` now prints, under each pooled figure, the interval's bounds and whether it
+spans 0, the shards favouring the candidate by score (the `Measurements/README.md` rule), and, when
+the interval spans 0, the games the estimate would need to exclude it. The shard table is in
+numeric order with each shard's score and side. A multi-arm run opens with one table across the
+arms, with a rough note on how far selection may inflate the best: little when it leads the next
+arm by more than 2 sigma, otherwise the expected maximum of the tied arms (a heuristic from three
+screen-to-confirmation pairs). These were counted by hand for every ledger row until now.
+
 ## 2026-10-06: Strength lab `threads` input (#747 slice 3)
 
 `strength.yml` takes a `threads` input, default 1, set as UCI `Threads` on both engines in place of

@@ -416,7 +416,9 @@ This establishes routing, completion and assigned starts, not every opening or m
 unit, by `.github/scripts/pool_pentanomial.py`. Pooling raw W/L/D would understate the variance and
 produce an interval that is wrong in the direction of looking more precise. That script's
 `--self-test` reproduces fastchess's own Elo and interval on seven real matches from this project;
-`setup` runs it before any build.
+`setup` runs it before any build. Under each pooled figure it prints the interval's bounds, the
+shards favouring the candidate by score, and, when the interval spans 0, the games this estimate
+would need to exclude it; a multi-arm run opens with one table across the arms.
 
 Every workflow pooling call supplies `--expect-pairs-per-shard R`. The last pentanomial counts of
 each log must sum to R, even if missing pairs in one log would offset excess pairs in another.

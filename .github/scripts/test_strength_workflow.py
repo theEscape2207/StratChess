@@ -148,6 +148,8 @@ def self_test():
             run(root, 'Pool the result', env)
             pooled = root / 'outputs/pooled.md'
             assert '**Pooled:' in pooled.read_text() and '0.00 Elo**' in pooled.read_text()
+            assert 'Shards favouring the candidate by score:' in pooled.read_text()
+            assert ('### Arms' in pooled.read_text()) == bool(arms), 'cross-arm summary missing or spurious'
             print(f'PASS: actual verify/pool workflow blocks, {"multi" if arms else "single"} arm')
             pooled.unlink()
             (root / 'shards/strength-1-shard-1/match.log').write_text('Ptnml(0-2): [0, 0, 1, 0, 0]\n')

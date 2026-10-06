@@ -732,18 +732,27 @@ jobs:
           else
             arm_list=$(python3 .github/scripts/plan_arms.py list --arms "$CANDIDATE_ARMS")
             arm_count=$(printf '%s\n' "$arm_list" | wc -l)
-            : > /tmp/pooled.pending.md
+            : > /tmp/arms.pending.md
+            : > /tmp/arms.tsv
             while IFS=$'\t' read -r arm options; do
               arm_logs=$(python3 .github/scripts/plan_arms.py logs \
                 --arms "$CANDIDATE_ARMS" --shards "$SHARDS" --arm "$arm" shards/*/match.log)
               mapfile -t logs <<< "$arm_logs"
-              echo "### Arm $arm: \`$options\`" >> /tmp/pooled.pending.md
-              echo >> /tmp/pooled.pending.md
+              echo "### Arm $arm: \`$options\`" >> /tmp/arms.pending.md
+              echo >> /tmp/arms.pending.md
               python3 .github/scripts/pool_pentanomial.py \
                 --expect-shards $(( SHARDS / arm_count )) --expect-pairs-per-shard "$ROUNDS" \
-                "${logs[@]}" >> /tmp/pooled.pending.md
-              echo >> /tmp/pooled.pending.md
+                --label "$arm: \`$options\`" --summary-tsv /tmp/arms.tsv \
+                "${logs[@]}" >> /tmp/arms.pending.md
+              echo >> /tmp/arms.pending.md
             done <<< "$arm_list"
+            {
+              echo "### Arms"
+              echo
+              python3 .github/scripts/pool_pentanomial.py --render-summary /tmp/arms.tsv
+              echo
+              cat /tmp/arms.pending.md
+            } > /tmp/pooled.pending.md
           fi
           mv /tmp/pooled.pending.md /tmp/pooled.md
           cat /tmp/pooled.md
