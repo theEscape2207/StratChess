@@ -85,6 +85,10 @@ param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$ChangedFiles)
 An empty diff is an ordinary answer, not a caller error. Add `[AllowEmptyCollection()]` whenever an
 empty set is a legitimate input — the other half of #387.
 
+The same holds one level down: `Mandatory` on `[string[]]` rejects an array containing `''`
+(*"Cannot bind argument ... because it is an empty string"*). Piped tool output has blank lines, so
+a parser taking lines needs `[AllowEmptyString()]` too (#740).
+
 ## 6. `& pwsh -File` returns strings, not objects
 
 `& pwsh -File script.ps1` returns strings. Process boundaries serialise through
@@ -144,3 +148,17 @@ $stdin = [System.IO.StreamReader]::new([Console]::OpenStandardInput())
 `FakeUciEngine.ps1` needs this to model an engine noticing a stop mid-search. The
 `$proc.StandardOutput` of a redirected child process is already a plain `StreamReader`, so
 `UciDriver.ps1` is unaffected.
+
+## 10. Number formatting follows the machine's locale
+
+`'{0:N1}' -f 1.5` and `.ToString()` use the current culture (`"$x"` does not). On this
+machine (`en-DK`) that is `1,5`, and `HH:mm` prints `12.30`. Output that a self-test compares, or
+another tool parses, then fails or misreads with no error. Format through the invariant culture:
+
+```powershell
+$inv = [cultureinfo]::InvariantCulture
+[string]::Format($inv, '{0:N1}', 1.5)   # 1.5
+$time.ToString('HH:mm', $inv)           # 12:30
+```
+
+Parsing is the mirror trap: `[double]::Parse($s, $inv)`. Found in `Measure-CpuProfile.ps1` (#740).

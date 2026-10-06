@@ -24,7 +24,8 @@ Measured behaviour, examples and the bug each rule came from: `reference/traps.m
 4. **Pipe every unassigned native call inside a function to `Out-Host`.** `git`, `pwsh` or engine
    stdout otherwise becomes part of the return value.
 5. **`[AllowEmptyCollection()]` beside `Mandatory`** whenever an empty set is a legitimate input.
-   `Mandatory` alone rejects `@()`.
+   `Mandatory` alone rejects `@()`, and an empty element in `[string[]]` needs
+   `[AllowEmptyString()]`.
 6. **Invoke a script in-process (`& $path`) when its contract is an object.** `& pwsh -File` returns
    strings. `Get-ChangeTier.ps1` is the one that matters.
 7. **Resolve the repository from `$PSScriptRoot`, and run your own worktree's copy.** It is the
@@ -35,6 +36,8 @@ Measured behaviour, examples and the bug each rule came from: `reference/traps.m
    subdirectories.
 9. **Read stdin through `[System.IO.StreamReader]::new([Console]::OpenStandardInput())`.**
    `[Console]::In.ReadLineAsync()` blocks on the calling thread, so a timed poll never times out.
+10. **Format numbers with `[cultureinfo]::InvariantCulture`.** `-f` and `.ToString()` follow the
+    machine's locale, which here writes `1,5`, so parsed or compared output breaks silently.
 
 ## Self-tests
 
@@ -47,7 +50,8 @@ read `reference/self-test.md` first.
 ## Editing a `.ps1` from an agent shell
 
 The `Bash` tool is Git Bash. Multi-line `sed`/bash substitutions mangle backslashes and
-line-continuation backticks — write the edit as a small Python script instead. Validate without
+line-continuation backticks — write the edit as a small Python script with raw strings instead.
+Validate without
 executing:
 
 ```powershell
