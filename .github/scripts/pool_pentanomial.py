@@ -113,13 +113,17 @@ def shard_order(path):
     return (0, int(match.group(1)), path) if match else (1, 0, path)
 
 
+def half_points(counts):
+    """Candidate half-points over a shard's pairs; a 50% shard totals 2 per pair."""
+    return sum(n * i for i, n in enumerate(counts))
+
+
 def favours(counts):
     """Which side a shard's score favours: 'candidate', 'reference' or 'even'."""
-    # Pair categories score 0..4 half-points; a 50% shard totals 2 per pair.
-    half_points = sum(n * i for i, n in enumerate(counts))
-    if half_points > 2 * sum(counts):
+    # Compared in exact integers, so a 50% shard is "even", never a float near it.
+    if half_points(counts) > 2 * sum(counts):
         return "candidate"
-    if half_points < 2 * sum(counts):
+    if half_points(counts) < 2 * sum(counts):
         return "reference"
     return "even"
 
@@ -336,8 +340,8 @@ def main():
     print("| Shard | Pairs | Ptnml(0-2) | Score | Favours |")
     print("|---|---|---|---|---|")
     for path, counts in sorted(zip(args.logs, shard_counts), key=lambda row: shard_order(row[0])):
-        shard_score = sum(n * s for n, s in zip(counts, CATEGORY_SCORES)) / sum(counts)
-        print(f"| `{path}` | {sum(counts)} | {counts} | {100 * shard_score:.2f}% "
+        shard_pairs = sum(counts)
+        print(f"| `{path}` | {shard_pairs} | {counts} | {25 * half_points(counts) / shard_pairs:.2f}% "
               f"| {favours(counts)} |")
 
     print()
