@@ -494,25 +494,16 @@ you expect before you look, or the profile cannot surprise you (#719). Both plat
 `Run-Bench` positions over UCI at `Threads=1` and fixed depth. The driver must read stdout until
 `bestmove`, because a piped `go` returns immediately.
 
-**Linux (WSL Ubuntu-26.04, GCC 15, the strength lab's build).** Build Release with
-`-DCMAKE_CXX_FLAGS=-g` from a `git archive` of the commit extracted onto the WSL file system. A
-build over `/mnt/c` fails in `FetchContent`, and a worktree's `.git` file is unreadable from WSL.
-Then:
-
-```bash
-perf record -F 1000 -e cycles:u --call-graph dwarf -o perf.data -- ./build/StratChessEvolved
-perf report -i perf.data --stdio --no-children -g none --sort sym      # or sym,srcfile
-```
-
-`perf` is `/usr/bin/perf` (package `linux-perf`). `perf_event_paranoid` is 2, so sample user space
-only (`:u`); the engine spends nothing in the kernel.
-
 **Windows (clang-cl, what ships). No elevation needed.** `Scripts\Measure-CpuProfile.ps1 -Before
 <ref> -After <ref>` does it: two worktree paths or commits in, a markdown table of per-area shares
 out, with the baseline's run-to-run spread as the noise floor. `-Callers <regex>` splits one symbol's
 samples by caller. Its `-?` help carries the traps it encodes: Release writes no PDB and LTO hides
 `pvs`, `quiescence` and the TT functions behind unrelated public symbols, so it builds a `/Z7`
 variant; collection costs about 30% nps, so shares are approximate.
+
+**Linux (WSL Ubuntu-26.04, GCC 15, the strength lab's build).** The same script with `-Linux`;
+its `-?` help carries the WSL traps. No `-Callers`: it records no call graphs. For a stack view by
+hand, add `--call-graph dwarf` to `perf record` and `-g caller` to `perf report`.
 
 **Reading the two side by side.** The platforms differ in more than codegen: clang-cl inlines the
 TT probe into `pvs`/`quiescence`, so its cache miss shows up as search time. Windows is authoritative for

@@ -5,7 +5,8 @@
 
 .DESCRIPTION
     Builds a profiling variant of each ref, samples the fixed-depth bench positions under
-    VSDiagnostics (1 kHz, no elevation), and reads each function's self time with xperf.
+    VSDiagnostics (1 kHz, no elevation), and reads each function's self time with xperf. -Linux
+    swaps in GCC, WSL and perf; the paragraphs below are Windows unless they say otherwise.
 
     Variant build. Plain Release writes no PDB, and LTO internalises pvs, quiescence and the TT
     functions, so without full debug info their samples land on an unrelated public symbol. Each
@@ -32,6 +33,18 @@
     run slower under load. The script prints the phase plan first and a QUIET NEEDED / Machine
     free banner at each boundary.
 
+    Linux (-Linux). The strength lab's toolchain: GCC Release plus -g in WSL Ubuntu-26.04,
+    sampled with `perf record -F 1000 -e cycles:u` and read with `perf report --no-children
+    --sort sym`. -g leaves GCC's code unchanged, so it is the lab's binary with symbols. Each ref
+    is exported as a tar (git archive; a dirty worktree through a temporary index) and built on
+    WSL's ext4 under ~/strat-cpu-profile, then deleted: FetchContent fails over /mnt/c, and a
+    worktree's .git file holds a Windows path WSL cannot follow. WSL is driven through a generated
+    .sh with `wsl --exec`, never shell text, whose quoting mangles backslashes. perf cannot write
+    its data to /mnt/c ("Bad address"), so it records on ext4 and the file is copied out. The
+    engine runs from the output directory's bin\, which perf.data names, so keep the two together.
+    Shares differ from Windows in more than codegen (clang-cl inlines the TT probe into the
+    search), so compare a Linux table only with another Linux table.
+
 .PARAMETER Before
     Baseline ref: a worktree path (built as it stands, uncommitted changes included) or any
     commit-ish of this repository (checked out to a temporary detached worktree).
@@ -48,7 +61,12 @@
 
 .PARAMETER Callers
     Regex naming a symbol whose samples to split by caller (for example '_Sort_unchecked'),
-    from xperf's butterfly view of the first before run and the after run.
+    from xperf's butterfly view of the first before run and the after run. Windows only: the
+    Linux arm records no call graphs.
+
+.PARAMETER Linux
+    Profile GCC builds in WSL (Ubuntu-26.04) with perf instead of clang-cl builds with
+    VSDiagnostics.
 
 .PARAMETER Positions
     Optional FEN file, one per line. Defaults to the BenchPositions.ps1 set.
@@ -59,12 +77,12 @@
 
 .PARAMETER Reanalyse
     An earlier run's output directory: rebuild its report from the saved traces, for example
-    with a new -Callers, without building or collecting. -Before, -After and -Depth are read
-    from its metadata.json.
+    with a new -Callers, without building or collecting. -Before, -After, -Depth and -Linux are
+    read from its metadata.json.
 
 .PARAMETER SelfTest
-    Assert the xperf parsers, the area grouping and the quiet-window formatting on synthetic
-    text, and exit. Runs no build, engine or profiler. Exits 1 on any failure.
+    Assert the xperf and perf parsers, the area grouping and the quiet-window formatting on
+    synthetic text, and exit. Runs no build, engine or profiler. Exits 1 on any failure.
 
 .EXAMPLE
     .\Measure-CpuProfile.ps1 -Before origin/main -After C:\src\my-worktree
@@ -74,6 +92,9 @@
 
 .EXAMPLE
     .\Measure-CpuProfile.ps1 -Reanalyse build\cpu-profile\20261006-121806 -Callers 'MoveSorter::'
+
+.EXAMPLE
+    .\Measure-CpuProfile.ps1 -Before 79c3217 -After origin/main -Linux
 #>
 [CmdletBinding()]
 param(
@@ -94,6 +115,8 @@ param(
     [string]$OutDir = '',
 
     [string]$Reanalyse = '',
+
+    [switch]$Linux,
 
     [switch]$SelfTest
 )
@@ -128,6 +151,28 @@ $SortSymbolPattern = '_Sort_unchecked<std::pair<int,\s*int>|__introsort_loop|__i
 $RoughBuildSeconds = 240
 $RoughRunSeconds = 30
 $RoughAnalysisSeconds = 60
+
+$WslDistro = 'Ubuntu-26.04'
+$PerfRecordArgs = @('-F', '1000', '-e', 'cycles:u')
+
+# Builds one -Linux arm on ext4 and copies the exe out; the tree is deleted on exit. Written with
+# LF endings next to the arm's outputs, so bash never sees a CR.
+$WslBuildScript = @'
+#!/usr/bin/env bash
+# Usage: build.sh <source.tar> <bin dir> <work dir> <FetchContent deps dir>
+set -euo pipefail
+tar_path=$1; bin_dir=$2; work=$3; deps=$4
+rm -rf "$work"
+mkdir -p "$work/src" "$bin_dir"
+trap 'rm -rf "$work"' EXIT
+tar -xf "$tar_path" -C "$work/src"
+cmake -S "$work/src" -B "$work/build" -G Ninja --log-level=WARNING -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CXX_FLAGS=-g "-DFETCHCONTENT_BASE_DIR=$deps"
+cmake --build "$work/build" --target StratChessEvolved --parallel
+cp "$work/build/StratChessEvolved" "$bin_dir/"
+grep -E '^CMAKE_(CXX_COMPILER|CXX_FLAGS|BUILD_TYPE):' "$work/build/CMakeCache.txt"
+"$(grep -E '^CMAKE_CXX_COMPILER:' "$work/build/CMakeCache.txt" | cut -d= -f2)" --version | head -1
+'@ -replace "`r`n", "`n"
 
 function Get-SymbolName {
     <#
@@ -167,6 +212,23 @@ function ConvertFrom-XperfProfile {
     $weight = @{}
     foreach ($l in $Line) {
         if ($l -match "^\s*$EngineProcess\.exe \(\s*\d+\),\s*(\d+),\s*[\d.]+,\s*(.+?)\s*$") {
+            $symbol = $Matches[2]
+            $weight[$symbol] += [double]$Matches[1]
+        }
+    }
+    return $weight
+}
+
+function ConvertFrom-PerfReport {
+    <#
+        Self overhead per symbol, from `perf report --stdio --no-children --sort sym` text. The
+        overhead column is cycles; the optional samples column (-n) is not, at -F's adaptive period.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Line)
+
+    $weight = @{}
+    foreach ($l in $Line) {
+        if ($l -match '^\s*([\d.]+)%\s+(?:\d+\s+)?\[[.k]\]\s+(.+?)\s*$') {
             $symbol = $Matches[2]
             $weight[$symbol] += [double]$Matches[1]
         }
@@ -338,6 +400,29 @@ if ($SelfTest) {
         $callerWeight.Count -eq 2 -and $callerWeight['StratChessEvolved.exe!AIPerplex::pvs'] -eq 200 -and
         $callerWeight['StratChessEvolved.exe!AIPerplex::quiescence'] -eq 100) "got $(($callerWeight.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', ')"
 
+    $perf = @(
+        '# Samples: 1K of event ''cycles:u'''
+        '# Overhead       Samples  Symbol'
+        '# ........  ............  ......'
+        '#'
+        '    60.00%           600  [.] AIPerplex::pvs(ThreadData&, TranspositionTable&, int, int)'
+        '    25.00%            30  [.] TranspositionTable::probe(unsigned long, int) const'
+        '    10.00%  [.] void std::__introsort_loop<std::pair<int, int>*, long>(std::pair<int, int>*, std::pair<int, int>*, long)'
+        '     5.00%            50  [.] 0x00007f3a12345678'
+        ''
+        '# (Tip: ...)'
+    )
+    $perfWeight = ConvertFrom-PerfReport -Line $perf
+    # FALSIFY: samples disagree with overhead on the TT row; the weight must be the overhead.
+    Assert-Case 'perf: symbol rows only, with or without -n, weighted by overhead' ($perfWeight.Count -eq 4 -and $perfWeight['TranspositionTable::probe(unsigned long, int) const'] -eq 25) "got $($perfWeight.Count) symbols"
+    $perfShare = Get-AreaShare -Weight $perfWeight
+    Assert-Case 'perf shares: search 60, TT 25, ordering and sort 10, unresolved Other 5' (
+        [math]::Abs($perfShare.Area['Search bodies'] - 60) -lt 1e-9 -and [math]::Abs($perfShare.Area['TT probe/store'] - 25) -lt 1e-9 -and
+        [math]::Abs($perfShare.Area['Move ordering'] - 10) -lt 1e-9 -and [math]::Abs($perfShare.Sort - 10) -lt 1e-9 -and
+        [math]::Abs($perfShare.Area['Other'] - 5) -lt 1e-9) `
+        "got $($perfShare.Area['Search bodies'])/$($perfShare.Area['TT probe/store'])/$($perfShare.Area['Move ordering'])/$($perfShare.Sort)"
+    Assert-Case 'FALSIFY: the WSL build script carries no CR' (-not $WslBuildScript.Contains("`r"))
+
     $now = [datetime]'2026-10-06 10:00:20'
     $bannerCases = @(
         @{ Name = 'quiet ends mid-minute, rounded up'; Quiet = $true;  Seconds = 45;    Rough = $false; Expect = '[10:00:20] QUIET NEEDED: collect, ~45 s, until ~10:02' }
@@ -473,6 +558,69 @@ function Build-ProfileVariant {
     }
 }
 
+function Invoke-Wsl {
+    <# A command in the profiling distro. --exec passes arguments verbatim, with no shell to mangle them. #>
+    param([Parameter(Mandatory)][string[]]$Argument)
+    & wsl.exe -d $WslDistro --exec @Argument
+}
+
+function ConvertTo-WslPath {
+    param([Parameter(Mandatory)][string]$Path)
+    $wslPath = Invoke-Wsl -Argument 'wslpath', '-a', $Path
+    if ($LASTEXITCODE -ne 0 -or -not $wslPath) { throw "wslpath could not translate $Path." }
+    return [string]$wslPath
+}
+
+function Export-RefArchive {
+    <#
+        The ref's source as a tar. A dirty worktree is snapshotted through a temporary index, so
+        uncommitted and untracked (not ignored) files are built, as the Windows arm builds them.
+    #>
+    param([Parameter(Mandatory)][object]$Ref, [Parameter(Mandatory)][string]$Tar)
+
+    $repo = if ($Ref.Tree) { $Ref.Tree } else { $RepoRoot }
+    $treeish = $Ref.Commit
+    if ($Ref.Dirty) {
+        $callerIndex = $env:GIT_INDEX_FILE
+        $env:GIT_INDEX_FILE = "$Tar.index"
+        try {
+            & git -C $repo read-tree HEAD | Out-Host
+            & git -C $repo add -A | Out-Host
+            $treeish = & git -C $repo write-tree
+            if ($LASTEXITCODE -ne 0) { throw "Could not snapshot $repo." }
+        }
+        finally {
+            $env:GIT_INDEX_FILE = $callerIndex
+            Remove-Item -LiteralPath "$Tar.index" -ErrorAction SilentlyContinue
+        }
+    }
+    & git -C $repo archive --format=tar -o $Tar $treeish | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "git archive failed for $treeish." }
+}
+
+function Build-LinuxProfileVariant {
+    <# Builds the GCC -g variant in WSL and copies its exe to $ArmDir\bin. #>
+    param([Parameter(Mandatory)][object]$Ref, [Parameter(Mandatory)][string]$ArmDir, [Parameter(Mandatory)][string]$WorkDir)
+
+    $bin = Join-Path $ArmDir 'bin'
+    New-Item -ItemType Directory -Force -Path $bin | Out-Null
+    $tar = Join-Path $ArmDir 'source.tar'
+    $buildScript = Join-Path $ArmDir 'build.sh'
+    $log = Join-Path $ArmDir 'build.log'
+    [System.IO.File]::WriteAllText($buildScript, $WslBuildScript)
+    Export-RefArchive -Ref $Ref -Tar $tar
+    try {
+        Invoke-Wsl -Argument 'bash', (ConvertTo-WslPath $buildScript), (ConvertTo-WslPath $tar), (ConvertTo-WslPath $bin), $WorkDir, "$script:WslRoot/deps" *>> $log
+        if ($LASTEXITCODE -ne 0) { Get-Content -LiteralPath $log -Tail 20 | Out-Host; throw "WSL build failed; full log: $log" }
+    }
+    finally { Remove-Item -LiteralPath $tar -ErrorAction SilentlyContinue }
+
+    if (-not (Select-String -LiteralPath $log -Pattern '^CMAKE_CXX_FLAGS:\w+=-g$' -Quiet)) { throw "The WSL build was not configured with -g; see $log" }
+    $exe = Join-Path $bin 'StratChessEvolved'
+    if (-not (Test-Path -LiteralPath $exe)) { throw "The WSL build wrote no $exe." }
+    return $exe
+}
+
 function Read-EngineLine {
     <# Engine output lines up to and including the first matching $Pattern. #>
     param([Parameter(Mandatory)][System.Diagnostics.Process]$Process, [Parameter(Mandatory)][string]$Pattern, [int]$TimeoutMs = 600000)
@@ -498,26 +646,41 @@ function Send-EngineCommand {
 
 function Invoke-ProfiledRun {
     <#
-        One engine process searching every position while VSDiagnostics samples it. Writes
-        $RunDir\session.diagsession and returns nodes and best move per position.
+        One engine process searching every position while VSDiagnostics samples it, or, on Linux,
+        the engine under perf record. Writes $RunDir\session.diagsession or $RunDir\perf.data and
+        returns nodes and best move per position.
     #>
     param(
         [Parameter(Mandatory)][string]$Exe,
         [Parameter(Mandatory)][object[]]$PositionList,
-        [Parameter(Mandatory)][string]$RunDir
+        [Parameter(Mandatory)][string]$RunDir,
+        [switch]$OnLinux
     )
 
     New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = $Exe
-    $psi.Arguments = 'uci'
-    $psi.WorkingDirectory = Split-Path $Exe -Parent
+    if ($OnLinux) {
+        # perf cannot write its data to /mnt/c ("Bad address"), so it records on ext4 and the
+        # file is copied out after the run.
+        $wslRun = "$script:WslWork-$(Split-Path $RunDir -Leaf)"
+        Invoke-Wsl -Argument 'mkdir', '-p', $wslRun | Out-Host
+        # perf records only its child, so the samples are the engine's without a PID filter.
+        $psi.FileName = 'wsl.exe'
+        foreach ($a in @('-d', $WslDistro, '--cd', $wslRun, '--exec', 'perf', 'record') + $PerfRecordArgs + @(
+            '-o', 'perf.data', '--', (ConvertTo-WslPath $Exe), 'uci')) { $psi.ArgumentList.Add($a) }
+    } else {
+        $psi.FileName = $Exe
+        $psi.Arguments = 'uci'
+        $psi.WorkingDirectory = Split-Path $Exe -Parent
+    }
     $psi.RedirectStandardInput = $true
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.UseShellExecute = $false
     $proc = [System.Diagnostics.Process]::Start($psi)
-    $null = $proc.StandardError.ReadToEndAsync()
+    # A Linux engine reads "uci`r" as an unknown command.
+    $proc.StandardInput.NewLine = "`n"
+    $stderr = $proc.StandardError.ReadToEndAsync()
     # VSDiagnostics session ids are 0-255; a random one avoids a session left over from a crash.
     $session = Get-Random -Minimum 1 -Maximum 256
     $collecting = $false
@@ -528,10 +691,12 @@ function Invoke-ProfiledRun {
         Send-EngineCommand $proc 'isready'
         $null = Read-EngineLine $proc '^readyok' 30000
 
-        & $script:VsDiagnostics start $session "/attach:$($proc.Id)" "/loadConfig:$script:CollectorConfig" 2>&1 | Out-Host
-        if ($LASTEXITCODE -ne 0) { throw "VSDiagnostics start failed (exit $LASTEXITCODE)." }
-        $collecting = $true
-        Start-Sleep -Seconds 2
+        if (-not $OnLinux) {
+            & $script:VsDiagnostics start $session "/attach:$($proc.Id)" "/loadConfig:$script:CollectorConfig" 2>&1 | Out-Host
+            if ($LASTEXITCODE -ne 0) { throw "VSDiagnostics start failed (exit $LASTEXITCODE)." }
+            $collecting = $true
+            Start-Sleep -Seconds 2
+        }
 
         $results = foreach ($position in $PositionList) {
             Send-EngineCommand $proc 'ucinewgame'
@@ -545,14 +710,23 @@ function Invoke-ProfiledRun {
             [pscustomobject]@{ Name = $position.Name; Nodes = $nodes; Best = ($lines[-1] -split '\s+')[1] }
         }
 
-        & $script:VsDiagnostics stop $session "/output:$(Join-Path $RunDir 'session.diagsession')" 2>&1 | Out-Host
-        $collecting = $false
-        if ($LASTEXITCODE -ne 0) { throw "VSDiagnostics stop failed (exit $LASTEXITCODE)." }
+        if (-not $OnLinux) {
+            & $script:VsDiagnostics stop $session "/output:$(Join-Path $RunDir 'session.diagsession')" 2>&1 | Out-Host
+            $collecting = $false
+            if ($LASTEXITCODE -ne 0) { throw "VSDiagnostics stop failed (exit $LASTEXITCODE)." }
+        }
         Send-EngineCommand $proc 'quit'
-        if (-not $proc.WaitForExit(30000)) { throw 'Engine did not exit after quit.' }
+        if (-not $proc.WaitForExit(60000)) { throw 'Engine did not exit after quit.' }
+        if ($OnLinux) {
+            $stderr.Result | Set-Content -LiteralPath (Join-Path $RunDir 'perf-record.log') -Encoding utf8
+            if ($proc.ExitCode -ne 0) { throw "perf record failed (exit $($proc.ExitCode)); see $RunDir\perf-record.log" }
+            Invoke-Wsl -Argument 'cp', "$wslRun/perf.data", (ConvertTo-WslPath $RunDir) | Out-Host
+            if ($LASTEXITCODE -ne 0) { throw "Could not copy $wslRun/perf.data to $RunDir." }
+        }
         return @($results)
     }
     finally {
+        if ($OnLinux) { Invoke-Wsl -Argument 'rm', '-rf', $wslRun | Out-Host }
         if ($collecting) { & $script:VsDiagnostics stop $session "/output:$(Join-Path $RunDir 'aborted.diagsession')" 2>&1 | Out-Host }
         if (-not $proc.HasExited) { $proc.Kill(); $proc.WaitForExit() }
         $proc.Dispose()
@@ -588,6 +762,30 @@ function Invoke-RunAnalysis {
     }
 }
 
+function Get-LinuxCompilerLabel {
+    <# The compiler version line each arm's build.sh logged last; both arms' when they differ. #>
+    $versions = foreach ($arm in 'before', 'after') {
+        $log = Join-Path $outPath $arm 'build.log'
+        if (Test-Path -LiteralPath $log) { (Get-Content -LiteralPath $log -Tail 1).Trim() }
+    }
+    $distinct = @($versions | Select-Object -Unique)
+    if ($distinct.Count -eq 0) { return 'GCC' }
+    return ($distinct | ForEach-Object { "``$_``" }) -join ' / '
+}
+
+function Invoke-LinuxRunAnalysis {
+    <# Writes perf's flat self-time report for the run; returns the symbol weights. #>
+    param([Parameter(Mandatory)][string]$RunDir)
+
+    $data = Join-Path $RunDir 'perf.data'
+    if (-not (Test-Path -LiteralPath $data)) { throw "No perf.data in $RunDir" }
+    $flat = Join-Path $RunDir 'perf-report.txt'
+    $text = @(Invoke-Wsl -Argument 'perf', 'report', '-i', (ConvertTo-WslPath $data), '--stdio', '--no-children', '--sort', 'sym' 2> (Join-Path $RunDir 'perf-report.log'))
+    if ($LASTEXITCODE -ne 0) { throw "perf report failed; see $RunDir\perf-report.log" }
+    $text | Set-Content -LiteralPath $flat -Encoding utf8
+    return [pscustomobject]@{ Etl = $null; Weight = ConvertFrom-PerfReport -Line $text }
+}
+
 function Get-CallerSplit {
     <# Writes xperf's butterfly report for the run and returns the callers of symbols matching $Pattern. #>
     param([Parameter(Mandatory)][string]$RunDir, [Parameter(Mandatory)][string]$Etl, [Parameter(Mandatory)][string]$BinDir, [Parameter(Mandatory)][string]$Pattern)
@@ -601,24 +799,39 @@ function Get-CallerSplit {
 
 if (-not $Reanalyse -and (-not $Before -or -not $After)) { throw 'Give -Before and -After (a worktree path or a commit each), -Reanalyse, or -SelfTest.' }
 
-$vsRoot = Import-VsDevEnvironment
-$collector = Join-Path $vsRoot 'Team Tools\DiagnosticsHub\Collector'
-$script:VsDiagnostics = Join-Path $collector 'VSDiagnostics.exe'
-$script:CollectorConfig = Join-Path $collector 'AgentConfigs\CpuUsageBase.json'
-foreach ($file in $script:VsDiagnostics, $script:CollectorConfig) {
-    if (-not (Test-Path -LiteralPath $file)) { throw "$file not found. Install the Visual Studio profiling tools (Diagnostics Hub)." }
+$linuxArm = [bool]$Linux
+if ($Reanalyse) {
+    $outPath = (Resolve-Path -LiteralPath $Reanalyse).Path
+    $metadata = Get-Content -LiteralPath (Join-Path $outPath 'metadata.json') -Raw | ConvertFrom-Json
+    $linuxArm = $metadata.PSObject.Properties.Name -contains 'platform' -and $metadata.platform -eq 'linux'
 }
-$xperfCommand = Get-Command xperf -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-$script:Xperf = if ($xperfCommand) { $xperfCommand.Source } else { Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Windows Performance Toolkit\xperf.exe' }
-if (-not (Test-Path -LiteralPath $script:Xperf)) { throw 'xperf.exe not found. Install the Windows Performance Toolkit (Windows SDK).' }
+if ($Callers -and $linuxArm) { throw '-Callers needs xperf''s call stacks; the Linux arm records none.' }
+
+if ($linuxArm) {
+    $toolCheck = Invoke-Wsl -Argument 'which', 'cmake', 'ninja', 'g++', 'perf', 'tar' 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "WSL distro $WslDistro lacks a tool (cmake, ninja, g++, perf from package linux-perf, tar) or is not installed: $toolCheck" }
+    # Every ext4 build and recording sits under this root, so a failed run's leftovers are in one place.
+    $script:WslRoot = "$(Invoke-Wsl -Argument 'printenv', 'HOME')/strat-cpu-profile"
+} else {
+    $vsRoot = Import-VsDevEnvironment
+    $collector = Join-Path $vsRoot 'Team Tools\DiagnosticsHub\Collector'
+    $script:VsDiagnostics = Join-Path $collector 'VSDiagnostics.exe'
+    $script:CollectorConfig = Join-Path $collector 'AgentConfigs\CpuUsageBase.json'
+    foreach ($file in $script:VsDiagnostics, $script:CollectorConfig) {
+        if (-not (Test-Path -LiteralPath $file)) { throw "$file not found. Install the Visual Studio profiling tools (Diagnostics Hub)." }
+    }
+    $xperfCommand = Get-Command xperf -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    $script:Xperf = if ($xperfCommand) { $xperfCommand.Source } else { Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Windows Performance Toolkit\xperf.exe' }
+    if (-not (Test-Path -LiteralPath $script:Xperf)) { throw 'xperf.exe not found. Install the Windows Performance Toolkit (Windows SDK).' }
+}
+$exeName = if ($linuxArm) { 'StratChessEvolved' } else { 'StratChessEvolved.exe' }
+$analysisName = if ($linuxArm) { 'perf report' } else { 'xperf analysis' }
 
 $profileRoot = Join-Path $RepoRoot 'build\cpu-profile'
 # Shared by every run, so Microsoft's ntdll symbols download once per machine.
 $script:SymbolCache = Join-Path $profileRoot 'symcache'
 
 if ($Reanalyse) {
-    $outPath = (Resolve-Path -LiteralPath $Reanalyse).Path
-    $metadata = Get-Content -LiteralPath (Join-Path $outPath 'metadata.json') -Raw | ConvertFrom-Json
     $refs = [ordered]@{}
     $bin = @{}
     foreach ($arm in 'before', 'after') {
@@ -639,15 +852,16 @@ if ($Reanalyse) {
     New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
     $outPath = (Resolve-Path -LiteralPath $OutDir).Path
     if (@(Get-ChildItem -LiteralPath $outPath -Force).Count -gt 0) { throw "$outPath is not empty; use a fresh -OutDir." }
+    if ($linuxArm) { $script:WslWork = "$script:WslRoot/$(Split-Path $outPath -Leaf)" }
     $positionList = @(Resolve-Positions -Path $Positions)
     $positionCount = $positionList.Count
     $refs = [ordered]@{ before = (Resolve-ProfileRef -Ref $Before -Arm 'Before'); after = (Resolve-ProfileRef -Ref $After -Arm 'After') }
     @{
         before = @{ ref = $Before; commit = $refs['before'].Commit; dirty = $refs['before'].Dirty }
         after  = @{ ref = $After; commit = $refs['after'].Commit; dirty = $refs['after'].Dirty }
-        depth  = $Depth; beforeRuns = $BeforeRuns; positions = $positionCount
+        depth  = $Depth; beforeRuns = $BeforeRuns; positions = $positionCount; platform = $(if ($linuxArm) { 'linux' } else { 'windows' })
     } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $outPath 'metadata.json') -Encoding utf8
-    $depsCache = Get-SharedDepsCache
+    $depsCache = if ($linuxArm) { $null } else { Get-SharedDepsCache }
 
     # Interleaved before/after/before, so drift over the window shows up in the before spread.
     $runPlan = @(@{ Arm = 'before'; Index = 1 }; @{ Arm = 'after'; Index = 1 })
@@ -657,7 +871,7 @@ if ($Reanalyse) {
         @{ Name = 'build before'; Quiet = $false; Seconds = $RoughBuildSeconds; Rough = $true }
         @{ Name = 'build after'; Quiet = $false; Seconds = $RoughBuildSeconds; Rough = $true }
         @{ Name = "profile collection ($($runPlan.Count) runs)"; Quiet = $true; Seconds = $RoughRunSeconds * $runPlan.Count; Rough = $true }
-        @{ Name = 'xperf analysis'; Quiet = $false; Seconds = $RoughAnalysisSeconds * $runPlan.Count; Rough = $true }
+        @{ Name = $analysisName; Quiet = $false; Seconds = $RoughAnalysisSeconds * $runPlan.Count; Rough = $true }
     )
     Write-Host "Output: $outPath" -ForegroundColor Cyan
     Write-PhasePlan -Phase $phases
@@ -670,7 +884,11 @@ if ($Reanalyse) {
         Write-PhaseBanner -Name "build $arm ($($ref.Ref) @ $($ref.Commit.Substring(0, 9)))" -Quiet $false -Seconds $estimate -Rough ($null -eq $buildSeconds)
         if ($ref.Dirty) { Write-Host "  WARN  $($ref.Tree) has uncommitted changes; its commit does not describe it" -ForegroundColor Yellow }
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
-        $exe = Build-ProfileVariant -Ref $ref -ArmDir (Join-Path $outPath $arm) -DepsCache $depsCache
+        $exe = if ($linuxArm) {
+            Build-LinuxProfileVariant -Ref $ref -ArmDir (Join-Path $outPath $arm) -WorkDir "$script:WslWork-$arm"
+        } else {
+            Build-ProfileVariant -Ref $ref -ArmDir (Join-Path $outPath $arm) -DepsCache $depsCache
+        }
         $bin[$arm] = Split-Path $exe -Parent
         if ($null -eq $buildSeconds) { $buildSeconds = $timer.Elapsed.TotalSeconds }
         Write-Host ("  built in {0:N0} s: {1}" -f $timer.Elapsed.TotalSeconds, $exe) -ForegroundColor DarkGray
@@ -688,7 +906,7 @@ if ($Reanalyse) {
         $step = $runPlan[$r]
         $runDir = Join-Path $outPath "runs\$($step.Arm)-$($step.Index)"
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
-        $result = @(Invoke-ProfiledRun -Exe (Join-Path $bin[$step.Arm] 'StratChessEvolved.exe') -PositionList $positionList -RunDir $runDir)
+        $result = @(Invoke-ProfiledRun -Exe (Join-Path $bin[$step.Arm] $exeName) -PositionList $positionList -RunDir $runDir -OnLinux:$linuxArm)
         if ($null -eq $runSeconds) { $runSeconds = $timer.Elapsed.TotalSeconds }
         Write-Host ("  {0}-{1}: {2:N0} nodes in {3:N0} s" -f $step.Arm, $step.Index, ($result | Measure-Object Nodes -Sum).Sum, $timer.Elapsed.TotalSeconds) -ForegroundColor DarkGray
         ConvertTo-Json -InputObject @($result) | Set-Content -LiteralPath (Join-Path $runDir 'result.json') -Encoding utf8
@@ -696,15 +914,15 @@ if ($Reanalyse) {
     }
 }
 
-Write-PhaseBanner -Name 'xperf analysis' -Quiet $false -Seconds ($RoughAnalysisSeconds * $runs.Count) -Rough $true
+Write-PhaseBanner -Name $analysisName -Quiet $false -Seconds ($RoughAnalysisSeconds * $runs.Count) -Rough $true
 for ($r = 0; $r -lt $runs.Count; $r++) {
     $run = $runs[$r]
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
-    $run.Analysis = Invoke-RunAnalysis -RunDir $run.Dir -BinDir $bin[$run.Arm]
+    $run.Analysis = if ($linuxArm) { Invoke-LinuxRunAnalysis -RunDir $run.Dir } else { Invoke-RunAnalysis -RunDir $run.Dir -BinDir $bin[$run.Arm] }
     Write-Host ("  {0}-{1} analysed in {2:N0} s" -f $run.Arm, $run.Index, $timer.Elapsed.TotalSeconds) -ForegroundColor DarkGray
-    # The first trace also pays the one-time symbol download, so this estimate errs long.
+    # On Windows the first trace also pays the one-time symbol download, so this estimate errs long.
     if ($r -eq 0 -and $runs.Count -gt 1) {
-        Write-PhaseBanner -Name "xperf analysis ($($runs.Count - 1) traces left)" -Quiet $false -Seconds ($timer.Elapsed.TotalSeconds * ($runs.Count - 1))
+        Write-PhaseBanner -Name "$analysisName ($($runs.Count - 1) traces left)" -Quiet $false -Seconds ($timer.Elapsed.TotalSeconds * ($runs.Count - 1))
     }
 }
 
@@ -723,7 +941,8 @@ foreach ($arm in $refs.Keys) {
 $report = [System.Collections.Generic.List[string]]::new()
 $report.Add("### CPU profile: $($label['before']) → $($label['after'])")
 $report.Add('')
-$report.Add("Depth $Depth, Threads=1, $positionCount positions, one process per run; VSDiagnostics at 1 kHz, self time from xperf, /Z7 clang-cl Release builds. " +
+$collection = if ($linuxArm) { "perf record $($PerfRecordArgs -join ' '), self cycles from perf report, $(Get-LinuxCompilerLabel) -g Release builds in WSL $WslDistro" } else { 'VSDiagnostics at 1 kHz, self time from xperf, /Z7 clang-cl Release builds' }
+$report.Add("Depth $Depth, Threads=1, $positionCount positions, one process per run; $collection. " +
     "Before is the mean of $($baselineRunList.Count) run(s)" + $(if ($baselineRunList.Count -gt 1) { '; spread is max−min across them, and a Δ inside it is noise.' } else { '.' }))
 $report.Add('')
 foreach ($row in Format-AreaTable -BeforeShare $beforeShare -AfterShare $afterShare) { $report.Add($row) }
@@ -793,4 +1012,4 @@ Write-Host ''
 $report | ForEach-Object { Write-Host $_ }
 Write-Host ''
 Write-Host "Done; machine free. Report and traces: $outPath" -ForegroundColor Green
-Write-Host 'Keep the directory while the traces may be reopened: each .etl resolves symbols only from its bin\ PDB.' -ForegroundColor DarkGray
+if (-not $linuxArm) { Write-Host 'Keep the directory while the traces may be reopened: each .etl resolves symbols only from its bin\ PDB.' -ForegroundColor DarkGray }

@@ -15,6 +15,17 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-07: Measure-CpuProfile.ps1 -Linux, the strength lab's profile (#740, slice 2)
+
+`-Linux` profiles GCC 15 Release builds plus `-g` in WSL Ubuntu-26.04 with
+`perf record -F 1000 -e cycles:u` and `perf report --no-children --sort sym`, into the same area
+table. Each ref is exported with `git archive` (a dirty worktree through a temporary index), built on
+WSL's ext4 and deleted; WSL is driven through a generated LF `.sh` with `wsl --exec`. perf cannot
+write to `/mnt/c` ("Bad address"), so it records on ext4 and the file is copied out. No `-Callers`.
+
+- **Acceptance (79c3217 → origin/main 5a7e94e, depth 13, 2 baseline runs):** TT locks 35.7% → 0.0%
+  (baseline spread 0.9), the lock-free TT of #748. Nodes identical across all 3 runs.
+
 ## 2026-10-07: `build.ps1` no longer fails a correct build after a `CMakeLists.txt` edit
 
 ### Fixed
