@@ -458,7 +458,7 @@ These are configured outside the workflows, and none of them uses a runner slot.
 
 - **Dependabot** (`.github/dependabot.yml`) opens one grouped PR a month that bumps the workflow
   actions. It covers nothing else, because it can't read the C++ dependencies pinned by
-  `FetchContent`. Bump those by hand.
+  `FetchContent`. Bump those by hand: [`Dependencies.md`](Dependencies.md).
 - **Secret scanning and push protection** are enabled in the repo settings.
 - **CodeQL is off.** Its default setup took runner slots ahead of `classify`, which delayed the
   whole gate, and it found nothing the threat model cares about.

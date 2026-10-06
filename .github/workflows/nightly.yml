@@ -50,7 +50,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -85,7 +85,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }}
@@ -108,7 +108,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
       - name: Configure
         run: >
@@ -139,7 +139,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -168,7 +168,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
       # clang, not the default GCC: a GCC database carries -fconstexpr-ops-limit=,
       # which the clang driver rejects, and every TU then fails to parse. See the
@@ -218,7 +218,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
       - name: Configure lint database
         run: >
@@ -254,7 +254,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
       - name: Every script self-test
         # Validate-PrePR runs only the self-tests of scripts a change touched, which is

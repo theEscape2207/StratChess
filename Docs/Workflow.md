@@ -22,6 +22,7 @@ what you do; this file holds the background you consult when something is unexpe
 | know what CI runs, and when | [`CI.md`](CI.md) |
 | set up Visual Studio | [Working in Visual Studio](#working-in-visual-studio) |
 | understand a first-build or network failure | [Dependency cache](#dependency-cache) |
+| bump spdlog, nlohmann/json or Catch2 | [`Dependencies.md`](Dependencies.md) |
 | know why a build reconfigured itself, or make builds faster | [Compiler cache](#compiler-cache) |
 | drive CMake directly | [Raw CMake invocation](#raw-cmake-invocation-fallback) |
 | clean up a worktree that will not go away | [Worktree removal gotchas](#worktree-removal-gotchas) |

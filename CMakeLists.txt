@@ -118,7 +118,7 @@ FetchContent_Declare(nlohmann_json
 
 FetchContent_Declare(catch2
     GIT_REPOSITORY https://github.com/catchorg/Catch2
-    GIT_TAG        v3.15.3
+    GIT_TAG        v3.16.0
     GIT_SHALLOW    TRUE)
 
 FetchContent_MakeAvailable(spdlog nlohmann_json catch2)

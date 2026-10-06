@@ -15,6 +15,21 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-07: Catch2 v3.16.0, and a dependency-handling doc
+
+### Changed
+
+- `Catch2` v3.15.3 → v3.16.0 in `CMakeLists.txt` and the thirteen `actions/cache` keys. spdlog
+  v1.17.0 and nlohmann/json v3.12.0 are already current upstream.
+- Validated: `StratChessEvolved.exe` is byte-identical to the build before the bump, because Catch2
+  links only the test binary. The fast tier still passes with the same 790 test cases and 295,810
+  assertions, and Catch2's unity batches compile cleanly under clang-cl.
+
+### Added
+
+- `Docs/Dependencies.md`: the bump procedure, what each dependency's bump must prove, and the
+  tripwires in its consumption settings. `Workflow.md` and `CI.md` point to it.
+
 ## 2026-10-06: Lock-free transposition table (#747)
 
 `TranspositionTable` no longer takes a per-bucket `std::shared_mutex` on every probe and store. At
