@@ -89,9 +89,6 @@ guarantees: `Docs/Workflow.md` → Validation tiers). Engine tier runs ~2 min wa
 `Validate-PrePR.ps1` never runs, leaving the merged state covered only by the pre-commit hook (this
 happened on PR #148). Same rule for creation — never `gh pr create`.
 
-If a build-freshness check fails right after a `CMakeLists.txt` edit or a merge, delete both exes and
-rebuild before retrying — it is a known false positive.
-
 **Changelog:** follow `Docs/Changelog.md`'s heading convention, using today's Copenhagen date
 provisionally instead of `Unreleased`. After merge, verify the date against
 `gh pr view <number> --json mergedAt` and correct it if needed.

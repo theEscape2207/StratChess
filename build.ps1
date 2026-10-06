@@ -100,9 +100,35 @@ function Resolve-ProcessorArchitecture {
     throw "PROCESSOR_ARCHITECTURE is missing and vcvars64 reported target '$VsTargetArchitecture'. A fresh CMake configure cannot identify x86-64."
 }
 
+# Is a just-built artifact stale only because ninja re-ran CMake and had nothing to rebuild?
+# A CMakeLists.txt edit that changes no compile or link command regenerates build.ninja
+# and leaves the binary alone, so its mtime stays behind although it is current. True when
+# every source newer than the artifact is CMakeLists.txt, build.ninja is newer still, and
+# build.ninja still builds the artifact -- a renamed or moved target leaves an orphan.
+# CMakePresets.json never qualifies: this script configures only a tree with no cache, so
+# a preset edit has not reached an existing tree.
+function Test-StaleOnlyByRegeneration {
+    param(
+        [DateTime]$ArtifactWriteTime,
+        [object[]]$Sources,
+        [object]$GeneratorWriteTime,
+        [bool]$GeneratorBuildsArtifact
+    )
+
+    if ($null -eq $GeneratorWriteTime -or -not $GeneratorBuildsArtifact) { return $false }
+    $newer = @($Sources | Where-Object { $_.WriteTime -ge $ArtifactWriteTime })
+    if ($newer.Count -eq 0) { return $false }
+    foreach ($source in $newer) {
+        if (-not $source.RegeneratesBuild) { return $false }
+        if ([DateTime]$GeneratorWriteTime -le $source.WriteTime) { return $false }
+    }
+    return $true
+}
+
 # Reports on one artifact. $Fatal for the target that was just built -- a stale
 # artifact there means the build did not produce what it claimed, which must not pass
-# silently. A warning for artifacts a verb deliberately did not rebuild.
+# silently. A warning for artifacts a verb deliberately did not rebuild. A just-built
+# artifact stale only by regeneration gets build.ninja's mtime instead of failing.
 function Assert-ArtifactFresh {
     param(
         [string]$ArtifactPath,
@@ -120,6 +146,24 @@ function Assert-ArtifactFresh {
     }
     if ($verdict.Fresh) { return }
     if ($verdict.Reason -eq 'missing' -and -not $Fatal) { return }
+
+    if ($Fatal -and $verdict.Reason -eq 'stale') {
+        $generator = Join-Path $BuildDir 'build.ninja'
+        $generatedAt = $null
+        $buildsArtifact = $false
+        if (Test-Path $generator) {
+            $generatedAt = (Get-Item $generator).LastWriteTime
+            $outputLine = "build $(Split-Path $ArtifactPath -Leaf):"
+            $buildsArtifact = [bool](Select-String -Path $generator -SimpleMatch -Pattern $outputLine -Quiet)
+        }
+        if (Test-StaleOnlyByRegeneration -ArtifactWriteTime $writeTime -Sources $Sources `
+                -GeneratorWriteTime $generatedAt -GeneratorBuildsArtifact $buildsArtifact) {
+            # Ninja just found the binary current, so restore the mtime ordering that every
+            # later check, here and in Get-BuildArtifact.ps1, reads as fresh.
+            (Get-Item $ArtifactPath).LastWriteTime = $generatedAt
+            return
+        }
+    }
 
     $name = Split-Path $ArtifactPath -Leaf
     $newer = Split-Path $verdict.NewestSourcePath -Leaf
@@ -202,6 +246,27 @@ function Invoke-SelfTest {
            Reason   = 'no-sources' }
     )
 
+    # A CMakeLists.txt edit that ninja regenerated for and found nothing to rebuild leaves a
+    # current binary behind it. The other cases are the falsification: a newer source file,
+    # a regeneration that never happened, an orphaned binary or a preset edit stay fatal.
+    $cmakeLists = [pscustomobject]@{ Path = 'CMakeLists.txt'; WriteTime = $t0.AddSeconds(1); RegeneratesBuild = $true }
+    $regenerationCases = @(
+        @{ Name = 'binary behind only a regenerated CMakeLists.txt is current'
+           Sources = @($cmakeLists); Generated = $t0.AddSeconds(2); Expected = $true }
+        @{ Name = 'binary that build.ninja no longer builds is stale'
+           Sources = @($cmakeLists); Generated = $t0.AddSeconds(2); Orphaned = $true; Expected = $false }
+        @{ Name = 'binary behind CMakeLists.txt that ninja never regenerated for is stale'
+           Sources = @($cmakeLists); Generated = $t0; Expected = $false }
+        @{ Name = 'binary behind a source file as well is stale'
+           Sources = @($cmakeLists, [pscustomobject]@{ Path = 'a.cpp'; WriteTime = $t0.AddSeconds(1); RegeneratesBuild = $false })
+           Generated = $t0.AddSeconds(2); Expected = $false }
+        @{ Name = 'binary behind CMakePresets.json is stale'
+           Sources = @([pscustomobject]@{ Path = 'CMakePresets.json'; WriteTime = $t0.AddSeconds(1); RegeneratesBuild = $false })
+           Generated = $t0.AddSeconds(2); Expected = $false }
+        @{ Name = 'binary with no build.ninja beside it is stale'
+           Sources = @($cmakeLists); Generated = $null; Expected = $false }
+    )
+
     # Source-set partitioning, against the real tree. Falsifies the bug the split exists
     # for: with one shared set, a test-only file is "newer than" the main binary that no
     # rebuild of it can ever answer, so build.ps1 fails fatally from then on.
@@ -266,6 +331,17 @@ function Invoke-SelfTest {
         }
     }
 
+    foreach ($case in $regenerationCases) {
+        $actual = Test-StaleOnlyByRegeneration -ArtifactWriteTime $t0 -Sources $case.Sources `
+            -GeneratorWriteTime $case.Generated -GeneratorBuildsArtifact (-not $case.ContainsKey('Orphaned'))
+        if ($actual -eq $case.Expected) {
+            Write-Host "PASS: $($case.Name)" -ForegroundColor Green
+        } else {
+            Write-Host "FAIL: $($case.Name) (expected $($case.Expected), got $actual)" -ForegroundColor Red
+            $failures++
+        }
+    }
+
     foreach ($case in $freshnessCases) {
         $verdict = Test-ArtifactFreshness -ArtifactWriteTime $case.Artifact -Sources $case.Sources
         $passed = $verdict.Fresh -eq $case.Fresh
@@ -310,7 +386,7 @@ function Invoke-SelfTest {
         }
     }
 
-    $total = $cases.Count + $freshnessCases.Count + $partitionCases.Count + $launcherCases.Count
+    $total = $cases.Count + $freshnessCases.Count + $partitionCases.Count + $launcherCases.Count + $regenerationCases.Count
     if ($failures) { Write-Host "$failures self-test case(s) FAILED." -ForegroundColor Red }
     else { Write-Host "$total self-test cases passed." -ForegroundColor Green }
     return $failures -eq 0

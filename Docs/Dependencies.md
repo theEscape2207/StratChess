@@ -31,9 +31,7 @@ Read the release notes for every version you skip, not only the newest one.
    literally, across `build-and-test.yml`, `nightly.yml` and `strength.yml`. A key you miss keeps
    restoring the old sources, and CI passes against a version the branch no longer pins. Find them
    with `grep -rn "catch2-v" .github/workflows`.
-4. Delete both executables in `build/windows-clang-cl/`, then run `build.ps1 all`. `build.ps1`
-   checks freshness by mtime, so a `CMakeLists.txt` edit makes an exe that Ninja correctly left
-   alone look stale. The build then fails with no compiler error.
+4. Run `build.ps1 all`.
 5. Validate according to what the dependency reaches (next section).
 6. Add a `Docs/Changelog.md` entry that names the versions and the evidence. This is a Build-tier
    PR.
