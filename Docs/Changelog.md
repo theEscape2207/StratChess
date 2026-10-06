@@ -15,6 +15,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-06: Strength lab summary prints interval bounds and shard agreement
+
+`pool_pentanomial.py` now prints, under each pooled figure, the interval's bounds and whether it
+spans 0, the shards favouring the candidate by score (the `Measurements/README.md` rule), and, when
+the interval spans 0, the games the estimate would need to exclude it. The shard table is in
+numeric order with each shard's score and side. A multi-arm run opens with one table across the
+arms, flagging the best as best-of-N. These were counted by hand for every ledger row until now.
+
 ## 2026-10-06: Strength lab `threads` input (#747 slice 3)
 
 `strength.yml` takes a `threads` input, default 1, set as UCI `Threads` on both engines in place of
