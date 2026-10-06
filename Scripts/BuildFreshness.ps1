@@ -80,26 +80,3 @@ function Get-BuildRelevantSources {
 
     return $sources
 }
-
-# Is a just-built artifact stale only because ninja re-ran CMake and had nothing to rebuild?
-# A CMakeLists.txt edit that changes no compile or link command regenerates build.ninja
-# and leaves the binary alone, so its mtime stays behind although it is current. True when
-# every source newer than the artifact is CMakeLists.txt and build.ninja is newer still.
-# CMakePresets.json never qualifies: build.ps1 configures only a tree with no cache, so a
-# preset edit has not reached an existing tree.
-function Test-StaleOnlyByRegeneration {
-    param(
-        [DateTime]$ArtifactWriteTime,
-        [object[]]$Sources,
-        [object]$GeneratorWriteTime
-    )
-
-    if ($null -eq $GeneratorWriteTime) { return $false }
-    $newer = @($Sources | Where-Object { $_.WriteTime -ge $ArtifactWriteTime })
-    if ($newer.Count -eq 0) { return $false }
-    foreach ($source in $newer) {
-        if (-not $source.RegeneratesBuild) { return $false }
-        if ([DateTime]$GeneratorWriteTime -le $source.WriteTime) { return $false }
-    }
-    return $true
-}

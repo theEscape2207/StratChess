@@ -22,11 +22,12 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - An edit to `CMakeLists.txt` that changes no compile or link command makes ninja regenerate
   `build.ninja` and leave both executables alone. Their mtime then stayed behind `CMakeLists.txt`,
   so `build.ps1` failed with "older than CMakeLists.txt even after building it" and no compiler
-  error, until someone deleted the executables. When `CMakeLists.txt` is the only newer source and
-  `build.ninja` is newer still, the build now moves the executable's mtime forward
-  (`Test-StaleOnlyByRegeneration` in `Scripts/BuildFreshness.ps1`). A newer source file, a
-  regeneration that never happened, or a `CMakePresets.json` edit still fails.
-- `Get-BuildArtifact.ps1` reads the same mtimes, so it no longer reports those executables stale.
+  error, until someone deleted the executables. When `CMakeLists.txt` is the only newer source,
+  `build.ninja` is newer still and still builds the executable, the build now gives the executable
+  `build.ninja`'s mtime (`Test-StaleOnlyByRegeneration`). A newer source file, a regeneration that
+  never happened, a renamed target's orphan or a `CMakePresets.json` edit still fails.
+- `Get-BuildArtifact.ps1` reads the same mtimes, so once `build.ps1` has built an executable it no
+  longer reports it stale. One a verb did not build still warns, as before.
 
 ## 2026-10-07: Catch2 v3.16.0, and a dependency-handling doc
 
