@@ -11,6 +11,9 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-06 | d1d6f9c, SCREEN arm B: `LmrHistoryDivisor=16` (#735; best of three, uncorrected, confirmation pending) | d1d6f9c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+6.99 +/- 6.16** | gain |
+| 2026-10-06 | d1d6f9c, SCREEN arm C: `LmrHistoryDivisor=1` (#735) | d1d6f9c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+5.22 +/- 6.27** | inconclusive @ 6660 |
+| 2026-10-06 | d1d6f9c, SCREEN arm A: `LmrHistoryDivisor=32` (#735) | d1d6f9c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **-0.89 +/- 6.17** | inconclusive @ 6660 |
 | 2026-10-05 | 9ab1759, arm C: `LmrHistoryDivisor=64`, shipped as the default (#730; best of three, uncorrected) | 2201b87 | 6660 | 10+0.1 | **+10.23 +/- 6.25** | gain |
 | 2026-10-05 | 9ab1759, arm B: `LmrHistoryDivisor=256` (#730) | 2201b87 | 6660 | 10+0.1 | **+3.60 +/- 6.31** | inconclusive @ 6660 |
 | 2026-10-05 | 9ab1759, arm A: `LmrHistoryDivisor=512` (#730) | 2201b87 | 6660 | 10+0.1 | **+2.50 +/- 6.21** | inconclusive @ 6660 |
@@ -64,6 +67,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-06 -- LMR history divisor below 64 (#735) (6660 games per arm)
+
+**Arm B goes to a held-out confirmation; the default stays at 64 until it passes.** [Run `37430163815`](https://github.com/theEscape2207/StratChess/actions/runs/37430163815), openings 9,991-19,980, after #730's range; each arm took 6 of 18 shards against `main` at the default 64, so each arm's Elo is its delta over 64. All 18 shards are green, and their logs show 19,980 games with zero time losses, illegal moves or disconnects; PV-compliance warnings (#310) appear on every shard and are reporting-only. Resolved options are in the run's `strength-37430163815-comparison` artifact. Arm Ptnml(0-2): A [266, 770, 1269, 765, 260], B [256, 697, 1316, 779, 282], C [268, 734, 1248, 790, 290]. The [stopping rule in #735](https://github.com/theEscape2207/StratChess/issues/735#issuecomment-6011562291), set before dispatch: confirm the best arm on fresh openings if its Elo minus its error bar is above 0, and move the default only if the confirmation's lower bound is also above 0. B clears it by +0.8 ([+0.8, +13.2]), as best of three, so the screen alone does not move the default; 5 of 6 B shards favour it by score. The arms are not monotone in the divisor (32 at -0.9 between 64 and 16), so the screen does not locate an optimum.
 
 ### 2026-10-05 -- history-adjusted LMR, three divisor arms (#730) (6660 games per arm)
 
