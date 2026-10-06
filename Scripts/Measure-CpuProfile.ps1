@@ -19,11 +19,11 @@
     finding. Nodes and best moves of every run are compared with the first; a mismatch is
     reported, not fatal, since a behaviour change is a legitimate thing to profile.
 
-    Reading the shares. Sampling costs about 30% nps, so shares are approximate and no nps from
+    Reading the shares. Sampling slows the engine, so shares are approximate and no nps from
     this script is a measurement (use Compare-Bench.ps1). An inlined helper is counted in its
     caller's area. Areas match the qualified function name only, never parameter types. Shares
-    of one build drift by about 1.5 points between sessions, more than the within-run spread, so
-    compare arms of one run, never a table against an earlier session's.
+    of one build drift between sessions by more than the within-run spread, so compare arms of
+    one run, never a table against an earlier session's.
 
     Artifacts. The exe, PDB, .etl and text outputs of each run stay in one output directory,
     never deleted automatically: the .etl resolves symbols only while its PDB exists.
@@ -37,7 +37,8 @@
     commit-ish of this repository (checked out to a temporary detached worktree).
 
 .PARAMETER After
-    Candidate ref, in the same forms as -Before.
+    Candidate ref, in the same forms as -Before. The same ref as -Before profiles one build, and
+    its table is an A/A noise check.
 
 .PARAMETER Depth
     Fixed search depth. Default 13.
@@ -108,7 +109,7 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $EngineProcess = 'StratChessEvolved'
 
-# #719's areas, first match wins. Case-sensitive, and matched against Get-SymbolName's output.
+# The areas, first match wins. Case-sensitive, and matched against Get-SymbolName's output.
 $AreaPatterns = [ordered]@{
     'TT locks'        = 'SRWLock|RtlAcquireSRW|RtlReleaseSRW|RtlpWakeSRW|RtlpWaitOnAddress|pthread_rwlock|__pthread_rwlock'
     'Move ordering'   = 'MoveSorter|_Sort_unchecked|_Insertion_sort|_Partition_by_median|_Make_heap|_Pop_heap|_Sort_heap|_Med3|_Guess_median|__introsort|__insertion_sort|__unguarded|__adjust_heap|__heap_select|__move_median|__partial_sort|std::sort|See::|see_ge'
@@ -167,7 +168,7 @@ function ConvertFrom-XperfProfile {
     foreach ($l in $Line) {
         if ($l -match "^\s*$EngineProcess\.exe \(\s*\d+\),\s*(\d+),\s*[\d.]+,\s*(.+?)\s*$") {
             $symbol = $Matches[2]
-            $weight[$symbol] = [double]$(if ($weight.ContainsKey($symbol)) { $weight[$symbol] } else { 0 }) + [double]$Matches[1]
+            $weight[$symbol] += [double]$Matches[1]
         }
     }
     return $weight
@@ -228,7 +229,7 @@ function ConvertFrom-XperfButterfly {
         # A sort calls itself on partitions; that is not a caller worth attributing.
         if ($current -and $name -match '^<--\s*(.+)$' -and $Matches[1] -ne $current) {
             $caller = $Matches[1]
-            $byCaller[$caller] = [double]$(if ($byCaller.ContainsKey($caller)) { $byCaller[$caller] } else { 0 }) + $hits
+            $byCaller[$caller] += $hits
         }
     }
     return $byCaller
@@ -403,7 +404,8 @@ function Resolve-ProfileRef {
         if (-not (Test-Path -LiteralPath (Join-Path $root 'CMakePresets.json'))) { throw "-$Arm '$Ref' is a directory but not a StratChess checkout." }
         $commit = (& git -C $root rev-parse HEAD)
         if ($LASTEXITCODE -ne 0) { throw "-$Arm '$Ref' is not a git worktree." }
-        $dirty = @(& git -C $root status --porcelain --untracked-files=no).Count -gt 0
+        # Untracked files count: CMake globs sources, so a new .cpp is built.
+        $dirty = @(& git -C $root status --porcelain).Count -gt 0
         return [pscustomobject]@{ Arm = $Arm; Ref = $Ref; Tree = $root; Commit = [string]$commit; Dirty = $dirty }
     }
     $commit = (& git -C $RepoRoot rev-parse --verify --quiet "$Ref^{commit}")
@@ -516,6 +518,7 @@ function Invoke-ProfiledRun {
     $psi.UseShellExecute = $false
     $proc = [System.Diagnostics.Process]::Start($psi)
     $null = $proc.StandardError.ReadToEndAsync()
+    # VSDiagnostics session ids are 0-255; a random one avoids a session left over from a crash.
     $session = Get-Random -Minimum 1 -Maximum 256
     $collecting = $false
     try {
@@ -536,7 +539,7 @@ function Invoke-ProfiledRun {
             $null = Read-EngineLine $proc '^readyok' 30000
             Send-EngineCommand $proc "position fen $($position.Fen)"
             Send-EngineCommand $proc "go depth $Depth"
-            $lines = Read-EngineLine $proc '^bestmove '
+            $lines = @(Read-EngineLine $proc '^bestmove ')
             $nodes = $null
             foreach ($l in $lines) { if ($l -match ' nodes (\d+)') { $nodes = [int64]$Matches[1] } }
             [pscustomobject]@{ Name = $position.Name; Nodes = $nodes; Best = ($lines[-1] -split '\s+')[1] }
@@ -556,6 +559,12 @@ function Invoke-ProfiledRun {
     }
 }
 
+function Set-SymbolPath {
+    <# The run's PDB first, then Microsoft's server, which resolves ntdll's SRWLock calls. #>
+    param([Parameter(Mandatory)][string]$BinDir)
+    $env:_NT_SYMBOL_PATH = "$BinDir;srv*$script:SymbolCache*https://msdl.microsoft.com/download/symbols"
+}
+
 function Invoke-RunAnalysis {
     <# Expands the run's session to an .etl and writes xperf's flat profile; returns the area shares. #>
     param([Parameter(Mandatory)][string]$RunDir, [Parameter(Mandatory)][string]$BinDir)
@@ -568,7 +577,7 @@ function Invoke-RunAnalysis {
     $etl = Get-ChildItem -LiteralPath $RunDir -Recurse -Filter '*.etl' | Sort-Object Length -Descending | Select-Object -First 1
     if (-not $etl) { throw "No .etl in the expanded $diag" }
 
-    $env:_NT_SYMBOL_PATH = "$BinDir;srv*$script:SymbolCache*https://msdl.microsoft.com/download/symbols"
+    Set-SymbolPath -BinDir $BinDir
     $flat = Join-Path $RunDir 'xperf-profile.txt'
     # -o must come before -a: xperf hands every argument after -a to the action.
     & $script:Xperf -i $etl.FullName -symbols -o $flat -a profile -detail *> (Join-Path $RunDir 'xperf.log')
@@ -583,7 +592,7 @@ function Get-CallerSplit {
     <# Writes xperf's butterfly report for the run and returns the callers of symbols matching $Pattern. #>
     param([Parameter(Mandatory)][string]$RunDir, [Parameter(Mandatory)][string]$Etl, [Parameter(Mandatory)][string]$BinDir, [Parameter(Mandatory)][string]$Pattern)
 
-    $env:_NT_SYMBOL_PATH = "$BinDir;srv*$script:SymbolCache*https://msdl.microsoft.com/download/symbols"
+    Set-SymbolPath -BinDir $BinDir
     $report = Join-Path $RunDir 'xperf-stack.html'
     & $script:Xperf -i $Etl -symbols -o $report -a stack -butterfly 50 -process $EngineProcess *> (Join-Path $RunDir 'xperf-stack.log')
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $report)) { throw "xperf stack failed; see $RunDir\xperf-stack.log" }
@@ -626,78 +635,83 @@ if ($Reanalyse) {
     }
     Write-Host "Reanalysing: $outPath" -ForegroundColor Cyan
 } else {
-if (-not $OutDir) { $OutDir = Join-Path $profileRoot (Get-Date -Format 'yyyyMMdd-HHmmss') }
-New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
-$outPath = (Resolve-Path -LiteralPath $OutDir).Path
-if (@(Get-ChildItem -LiteralPath $outPath -Force).Count -gt 0) { throw "$outPath is not empty; use a fresh -OutDir." }
-$positionList = @(Resolve-Positions -Path $Positions)
-$positionCount = $positionList.Count
-$refs = [ordered]@{ before = (Resolve-ProfileRef -Ref $Before -Arm 'Before'); after = (Resolve-ProfileRef -Ref $After -Arm 'After') }
-@{
-    before = @{ ref = $Before; commit = $refs['before'].Commit; dirty = $refs['before'].Dirty }
-    after  = @{ ref = $After; commit = $refs['after'].Commit; dirty = $refs['after'].Dirty }
-    depth  = $Depth; beforeRuns = $BeforeRuns; positions = $positionCount
-} | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $outPath 'metadata.json') -Encoding utf8
-$depsCache = Get-SharedDepsCache
+    if (-not $OutDir) { $OutDir = Join-Path $profileRoot (Get-Date -Format 'yyyyMMdd-HHmmss') }
+    New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+    $outPath = (Resolve-Path -LiteralPath $OutDir).Path
+    if (@(Get-ChildItem -LiteralPath $outPath -Force).Count -gt 0) { throw "$outPath is not empty; use a fresh -OutDir." }
+    $positionList = @(Resolve-Positions -Path $Positions)
+    $positionCount = $positionList.Count
+    $refs = [ordered]@{ before = (Resolve-ProfileRef -Ref $Before -Arm 'Before'); after = (Resolve-ProfileRef -Ref $After -Arm 'After') }
+    @{
+        before = @{ ref = $Before; commit = $refs['before'].Commit; dirty = $refs['before'].Dirty }
+        after  = @{ ref = $After; commit = $refs['after'].Commit; dirty = $refs['after'].Dirty }
+        depth  = $Depth; beforeRuns = $BeforeRuns; positions = $positionCount
+    } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $outPath 'metadata.json') -Encoding utf8
+    $depsCache = Get-SharedDepsCache
 
-# Interleaved before/after/before, so drift over the window shows up in the before spread.
-$runPlan = @(@{ Arm = 'before'; Index = 1 }; @{ Arm = 'after'; Index = 1 })
-for ($i = 2; $i -le $BeforeRuns; $i++) { $runPlan += @{ Arm = 'before'; Index = $i } }
+    # Interleaved before/after/before, so drift over the window shows up in the before spread.
+    $runPlan = @(@{ Arm = 'before'; Index = 1 }; @{ Arm = 'after'; Index = 1 })
+    for ($i = 2; $i -le $BeforeRuns; $i++) { $runPlan += @{ Arm = 'before'; Index = $i } }
 
-$phases = @(
-    @{ Name = 'build before'; Quiet = $false; Seconds = $RoughBuildSeconds; Rough = $true }
-    @{ Name = 'build after'; Quiet = $false; Seconds = $RoughBuildSeconds; Rough = $true }
-    @{ Name = "profile collection ($($runPlan.Count) runs)"; Quiet = $true; Seconds = $RoughRunSeconds * $runPlan.Count; Rough = $true }
-    @{ Name = 'xperf analysis'; Quiet = $false; Seconds = $RoughAnalysisSeconds * $runPlan.Count; Rough = $true }
-)
-Write-Host "Output: $outPath" -ForegroundColor Cyan
-Write-PhasePlan -Phase $phases
+    $phases = @(
+        @{ Name = 'build before'; Quiet = $false; Seconds = $RoughBuildSeconds; Rough = $true }
+        @{ Name = 'build after'; Quiet = $false; Seconds = $RoughBuildSeconds; Rough = $true }
+        @{ Name = "profile collection ($($runPlan.Count) runs)"; Quiet = $true; Seconds = $RoughRunSeconds * $runPlan.Count; Rough = $true }
+        @{ Name = 'xperf analysis'; Quiet = $false; Seconds = $RoughAnalysisSeconds * $runPlan.Count; Rough = $true }
+    )
+    Write-Host "Output: $outPath" -ForegroundColor Cyan
+    Write-PhasePlan -Phase $phases
 
-$bin = @{}
-$buildSeconds = $null
-foreach ($arm in $refs.Keys) {
-    $ref = $refs[$arm]
-    $estimate = if ($null -ne $buildSeconds) { $buildSeconds } else { $RoughBuildSeconds }
-    Write-PhaseBanner -Name "build $arm ($($ref.Ref) @ $($ref.Commit.Substring(0, 9)))" -Quiet $false -Seconds $estimate -Rough ($null -eq $buildSeconds)
-    if ($ref.Dirty) { Write-Host "  WARN  $($ref.Tree) has uncommitted changes; its commit does not describe it" -ForegroundColor Yellow }
-    $timer = [System.Diagnostics.Stopwatch]::StartNew()
-    $exe = Build-ProfileVariant -Ref $ref -ArmDir (Join-Path $outPath $arm) -DepsCache $depsCache
-    $bin[$arm] = Split-Path $exe -Parent
-    if ($null -eq $buildSeconds) { $buildSeconds = $timer.Elapsed.TotalSeconds }
-    Write-Host ("  built in {0:N0} s: {1}" -f $timer.Elapsed.TotalSeconds, $exe) -ForegroundColor DarkGray
-}
-
-$runs = [System.Collections.Generic.List[object]]::new()
-$runSeconds = $null
-for ($r = 0; $r -lt $runPlan.Count; $r++) {
-    $remaining = $runPlan.Count - $r
-    if ($r -eq 0) {
-        Write-PhaseBanner -Name "profile collection ($remaining runs)" -Quiet $true -Seconds ($RoughRunSeconds * $remaining) -Rough $true
-    } elseif ($r -eq 1) {
-        Write-PhaseBanner -Name "profile collection ($remaining runs left)" -Quiet $true -Seconds ($runSeconds * $remaining)
+    $bin = @{}
+    $buildSeconds = $null
+    foreach ($arm in $refs.Keys) {
+        $ref = $refs[$arm]
+        $estimate = if ($null -ne $buildSeconds) { $buildSeconds } else { $RoughBuildSeconds }
+        Write-PhaseBanner -Name "build $arm ($($ref.Ref) @ $($ref.Commit.Substring(0, 9)))" -Quiet $false -Seconds $estimate -Rough ($null -eq $buildSeconds)
+        if ($ref.Dirty) { Write-Host "  WARN  $($ref.Tree) has uncommitted changes; its commit does not describe it" -ForegroundColor Yellow }
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        $exe = Build-ProfileVariant -Ref $ref -ArmDir (Join-Path $outPath $arm) -DepsCache $depsCache
+        $bin[$arm] = Split-Path $exe -Parent
+        if ($null -eq $buildSeconds) { $buildSeconds = $timer.Elapsed.TotalSeconds }
+        Write-Host ("  built in {0:N0} s: {1}" -f $timer.Elapsed.TotalSeconds, $exe) -ForegroundColor DarkGray
     }
-    $step = $runPlan[$r]
-    $runDir = Join-Path $outPath "runs\$($step.Arm)-$($step.Index)"
-    $timer = [System.Diagnostics.Stopwatch]::StartNew()
-    $result = Invoke-ProfiledRun -Exe (Join-Path $bin[$step.Arm] 'StratChessEvolved.exe') -PositionList $positionList -RunDir $runDir
-    if ($null -eq $runSeconds) { $runSeconds = $timer.Elapsed.TotalSeconds }
-    Write-Host ("  {0}-{1}: {2:N0} nodes in {3:N0} s" -f $step.Arm, $step.Index, ($result | Measure-Object Nodes -Sum).Sum, $timer.Elapsed.TotalSeconds) -ForegroundColor DarkGray
-    ConvertTo-Json -InputObject @($result) | Set-Content -LiteralPath (Join-Path $runDir 'result.json') -Encoding utf8
-    $runs.Add([pscustomobject]@{ Arm = $step.Arm; Index = $step.Index; Dir = $runDir; Result = $result; Analysis = $null })
-}
+
+    $runs = [System.Collections.Generic.List[object]]::new()
+    $runSeconds = $null
+    for ($r = 0; $r -lt $runPlan.Count; $r++) {
+        $remaining = $runPlan.Count - $r
+        if ($r -eq 0) {
+            Write-PhaseBanner -Name "profile collection ($remaining runs)" -Quiet $true -Seconds ($RoughRunSeconds * $remaining) -Rough $true
+        } elseif ($r -eq 1) {
+            Write-PhaseBanner -Name "profile collection ($remaining runs left)" -Quiet $true -Seconds ($runSeconds * $remaining)
+        }
+        $step = $runPlan[$r]
+        $runDir = Join-Path $outPath "runs\$($step.Arm)-$($step.Index)"
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        $result = @(Invoke-ProfiledRun -Exe (Join-Path $bin[$step.Arm] 'StratChessEvolved.exe') -PositionList $positionList -RunDir $runDir)
+        if ($null -eq $runSeconds) { $runSeconds = $timer.Elapsed.TotalSeconds }
+        Write-Host ("  {0}-{1}: {2:N0} nodes in {3:N0} s" -f $step.Arm, $step.Index, ($result | Measure-Object Nodes -Sum).Sum, $timer.Elapsed.TotalSeconds) -ForegroundColor DarkGray
+        ConvertTo-Json -InputObject @($result) | Set-Content -LiteralPath (Join-Path $runDir 'result.json') -Encoding utf8
+        $runs.Add([pscustomobject]@{ Arm = $step.Arm; Index = $step.Index; Dir = $runDir; Result = $result; Analysis = $null })
+    }
 }
 
 Write-PhaseBanner -Name 'xperf analysis' -Quiet $false -Seconds ($RoughAnalysisSeconds * $runs.Count) -Rough $true
-foreach ($run in $runs) {
+for ($r = 0; $r -lt $runs.Count; $r++) {
+    $run = $runs[$r]
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     $run.Analysis = Invoke-RunAnalysis -RunDir $run.Dir -BinDir $bin[$run.Arm]
     Write-Host ("  {0}-{1} analysed in {2:N0} s" -f $run.Arm, $run.Index, $timer.Elapsed.TotalSeconds) -ForegroundColor DarkGray
+    # The first trace also pays the one-time symbol download, so this estimate errs long.
+    if ($r -eq 0 -and $runs.Count -gt 1) {
+        Write-PhaseBanner -Name "xperf analysis ($($runs.Count - 1) traces left)" -Quiet $false -Seconds ($timer.Elapsed.TotalSeconds * ($runs.Count - 1))
+    }
 }
 
 # Report
-$baselineRun = @($runs | Where-Object { $_.Arm -eq 'before' })
+$baselineRunList = @($runs | Where-Object { $_.Arm -eq 'before' })
 $afterRun = @($runs | Where-Object { $_.Arm -eq 'after' })[0]
-$beforeShare = @($baselineRun | ForEach-Object { Get-AreaShare -Weight $_.Analysis.Weight })
+$beforeShare = @($baselineRunList | ForEach-Object { Get-AreaShare -Weight $_.Analysis.Weight })
 $afterShare = Get-AreaShare -Weight $afterRun.Analysis.Weight
 
 $label = @{}
@@ -710,11 +724,11 @@ $report = [System.Collections.Generic.List[string]]::new()
 $report.Add("### CPU profile: $($label['before']) → $($label['after'])")
 $report.Add('')
 $report.Add("Depth $Depth, Threads=1, $positionCount positions, one process per run; VSDiagnostics at 1 kHz, self time from xperf, /Z7 clang-cl Release builds. " +
-    "Before is the mean of $($baselineRun.Count) run(s)" + $(if ($baselineRun.Count -gt 1) { '; spread is max−min across them, and a Δ inside it is noise.' } else { '.' }))
+    "Before is the mean of $($baselineRunList.Count) run(s)" + $(if ($baselineRunList.Count -gt 1) { '; spread is max−min across them, and a Δ inside it is noise.' } else { '.' }))
 $report.Add('')
 foreach ($row in Format-AreaTable -BeforeShare $beforeShare -AfterShare $afterShare) { $report.Add($row) }
 
-$reference = $baselineRun[0].Result
+$reference = $baselineRunList[0].Result
 $mismatch = foreach ($run in $runs | Select-Object -Skip 1) {
     for ($p = 0; $p -lt $reference.Count; $p++) {
         $a = $reference[$p]; $b = $run.Result[$p]
@@ -734,7 +748,7 @@ if ($mismatch) {
     $report.Add("Node counts and best moves identical across all $($runs.Count) runs ($(($reference | Measure-Object Nodes -Sum).Sum) nodes).")
 }
 
-$beforeWeight = $baselineRun[0].Analysis.Weight
+$beforeWeight = $baselineRunList[0].Analysis.Weight
 $beforeTotal = ($beforeWeight.Values | Measure-Object -Sum).Sum
 $report.Add('')
 $report.Add('<details><summary>Top 25 symbols, after (before-1 share in brackets)</summary>')
@@ -751,7 +765,7 @@ $report.Add('</details>')
 if ($Callers) {
     Write-Host "  splitting '$Callers' by caller" -ForegroundColor DarkGray
     $split = @{}
-    foreach ($run in $baselineRun[0], $afterRun) {
+    foreach ($run in $baselineRunList[0], $afterRun) {
         $split[$run.Arm] = Get-CallerSplit -RunDir $run.Dir -Etl $run.Analysis.Etl -BinDir $bin[$run.Arm] -Pattern $Callers
     }
     $report.Add('')

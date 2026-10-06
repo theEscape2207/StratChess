@@ -489,7 +489,7 @@ strength is measured here, not a universal constant.
 
 `Run-Bench` says *that* time changed. A sampling profiler says *where* it goes, and that sets the
 ceiling: no speedup of an area can buy more than that area's share of runtime. Write down the shares
-you expect before you look, or the profile cannot surprise you (#719). Both recipes drive the
+you expect before you look, or the profile cannot surprise you (#719). Both platforms drive the
 `Run-Bench` positions over UCI at `Threads=1` and fixed depth. The driver must read stdout until
 `bestmove`, because a piped `go` returns immediately.
 

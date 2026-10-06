@@ -26,8 +26,8 @@ one symbol by caller from the butterfly view. `-Reanalyse <dir>` rereads saved t
 reuse by the other measuring scripts (#743).
 
 - **Acceptance (#725 rerun, 2a6062b → 1f93312):** move ordering 23.4% → 17.5% (−5.9; #725
-  published −6.8), sort symbol −7.1 (−7.8). The baseline arm lands within 1 point of #725's in
-  every area. The after arm differs by up to 3.1 (evaluation). Within-run spread was ≤0.6, but
+  published −6.8), sort symbol −7.1 (−7.8). The baseline arm lands within 1.3 points of #725's in
+  every area; the after arm differs by up to 3.1 (evaluation). Within-run spread was ≤0.6, but
   one build moved about 1.3 points between sessions, so compare arms of one run only.
   `-Callers '_Sort_unchecked'`: pvs 77% → 53%, quiescence 22% → 47%.
 
