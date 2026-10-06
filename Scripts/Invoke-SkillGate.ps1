@@ -21,11 +21,8 @@
       Claude Code  Edit/Write          tool_input.file_path
       Claude Code  Skill (PostToolUse) tool_input.skill, "<plugin>:<skill>" for a plugin skill
       Codex        apply_patch         tool_input.command (every "*** ... File:" line)
-      lean-ctx     ctx_patch           tool_input.path, tool_input.ops[].path
 
-    Not covered: edits made through a shell. ctx_patch is a per-user MCP server, so the tracked
-    config does not match it; to opt in, add a PreToolUse matcher `mcp__lean-ctx__ctx_patch` to
-    ~/.claude/settings.json running this script. It then costs a pwsh start on every patch.
+    Not covered: edits made through a shell.
 
     $SkillFileSets is the single list of patterns. The Claude config repeats each one as an
     Edit(...) and a Write(...) `if` rule, and -SelfTest fails when the two drift apart.
@@ -79,14 +76,8 @@ function Get-EditedPath {
     param([Parameter(Mandatory)]$ToolInput)
 
     $found = @()
-    foreach ($name in 'file_path', 'path') {
-        $value = Get-Field $ToolInput $name
-        if ($value -is [string] -and $value) { $found += $value }
-    }
-    foreach ($op in @(Get-Field $ToolInput 'ops')) {
-        $value = Get-Field $op 'path'
-        if ($value -is [string] -and $value) { $found += $value }
-    }
+    $value = Get-Field $ToolInput 'file_path'
+    if ($value -is [string] -and $value) { $found += $value }
     $patch = Get-Field $ToolInput 'command'
     if ($patch -is [string]) {
         $rx = '(?m)^\*\*\* (?:Update File|Add File|Delete File|Move to): (.+?)\s*$'
@@ -220,7 +211,6 @@ if ($SelfTest) {
         @{ Name = 'plain doc -> allowed';                            Json = (New-HookJson 's6' 'Edit' @{ file_path = 'Docs/Workflow.md' });                      Expect = @() }
         @{ Name = 'Codex patch, one of two files -> write-powershell'; Json = (New-HookJson 's7' 'apply_patch' @{ command = $patchOne });                        Expect = @('write-powershell') }
         @{ Name = 'Codex patch, two skills at once';                 Json = (New-HookJson 's8' 'apply_patch' @{ command = $patchTwo });                          Expect = @('write-powershell', 'writing-for-agents') }
-        @{ Name = 'ctx_patch ops batch -> writing-for-agents';       Json = (New-HookJson 's9' 'mcp__lean-ctx__ctx_patch' @{ ops = @(@{ path = 'AGENTS.md' }) }); Expect = @('writing-for-agents') }
         @{ Name = 'path outside the repo -> allowed';                Json = (New-HookJson 's10' 'Edit' @{ file_path = $outside });                               Expect = @() }
         @{ Name = 'no session id -> allowed';                        Json = (New-HookJson '' 'Edit' @{ file_path = $ps1Abs });                                   Expect = @() }
         @{ Name = 'malformed JSON -> allowed';                       Json = '{not json';                                                                          Expect = @() }
