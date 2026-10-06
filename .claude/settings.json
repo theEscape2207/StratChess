@@ -1,7 +1,15 @@
 {
   "enabledPlugins": {
     "superpowers@claude-plugins-official": false,
-    "mattpocock-skills@claude-plugins-official": true
+    "mattpocock-skills@mattpocock": true
+  },
+  "extraKnownMarketplaces": {
+    "mattpocock": {
+      "source": {
+        "source": "github",
+        "repo": "mattpocock/skills"
+      }
+    }
   },
   "hooks": {
     "PreToolUse": [
