@@ -15,6 +15,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-06: Strength lab `threads` input (#747 slice 3)
+
+`strength.yml` takes a `threads` input, default 1, set as UCI `Threads` on both engines in place of
+the hard-coded `option.Threads=1`. `setup` refuses `threads` × `concurrency` above the runner's
+4 vCPU, so `Threads=4` runs at concurrency 1. The comparison preflight resolves and records the
+chosen value and checks it against each engine's advertised `Threads` domain. Default runs are
+unchanged; the only newly refused dispatch is `concurrency` above 4 at `Threads=1`.
+
 ## 2026-10-06: Measure-CpuProfile.ps1, a before/after CPU profile of two refs (#740)
 
 `Scripts/Measure-CpuProfile.ps1 -Before <ref> -After <ref>` codifies the hand-run profiles of #719

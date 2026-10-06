@@ -174,9 +174,9 @@ jobs:
           echo "Reference: $REFERENCE_REF -> $sha"
           echo "reference_sha=$sha" >> "$GITHUB_OUTPUT"
 
-      # Per-shard concurrency has to be sized off PHYSICAL cores: a
-      # single-threaded search gains nothing from SMT sharing, and
-      # oversubscribing adds timing noise. The match shards run on the same
+      # Per-shard concurrency has to be sized off PHYSICAL cores: a search
+      # thread gains nothing from SMT sharing, and oversubscribing adds timing
+      # noise. The match shards run on the same
       # runner label as this job, so recording the topology once here says what
       # the 4 vCPU actually are.
       - name: Record the runner's CPU topology
@@ -242,8 +242,8 @@ jobs:
 
           echo "Plan: $SHARDS shards x $games_per_shard games = $actual_games games"
 
-      # Only the side to move searches, so a game keeps at most `threads` vCPU
-      # busy. Oversubscribing the runner shows up as time losses, which fail the
+      # Without pondering only the side to move searches, so a game keeps at
+      # most `threads` vCPU busy. Oversubscribing the runner shows up as time losses, which fail the
       # shard -- so refuse the combination here, before a build.
       - name: Check the per-shard CPU budget
         env:
@@ -471,7 +471,8 @@ jobs:
     needs: [setup, build]
     runs-on: ubuntu-26.04
     # A 1110-game shard at 10+0.1 with concurrency 3 runs ~172 min. This leaves
-    # headroom without touching the 6 h job cap.
+    # headroom without touching the 6 h job cap. Shard time scales with
+    # games / concurrency, so concurrency 1 needs a third of the games.
     timeout-minutes: 340
     strategy:
       # One shard failing must not cancel the rest: the aggregator refuses to
