@@ -18,6 +18,8 @@ Validate with --self-test, which checks the formula reproduces the Elo and the
 interval that fastchess itself reported on real matches from this project.
 With --expect-pairs-per-shard N, every log must contain exactly N pairs before
 any report is printed. Omit it only for historical standalone pooling.
+--summary-tsv appends each pool's headline as a row, and --render-summary turns
+those rows into one table across a run's arms.
 """
 
 import argparse
@@ -107,6 +109,107 @@ def positive_int(text):
     return value
 
 
+def shard_order(path):
+    """Numeric shard order, so shard-2 sorts before shard-10."""
+    match = re.search(r"shard-([0-9]+)", path)
+    return (0, int(match.group(1)), path) if match else (1, 0, path)
+
+
+def half_points(counts):
+    """Candidate half-points over a shard's pairs; a 50% shard totals 2 per pair."""
+    return sum(n * i for i, n in enumerate(counts))
+
+
+def favours(counts):
+    """Which side a shard's score favours: 'candidate', 'reference' or 'even'."""
+    # Compared in exact integers, so a 50% shard is "even", never a float near it.
+    if half_points(counts) > 2 * sum(counts):
+        return "candidate"
+    if half_points(counts) < 2 * sum(counts):
+        return "reference"
+    return "even"
+
+
+def shard_tally(shard_counts):
+    tally = {"candidate": 0, "reference": 0, "even": 0}
+    for counts in shard_counts:
+        tally[favours(counts)] += 1
+    return tally
+
+
+def interval_text(elo, err):
+    lower, upper = elo - err, elo + err
+    side = ("above 0" if lower > 0 else "below 0" if upper < 0 else "spans 0")
+    return f"[{lower:+.2f}, {upper:+.2f}], {side}"
+
+
+def summary_lines(elo, err, pairs, shard_counts):
+    """The figures a ledger row and a stopping rule are read from."""
+    tally = shard_tally(shard_counts)
+    lines = [
+        f"Interval (Elo +/- error): {interval_text(elo, err)}",
+        f"Shards favouring the candidate by score: {tally['candidate']} of {len(shard_counts)} "
+        f"({tally['reference']} the reference, {tally['even']} even)",
+    ]
+    if abs(elo) < err and elo != 0:
+        # The error bar shrinks with the square root of the games played.
+        needed = 2 * pairs * (err / abs(elo)) ** 2
+        lines.append(f"Games for this point estimate to exclude 0: about {round(needed, -2):,.0f} "
+                     f"({needed / (2 * pairs):.1f}x this batch), if the estimate holds")
+    return lines
+
+
+def render_summary(path):
+    """Cross-arm table from --summary-tsv rows, best point estimate flagged."""
+    rows = []
+    with open(path, "r", encoding="utf-8") as handle:
+        for line in handle:
+            fields = line.rstrip("\r\n").split("\t")
+            if len(fields) != 6:
+                raise ValueError(f"{path}: malformed summary row {line!r}")
+            label, elo, err, games, favoured, shards = fields
+            rows.append((label, float(elo), float(err), int(games), int(favoured), int(shards)))
+    if not rows:
+        raise ValueError(f"{path}: no summary rows")
+    best = max(rows, key=lambda row: row[1])
+    out = ["| Arm | Games | Elo | Interval | Shards favouring |", "|---|---|---|---|---|"]
+    for label, elo, err, games, favoured, shards in rows:
+        mark = " (best)" if len(rows) > 1 and label == best[0] else ""
+        out.append(f"| {label}{mark} | {games} | {elo:+.2f} +/- {err:.2f} "
+                   f"| {interval_text(elo, err)} | {favoured} of {shards} |")
+    if len(rows) > 1:
+        out.append("")
+        out.append(selection_note(best, rows))
+    return "\n".join(out)
+
+
+# Expected maximum of k iid standard normals: the upward bias of the best of k
+# arms that share one true effect.
+EXPECTED_MAX_OF_NORMALS = {2: 0.56, 3: 0.85, 4: 1.03, 5: 1.16, 6: 1.27}
+
+
+def selection_note(best, rows):
+    """Rough guide to how far selection inflates the best arm, from its lead in sigma.
+
+    A heuristic resting on three screen-to-confirmation pairs, not a calibrated model.
+    """
+    sigma = best[2] / Z_95
+    if sigma == 0:
+        return "The best arm has no error bar to judge its lead by."
+    runner_up = max(row[1] for row in rows if row[0] != best[0])
+    lead = (best[1] - runner_up) / sigma
+    if lead > 2:
+        return (f"The best arm leads the next by {lead:.1f} sigma; selection bias is probably "
+                "small. Confirm it on fresh openings before changing a default.")
+    # Arms within 2 sigma of the best are treated as tied with it.
+    tied = sum(1 for row in rows if (best[1] - row[1]) / sigma <= 2)
+    bias = EXPECTED_MAX_OF_NORMALS[min(tied, 6)] * sigma
+    return (f"The best arm leads the next by {lead:.1f} sigma ({tied} arms within 2 sigma), "
+            f"so selection may inflate it by roughly {bias:.1f} Elo, to a rough "
+            f"{best[1] - bias:+.1f} on fresh openings. A rough guide for sizing a "
+            "confirmation, not a prediction.")
+
+
 # Real (counts, elo, half_width) triples printed by the pinned fastchess build on
 # this project's own matches. Sources: Docs/EloLog.md and local logs/elo runs.
 # They span 6 to 3500 games so the check is sensitive to precision, not just to
@@ -185,6 +288,40 @@ def self_test():
             53, 151, 289, 179, 68]
         ok &= good
         print(f"{'ok' if good else 'FAIL'} appended fastchess ratio accepted")
+
+        good = ([favours(c) for c in ([0, 0, 2, 0, 0], [0, 0, 1, 1, 0], [0, 1, 1, 0, 0])]
+                == ["even", "candidate", "reference"])
+        ok &= good
+        print(f"{'ok' if good else 'FAIL'} shard favour by score, ties even")
+        good = (interval_text(2.98, 3.23) == "[-0.25, +6.21], spans 0"
+                and interval_text(6.99, 6.16).endswith("above 0")
+                and interval_text(-9.29, 5.04).endswith("below 0"))
+        ok &= good
+        print(f"{'ok' if good else 'FAIL'} interval sides")
+        lines = summary_lines(2.98, 3.23, 12348, [[0, 0, 1, 1, 0]] * 13 + [[0, 1, 1, 0, 0]] * 5)
+        good = ("13 of 18 (5 the reference, 0 even)" in lines[1]
+                and "about 29,000 (1.2x this batch)" in lines[2])
+        ok &= good
+        print(f"{'ok' if good else 'FAIL'} summary lines: shard tally and games to exclude 0")
+
+        tsv = os.path.join(root, "arms.tsv")
+        for arm, row in (("A", [0, 0, 2, 0, 0]), ("B", [0, 0, 1, 1, 0])):
+            with open(logs[0], "w", encoding="utf-8") as handle:
+                handle.write(f"Ptnml(0-2): {row}\n")
+            subprocess.run([sys.executable, os.path.abspath(__file__), "--label", arm,
+                            "--summary-tsv", tsv, logs[0]], capture_output=True, check=True)
+        table = render_summary(tsv)
+        good = "| B (best) | 4 |" in table and "| A |" in table and "sigma" in table
+        ok &= good
+        print(f"{'ok' if good else 'FAIL'} cross-arm summary flags the best arm")
+        close = selection_note(("B", 6.99, 6.16), [("A", -0.89, 6.17), ("B", 6.99, 6.16),
+                                                    ("C", 5.22, 6.27)])
+        clear = selection_note(("C", 19.51, 5.38), [("A", 7.00, 5.27), ("B", 8.61, 5.43),
+                                                     ("C", 19.51, 5.38)])
+        good = ("0.6 sigma (2 arms" in close and "roughly 1.8 Elo" in close
+                and "+5.2" in close and "4.0 sigma" in clear and "probably small" in clear)
+        ok &= good
+        print(f"{'ok' if good else 'FAIL'} selection note discounts close winners only")
     print("\nself-test:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 
@@ -198,10 +335,23 @@ def main():
                         help="refuse to pool unless exactly this many logs are given")
     parser.add_argument("--expect-pairs-per-shard", type=positive_int,
                         help="require this many pairs in every log before printing any report")
+    parser.add_argument("--label", help="arm name written to --summary-tsv")
+    parser.add_argument("--summary-tsv",
+                        help="append this pool's headline as one tab-separated row")
+    parser.add_argument("--render-summary", metavar="TSV",
+                        help="print a cross-arm table from rows written by --summary-tsv")
     args = parser.parse_args()
 
     if args.self_test:
         return self_test()
+
+    if args.render_summary:
+        try:
+            print(render_summary(args.render_summary))
+        except (OSError, ValueError) as error:
+            print(f"::error::{error}", file=sys.stderr)
+            return 1
+        return 0
 
     if not args.logs:
         parser.error("no shard logs given")
@@ -223,16 +373,27 @@ def main():
         print(f"::error::{error}", file=sys.stderr)
         return 1
 
-    print("| Shard | Pairs | Ptnml(0-2) |")
-    print("|---|---|---|")
-    for path, counts in zip(args.logs, shard_counts):
-        print(f"| `{path}` | {sum(counts)} | {counts} |")
+    print("| Shard | Pairs | Ptnml(0-2) | Score | Favours |")
+    print("|---|---|---|---|---|")
+    for path, counts in sorted(zip(args.logs, shard_counts), key=lambda row: shard_order(row[0])):
+        shard_pairs = sum(counts)
+        print(f"| `{path}` | {shard_pairs} | {counts} | {25 * half_points(counts) / shard_pairs:.2f}% "
+              f"| {favours(counts)} |")
 
     print()
     print(f"**Pooled: {elo:+.2f} +/- {err:.2f} Elo** "
           f"({pairs} pairs = {2 * pairs} games, score {100 * score:.2f}%)")
     print()
     print(f"Pooled Ptnml(0-2): {total}")
+    print()
+    for line in summary_lines(elo, err, pairs, shard_counts):
+        print(f"- {line}")
+
+    if args.summary_tsv:
+        tally = shard_tally(shard_counts)
+        with open(args.summary_tsv, "a", encoding="utf-8") as handle:
+            handle.write(f"{args.label or ''}\t{elo:.2f}\t{err:.2f}\t{2 * pairs}\t"
+                         f"{tally['candidate']}\t{len(shard_counts)}\n")
     return 0
 
 

@@ -25,7 +25,7 @@ Usage:
     validate_uci_options.py --self-test
 
 An empty option string still queries and validates the advertised table. Resolution
-includes defaults and harness-owned Threads=1; it does not read settings back.
+includes defaults and the harness-owned Threads value; it does not read settings back.
 """
 
 import argparse
@@ -123,12 +123,12 @@ def normalize_value(kind, value):
     return int(value) if kind == "spin" else value == "true"
 
 
-def resolve_options(options, table, label):
-    """Return (resolved map or None, problems, warnings), including forced Threads."""
+def resolve_options(options, table, label, threads=1):
+    """Return (resolved map or None, problems, warnings), including the harness-owned Threads."""
     problems, warnings = validate(options, table, label)
-    threads = table.get("Threads")
-    if not threads or threads[0] != "spin" or not threads[1] <= 1 <= threads[2]:
-        problems.append(f"{label}: the advertised Threads domain must admit harness-owned Threads=1")
+    domain = table.get("Threads")
+    if not domain or domain[0] != "spin" or not domain[1] <= threads <= domain[2]:
+        problems.append(f"{label}: the advertised Threads domain must admit harness-owned Threads={threads}")
     if problems:
         return None, problems, warnings
     resolved = {name: normalize_value(kind, default)
@@ -136,7 +136,7 @@ def resolve_options(options, table, label):
     for token in options.split():
         name, value = token.split("=", 1)
         resolved[name] = normalize_value(table[name][0], value)
-    resolved["Threads"] = 1
+    resolved["Threads"] = threads
     return resolved, [], warnings
 
 
@@ -256,6 +256,10 @@ def self_test():
     threads_table = dict(table, Threads=("spin", 2, 32, "2"))
     resolved, errors, _ = resolve_options("", threads_table, "candidate")
     expect("resolution refuses an invalid harness-owned Threads domain", resolved is None and bool(errors))
+    resolved, errors, _ = resolve_options("", table, "candidate", threads=4)
+    expect("a harness-owned Threads=4 is resolved", not errors and resolved["Threads"] == 4)
+    resolved, errors, _ = resolve_options("", table, "candidate", threads=33)
+    expect("a harness-owned Threads above the advertised max is refused", resolved is None and bool(errors))
     print(f"\n{len(cases) + 2 + extra_checks} checks, {failures} failed")
     return 1 if failures else 0
 

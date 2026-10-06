@@ -347,6 +347,11 @@ as **one artifact**, so every shard provably plays the same two binaries against
 The normal PR gate also runs these Python self-tests and workflow boundary fixtures in its Linux
 Release leg, so harness failures can be checked without dispatching a strength match.
 
+**CPU evidence.** Each shard runs `.github/scripts/cpu_sampler.sh` beside fastchess, which samples
+`/proc/stat` once a minute into `cpu.tsv` in the shard artifact: busy and steal across all vCPUs,
+busy per vCPU and load average. `summarize_cpu.py` pools the shards into a table in the report.
+It is evidence only and never fails a run. The hosted runner's 4 vCPU are 2 physical cores with SMT.
+
 `.github/scripts/test_strength_workflow.py` runs the workflow's Bash blocks against complete and
 incomplete fixture batches and models directory-upload relative paths. This protects the evidence
 layout as well as the Python helpers: a misplaced retained book must fail locally before a match.
@@ -355,7 +360,7 @@ layout as well as the Python helpers: a misplaced retained book must fail locall
 |---|---|
 | `reference_ref` | Reference side, default `merge-base` — the commit this ref forked from `main`, so the result is attributable to this change alone. A tag such as `elo-reference-v2` measures cumulative strength instead; the candidate's own SHA is a null test only when build configuration, effective options and playing conditions also match. Resolved and verified in `setup`, so a bad ref fails in seconds |
 | `cmake_defines` | Optional whitespace-separated `-DNAME=VALUE` arguments. The setup job rejects any other shape and reserves `CMAKE_*` so the fixed toolchain cannot be overridden; accepted arguments are applied identically to both builds and recorded in the run summary |
-| `candidate_uci_options` / `reference_uci_options` | Optional whitespace-separated `Name=Value` UCI options, set on that side only — how a default-off runtime option is measured without a probe branch. `build` checks each against that engine's own advertised option table and fails the run on an unknown name, a wrong type or an out-of-range value, because the engine ignores all three in silence and the batch would otherwise report a null result. `Threads` is reserved, a repeated name is rejected, and a value equal to the engine's default warns. Spin values must be **unsigned decimal digits** — the engine's UCI parser refuses a sign or a plus whatever the advertised minimum says, so an option with a negative minimum is not settable over UCI until that parser learns to read one. Both strings are recorded in the run summary |
+| `candidate_uci_options` / `reference_uci_options` | Optional whitespace-separated `Name=Value` UCI options, set on that side only — how a default-off runtime option is measured without a probe branch. `build` checks each against that engine's own advertised option table and fails the run on an unknown name, a wrong type or an out-of-range value, because the engine ignores all three in silence and the batch would otherwise report a null result. `Threads` is reserved for the `threads` input, a repeated name is rejected, and a value equal to the engine's default warns. Spin values must be **unsigned decimal digits** — the engine's UCI parser refuses a sign or a plus whatever the advertised minimum says, so an option with a negative minimum is not settable over UCI until that parser learns to read one. Both strings are recorded in the run summary |
 | `candidate_arms` | Optional multi-arm screen: `;`-separated candidate option sets, each in `candidate_uci_options` syntax. Shard *i* plays arm *i* mod K, and each arm is pooled on its own shards against the shared reference, so an arm is a smaller batch: K arms of a 20k-game run get about √K times the full run's error bar each. `setup` rejects empty, malformed or duplicate arms, a `shards` count not divisible by K, and use together with `candidate_uci_options`; `build` checks every arm against the candidate as above. Routing lives in `.github/scripts/plan_arms.py`, which `setup` self-tests. One failed shard still discards every arm |
 | `calibration` | Boolean, default false. Required for an intentionally identical arm. Declaring it on a known-sign control labels the report; different time controls already permit that comparison. It bypasses only the identical-comparison refusal |
 | `opening_offset` | Openings to skip before shard 0, default 0. A multi-run experiment gives each run its own range, so a confirmation never replays the openings a screen selected its winner on. The book-size check counts it, and a non-zero offset is recorded in the run summary |
@@ -363,6 +368,7 @@ layout as well as the Python helpers: a misplaced retained book must fail locall
 | `shards` | Parallel match jobs, default 18. 18×1110 games is ~3 h and leaves 2 of the 20 concurrent-job slots free, so a run no longer blocks every other PR; 20 consumes the whole allowance for the duration. Below ~16 a shard can exceed the 340-minute job timeout |
 | `candidate_tc` / `reference_tc` | Per-side time control, finite decimal `seconds+increment`, base > 0 and increment >= 0; normalized so spelling cannot create a difference. Halve the **base** for a handicap run — an increment under 0.1 s makes the engine play near-instantly at the bottom of its clock |
 | `concurrency` | Concurrent games **per shard**. Validated at 3; raising it causes contention, adding shards does not |
+| `threads` | UCI `Threads` on **both** engines, default 1. `setup` refuses `threads` × `concurrency` above the runner's 4 vCPU, so `Threads=4` needs `concurrency` 1 — a third of the game rate, so cut `games` to keep a shard inside the job timeout. Unvalidated for time losses above 1 |
 
 **One run at a time, repository-wide.** The workflow's concurrency group is the constant
 `strength-lab`, not one keyed on the ref: a run takes 18 of the 20 concurrent jobs, so two runs on
@@ -374,7 +380,7 @@ second.
 **The comparison is resolved before shards start.** `.github/scripts/compare_lab_configs.py`
 queries both staged binaries even when overrides are empty. It requires a successful, complete
 `uciok` reply and valid nonempty spin/check advertisements; unsupported types and duplicate names
-fail. Defaults plus validated overrides become integer/boolean maps, with harness-owned Threads=1.
+fail. Defaults plus validated overrides become integer/boolean maps, with the harness-owned `threads` value.
 Older references may lack newer options: their own table is used, and explicit missing overrides
 fail. Redundant defaults, zero padding and option order do not distinguish conditions. Two candidate
 arms resolving to the same map are refused even during calibration.
@@ -384,7 +390,7 @@ equal the reference's, and either their engine build inputs or staged binary byt
 Input identity compares tracked Git paths, modes and objects under `CMakeLists.txt`, `cmake/`,
 `StratEngine/` and `StratChessEvolved/` at both revisions. Thus a docs-only commit cannot evade the
 check; same source with different options remains a valid comparison. Shared CMake definitions,
-toolchain/Release recipe and forced Threads=1 are recorded but cannot distinguish the sides.
+toolchain/Release recipe and the shared `threads` value are recorded but cannot distinguish the sides.
 Future per-side build inputs or generated engine inputs must extend this rule. Unequal inputs
 permit a code comparison; they do not prove different chess behaviour.
 
@@ -410,7 +416,9 @@ This establishes routing, completion and assigned starts, not every opening or m
 unit, by `.github/scripts/pool_pentanomial.py`. Pooling raw W/L/D would understate the variance and
 produce an interval that is wrong in the direction of looking more precise. That script's
 `--self-test` reproduces fastchess's own Elo and interval on seven real matches from this project;
-`setup` runs it before any build.
+`setup` runs it before any build. Under each pooled figure it prints the interval's bounds, the
+shards favouring the candidate by score, and, when the interval spans 0, the games this estimate
+would need to exclude it; a multi-arm run opens with one table across the arms.
 
 Every workflow pooling call supplies `--expect-pairs-per-shard R`. The last pentanomial counts of
 each log must sum to R, even if missing pairs in one log would offset excess pairs in another.

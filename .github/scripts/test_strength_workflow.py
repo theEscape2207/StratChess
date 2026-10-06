@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 repo = Path(__file__).resolve().parents[2]
 workflow = (repo / '.github/workflows/strength.yml').read_text(encoding='utf-8')
@@ -61,6 +62,21 @@ def self_test():
             result = subprocess.run([bash, '-n', path.as_posix()], text=True, capture_output=True)
             assert result.returncode == 0, (name, result.stderr)
         print(f'PASS: Bash syntax for {len(shell_blocks)} strength workflow blocks')
+        # A broken sampler fails nothing in a real run; it just leaves the evidence empty.
+        samples = root / 'cpu.tsv'
+        # Windows kill leaves the sampler's children writing into the removed directory; discard that noise.
+        sampler = subprocess.Popen([bash, (repo / '.github/scripts/cpu_sampler.sh').as_posix(), '1', samples.as_posix()],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline and len(samples.read_text().splitlines() if samples.exists() else []) < 2:
+                time.sleep(0.2)
+        finally:
+            sampler.kill()
+            sampler.wait()
+        rows = samples.read_text().splitlines()
+        assert len(rows) >= 2 and re.fullmatch(r'\d+\t[\d.]+\t[\d.]+\t\d+(,\d+)*\t[\d.]+', rows[1]), rows
+        print('PASS: the CPU sampler writes well-formed rows')
         (root / '.github').mkdir()
         shutil.copytree(repo / '.github/scripts', root / '.github/scripts')
         (root / 'outputs').mkdir()
@@ -75,7 +91,13 @@ def self_test():
                'BUILD_RESULT': 'success', 'CANDIDATE_UCI_OPTIONS': '', 'REFERENCE_UCI_OPTIONS': ''}
         env.update(RUNNER_TEMP=(root / 'runner').as_posix(), CALIBRATION='false',
                    REFERENCE_SHA='reference-fixture', GITHUB_SHA='candidate-fixture',
-                   CANDIDATE_ARMS='', CANDIDATE_TC='10+0.1', REFERENCE_TC='10+0.1')
+                   CANDIDATE_ARMS='', CANDIDATE_TC='10+0.1', REFERENCE_TC='10+0.1', THREADS='4')
+        budget = {'RUNNER_VCPUS': '4'}
+        for threads, concurrency, expected in [('1', '3', 0), ('4', '1', 0), ('2', '2', 0),
+                                               ('4', '3', 1), ('1', '5', 1), ('0', '1', 1), ('04', '1', 1)]:
+            run(root, 'Check the per-shard CPU budget',
+                dict(budget, THREADS=threads, MATCH_CONCURRENCY=concurrency), expected=expected)
+        print('PASS: threads x concurrency is refused past the runner vCPU budget')
         # Module self-tests exercise the real CLI. Here the stub captures shell
         # forwarding/output placement while the actual preparation/copy commands run.
         stub = '''python3() {
@@ -92,6 +114,8 @@ def self_test():
         }
     '''
         run(root, 'Verify the resolved comparison', env, command_wrapper=stub)
+        preflight_args = (root / 'runner/preflight-args.txt').read_text().splitlines()
+        assert preflight_args[preflight_args.index('--threads') + 1] == '4', 'threads input not forwarded to preflight'
         run(root, 'Retain the intended comparison in the build summary', env)
         assert 'Retained intended fixture comparison' in summary.read_text()
         upload_step = workflow.split('      - name: Upload comparison and opening evidence\n')[1].split('      - name:')[0]
@@ -117,10 +141,15 @@ def self_test():
                     pgn += f'[Event "fixture"]\n[Round "{round_no}"]\n[White "{white}"]\n[Black "{black}"]\n[FEN "{fen}"]\n[Result "1/2-1/2"]\n\n1/2-1/2\n\n'
                 (target / 'match.pgn').write_text(pgn)
                 (target / 'match.log').write_text('Ptnml(0-2): [0, 0, 2, 0, 0]\n')
+                if shard == 0:
+                    (target / 'cpu.tsv').write_text('elapsed_s\tbusy_pct\tsteal_pct\tper_cpu_busy_pct\tload_1m\n'
+                                                    '60\t75.0\t0.5\t90,80,70,60\t3.10\n')
             run(root, 'Verify the complete batch', env)
             run(root, 'Pool the result', env)
             pooled = root / 'outputs/pooled.md'
             assert '**Pooled:' in pooled.read_text() and '0.00 Elo**' in pooled.read_text()
+            assert 'Shards favouring the candidate by score:' in pooled.read_text()
+            assert ('### Arms' in pooled.read_text()) == bool(arms), 'cross-arm summary missing or spurious'
             print(f'PASS: actual verify/pool workflow blocks, {"multi" if arms else "single"} arm')
             pooled.unlink()
             (root / 'shards/strength-1-shard-1/match.log').write_text('Ptnml(0-2): [0, 0, 1, 0, 0]\n')
@@ -131,7 +160,8 @@ def self_test():
             env['POOL_RESULT'] = 'failure'
             run(root, 'Report', env)
             report = (root / 'outputs/report.md').read_text(encoding='utf-8')
-            assert 'DISCARDED' in report and '**Pooled:' not in report
+            assert 'DISCARDED' in report and '**Pooled:' not in report and 'Threads=4 |' in report
+            assert 'on 1 of 2 shards' in report and '| Busy, all vCPUs | 75.0% |' in report, 'CPU summary missing'
             print('PASS: failure summary contains no partial Elo')
         (root / 'evidence/comparison.md').unlink()
         run(root, 'Verify the complete batch', env, expected=1)

@@ -25,7 +25,7 @@ on:
         description: "Whitespace-separated -DNAME=VALUE arguments applied identically to both engine builds; CMAKE_* variables are reserved"
         default: ""
       candidate_uci_options:
-        description: "Whitespace-separated Name=Value UCI options set on the CANDIDATE only, e.g. 'Contempt=20'. This is how a default-off runtime option is measured without a probe branch. Checked against the engine's advertised option table before any shard starts; Threads is reserved"
+        description: "Whitespace-separated Name=Value UCI options set on the CANDIDATE only, e.g. 'Contempt=20'. This is how a default-off runtime option is measured without a probe branch. Checked against the engine's advertised option table before any shard starts; Threads is reserved -- use the threads input"
         default: ""
       reference_uci_options:
         description: "The same for the REFERENCE side. Usually empty: a difference between the two sides is what is being measured, so setting both rarely means what it looks like"
@@ -55,6 +55,9 @@ on:
       concurrency:
         description: "Concurrent games PER SHARD. 4 vCPU per runner; validated at zero time losses at 3 -- raising it is what causes contention, not adding shards"
         default: "3"
+      threads:
+        description: "UCI Threads on BOTH engines. threads x concurrency must fit the runner's 4 vCPU, so Threads=4 needs concurrency 1 -- a third of the default game rate, so cut games to keep a shard inside the job timeout"
+        default: "1"
 
 # One strength run at a time, repository-wide. The group is deliberately a
 # constant rather than keyed on the ref: a run takes 18 of the 20 concurrent
@@ -171,9 +174,9 @@ jobs:
           echo "Reference: $REFERENCE_REF -> $sha"
           echo "reference_sha=$sha" >> "$GITHUB_OUTPUT"
 
-      # Per-shard concurrency has to be sized off PHYSICAL cores: a
-      # single-threaded search gains nothing from SMT sharing, and
-      # oversubscribing adds timing noise. The match shards run on the same
+      # Per-shard concurrency has to be sized off PHYSICAL cores: a search
+      # thread gains nothing from SMT sharing, and oversubscribing adds timing
+      # noise. The match shards run on the same
       # runner label as this job, so recording the topology once here says what
       # the 4 vCPU actually are.
       - name: Record the runner's CPU topology
@@ -199,6 +202,9 @@ jobs:
       # games and still print a plausible table, so the router is checked first.
       - name: Verify the arm router
         run: python3 .github/scripts/plan_arms.py --self-test
+
+      - name: Verify the CPU summary
+        run: python3 .github/scripts/summarize_cpu.py --self-test
 
       - name: Verify workflow integrity boundaries
         run: python3 .github/scripts/test_strength_workflow.py --self-test
@@ -238,6 +244,28 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           echo "Plan: $SHARDS shards x $games_per_shard games = $actual_games games"
+
+      # Without pondering only the side to move searches, so a game keeps at
+      # most `threads` vCPU busy. Oversubscribing the runner shows up as time losses, which fail the
+      # shard -- so refuse the combination here, before a build.
+      - name: Check the per-shard CPU budget
+        env:
+          THREADS: ${{ inputs.threads }}
+          MATCH_CONCURRENCY: ${{ inputs.concurrency }}
+          RUNNER_VCPUS: "4"
+        run: |
+          set -euo pipefail
+          for value in "$THREADS" "$MATCH_CONCURRENCY"; do
+            if [[ ! "$value" =~ ^[1-9][0-9]{0,2}$ ]]; then
+              echo "::error::threads and concurrency must be positive integers without leading zeros ('$value')"
+              exit 1
+            fi
+          done
+          if [ $(( THREADS * MATCH_CONCURRENCY )) -gt "$RUNNER_VCPUS" ]; then
+            echo "::error::threads $THREADS x concurrency $MATCH_CONCURRENCY exceeds the runner's $RUNNER_VCPUS vCPU."
+            exit 1
+          fi
+          echo "CPU budget: Threads=$THREADS x concurrency $MATCH_CONCURRENCY of $RUNNER_VCPUS vCPU"
 
       # Shape only: whether the engine advertises each arm's options is checked
       # in `build`, against the binary that will play.
@@ -358,6 +386,7 @@ jobs:
           cp "$RUNNER_TEMP/reference/build/StratChessEvolved" "$stage/reference"
           cp "$RUNNER_TEMP/tools/fastchess" "$stage/fastchess"
           cp "$RUNNER_TEMP/tools/$BOOK_FILE" "$stage/$BOOK_FILE"
+          cp .github/scripts/cpu_sampler.sh "$stage/cpu_sampler.sh"
 
           cand_sha=$(git rev-parse --short HEAD)
           ref_sha=$(git -C "$RUNNER_TEMP/reference" rev-parse --short HEAD)
@@ -393,6 +422,7 @@ jobs:
           REFERENCE_TC: ${{ inputs.reference_tc }}
           CMAKE_DEFINES: ${{ inputs.cmake_defines }}
           CALIBRATION: ${{ inputs.calibration }}
+          THREADS: ${{ inputs.threads }}
         run: |
           set -euo pipefail
           stage="$RUNNER_TEMP/stage"
@@ -406,7 +436,7 @@ jobs:
             --candidate-revision "$GITHUB_SHA" --reference-revision "$REFERENCE_SHA" \
             --candidate-options "$CANDIDATE_UCI_OPTIONS" --reference-options "$REFERENCE_UCI_OPTIONS" \
             --arms "$CANDIDATE_ARMS" --candidate-tc "$CANDIDATE_TC" --reference-tc "$REFERENCE_TC" \
-            --cmake-defines="$CMAKE_DEFINES" --toolchain "GCC 15 on ubuntu-26.04, Release" \
+            --cmake-defines="$CMAKE_DEFINES" --toolchain "GCC 15 on ubuntu-26.04, Release" --threads "$THREADS" \
             "${calibration_args[@]}" --output "$evidence/comparison.md"
 
       - name: Retain the intended comparison in the build summary
@@ -445,7 +475,8 @@ jobs:
     needs: [setup, build]
     runs-on: ubuntu-26.04
     # A 1110-game shard at 10+0.1 with concurrency 3 runs ~172 min. This leaves
-    # headroom without touching the 6 h job cap.
+    # headroom without touching the 6 h job cap. Shard time scales with
+    # games / concurrency, so concurrency 1 needs a third of the games.
     timeout-minutes: 340
     strategy:
       # One shard failing must not cancel the rest: the aggregator refuses to
@@ -472,6 +503,7 @@ jobs:
           CANDIDATE_TC: ${{ inputs.candidate_tc }}
           REFERENCE_TC: ${{ inputs.reference_tc }}
           MATCH_CONCURRENCY: ${{ inputs.concurrency }}
+          THREADS: ${{ inputs.threads }}
           CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
           REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
           ARM_LABEL: ${{ fromJSON(needs.setup.outputs.shard_arms)[matrix.shard].label }}
@@ -533,16 +565,22 @@ jobs:
             for kv in "${ref_kv[@]}"; do ref_opts+=("option.$kv"); done
           fi
 
+          cd "$work"
+          # Evidence of how busy the runner was; the aggregate summarises it.
+          # Detached from the step's output, which an orphaned sleep would hold open.
+          bash "$tools/cpu_sampler.sh" 60 cpu.tsv > /dev/null 2>&1 &
+          sampler_pid=$!
+          trap 'kill "$sampler_pid" 2>/dev/null || true' EXIT
+
           # Adjudication settings are copied from Run-EloMatch.ps1 verbatim: the
           # two instruments must differ only in toolchain and hardware.
-          # Threads=1 on both sides -- Lazy SMP scales with core count, and a
-          # shared runner has none to spare.
-          cd "$work"
+          # The same Threads on both sides -- Lazy SMP scales with core count, so
+          # unequal counts measure the hardware split, not the change.
           start_s=$SECONDS
           set +e
           "$tools/fastchess" \
-            -engine cmd="$tools/candidate" name="$CAND_NAME" dir=cand args=uci option.Threads=1 ${cand_opts[@]+"${cand_opts[@]}"} "tc=$CANDIDATE_TC" \
-            -engine cmd="$tools/reference" name="$REF_NAME" dir=ref args=uci option.Threads=1 ${ref_opts[@]+"${ref_opts[@]}"} "tc=$REFERENCE_TC" \
+            -engine cmd="$tools/candidate" name="$CAND_NAME" dir=cand args=uci "option.Threads=$THREADS" ${cand_opts[@]+"${cand_opts[@]}"} "tc=$CANDIDATE_TC" \
+            -engine cmd="$tools/reference" name="$REF_NAME" dir=ref args=uci "option.Threads=$THREADS" ${ref_opts[@]+"${ref_opts[@]}"} "tc=$REFERENCE_TC" \
             -each proto=uci \
             -rounds "$ROUNDS" -repeat -concurrency "$MATCH_CONCURRENCY" -recover \
             -openings file="$tools/$BOOK_FILE" format=epd order=sequential start="$start" \
@@ -608,6 +646,7 @@ jobs:
           path: |
             ${{ runner.temp }}/match/match.pgn
             ${{ runner.temp }}/match/match.log
+            ${{ runner.temp }}/match/cpu.tsv
           if-no-files-found: warn
           retention-days: 90
 
@@ -646,7 +685,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
+      # Even for a refused batch: its shards' CPU samples are what explain a
+      # time loss. Nothing after the refusal pools them.
       - name: Download every shard
+        if: always()
         uses: actions/download-artifact@v8
         with:
           pattern: strength-${{ github.run_id }}-shard-*
@@ -690,18 +732,27 @@ jobs:
           else
             arm_list=$(python3 .github/scripts/plan_arms.py list --arms "$CANDIDATE_ARMS")
             arm_count=$(printf '%s\n' "$arm_list" | wc -l)
-            : > /tmp/pooled.pending.md
+            : > /tmp/arms.pending.md
+            : > /tmp/arms.tsv
             while IFS=$'\t' read -r arm options; do
               arm_logs=$(python3 .github/scripts/plan_arms.py logs \
                 --arms "$CANDIDATE_ARMS" --shards "$SHARDS" --arm "$arm" shards/*/match.log)
               mapfile -t logs <<< "$arm_logs"
-              echo "### Arm $arm: \`$options\`" >> /tmp/pooled.pending.md
-              echo >> /tmp/pooled.pending.md
+              echo "### Arm $arm: \`$options\`" >> /tmp/arms.pending.md
+              echo >> /tmp/arms.pending.md
               python3 .github/scripts/pool_pentanomial.py \
                 --expect-shards $(( SHARDS / arm_count )) --expect-pairs-per-shard "$ROUNDS" \
-                "${logs[@]}" >> /tmp/pooled.pending.md
-              echo >> /tmp/pooled.pending.md
+                --label "$arm: \`$options\`" --summary-tsv /tmp/arms.tsv \
+                "${logs[@]}" >> /tmp/arms.pending.md
+              echo >> /tmp/arms.pending.md
             done <<< "$arm_list"
+            {
+              echo "### Arms"
+              echo
+              python3 .github/scripts/pool_pentanomial.py --render-summary /tmp/arms.tsv
+              echo
+              cat /tmp/arms.pending.md
+            } > /tmp/pooled.pending.md
           fi
           mv /tmp/pooled.pending.md /tmp/pooled.md
           cat /tmp/pooled.md
@@ -718,6 +769,7 @@ jobs:
           CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
           OPENING_OFFSET: ${{ inputs.opening_offset }}
           ACTUAL_GAMES: ${{ needs.setup.outputs.actual_games }}
+          THREADS: ${{ inputs.threads }}
           BUILD_RESULT: ${{ needs.build.result }}
           POOL_RESULT: ${{ steps.pool.outcome }}
         run: |
@@ -741,7 +793,7 @@ jobs:
             if [ "$OPENING_OFFSET" != "0" ] && [ -n "$ACTUAL_GAMES" ]; then
               echo "| Openings | $(( OPENING_OFFSET + 1 ))–$(( OPENING_OFFSET + ACTUAL_GAMES / 2 )) (offset $OPENING_OFFSET) |"
             fi
-            echo "| Toolchain | GCC 15 on ubuntu-26.04, Release, Threads=1 |"
+            echo "| Toolchain | GCC 15 on ubuntu-26.04, Release, Threads=$THREADS |"
             if [ "$CMAKE_DEFINES_VALIDATED" != "true" ]; then
               echo "| CMake defines | Not accepted by setup; no engine was built |"
             elif [ "$BUILD_RESULT" = "success" ]; then
@@ -764,6 +816,8 @@ jobs:
             echo
             echo "Error bar is pentanomial: pooled over colour-swapped PAIRS, which are the"
             echo "independent unit. Pooling raw W/L/D would understate the variance."
+            echo
+            python3 .github/scripts/summarize_cpu.py shards/*/ || echo "Runner CPU summary unavailable."
             echo
             echo "[Run ${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
           } > /tmp/report.md
