@@ -13,7 +13,7 @@
 #include <cstdio>
 
 namespace {
-	// Profile builds only: STRAT_PROFILE_TIEBREAK_SEED=N (1..2^32-1) breaks ScoreMoves' ties by a seeded
+	// Profile builds only: STRAT_PROFILE_TIEBREAK_SEED=N (1..2^32-1) breaks move-ordering ties by a seeded
 	// hash of the move instead of generation order — a neutral ordering perturbation that measures how
 	// much a profile screen moves with no real ordering change. Read once, before main().
 	uint32_t read_profile_tie_break_seed()
