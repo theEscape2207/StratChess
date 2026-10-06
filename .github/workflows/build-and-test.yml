@@ -151,7 +151,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
       # ccache in front of the compiler. The install rationale, the bump policy and
       # why the object cache is keyed per configuration all live in the composite
@@ -262,7 +262,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
       # ccache in front of the compiler. The install rationale, the bump policy and
       # why the object cache is keyed per configuration all live in the composite
@@ -345,7 +345,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
       # ccache in front of the compiler. The install rationale, the bump policy and
       # why the object cache is keyed per configuration all live in the composite
@@ -465,7 +465,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: win-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
+          key: win-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
       # BOTH legs (#380). Release was cached first (#377) and moved the job by only
       # ~5 s, because this is a two-leg matrix and both legs must finish -- so the
@@ -568,7 +568,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
       # Configured with clang, NOT the default GCC, and this is load-bearing.
       # strat_configure_target emits the GNU spelling -fconstexpr-ops-limit= for GCC
