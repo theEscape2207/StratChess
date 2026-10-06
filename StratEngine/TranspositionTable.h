@@ -166,7 +166,9 @@ class TranspositionTable {
 	// Two stores into one slot can interleave and leave one word from each, transiently or until the
 	// slot is next written. Such a pair decodes to neither key but to a pseudo-key, which under the
 	// random-Zobrist model matches a probe no more often than any stored key does: it costs a lost
-	// entry and keeps the ordinary collision rate. That rests on a model, not a measurement.
+	// entry and keeps the ordinary collision rate. That rests on a model, not a measurement. The
+	// payload is one word, so it is always one store's whole payload: a false match is a collision,
+	// never a torn entry.
 	struct Slot {
 		std::atomic<std::uint64_t> key_xor_data{encode(PackedEntry{})[0]};
 		std::atomic<std::uint64_t> data{encode(PackedEntry{})[1]};
@@ -224,7 +226,7 @@ class TranspositionTable {
 	size_t requested_mb;
 
 	// Set by the first completed store after construction or clear(), so clear() can skip a table
-	// holding nothing. Exact entry counts would need each store's read-decide-write to be atomic.
+	// holding nothing. A store's read-decide-write is not atomic, so no exact entry count is kept.
 	std::atomic<bool> written_since_clear{false};
 
 	// Rounds down to a power of two, and never below one.
@@ -349,7 +351,8 @@ class TranspositionTable {
 	}
 
 	// Decides on one snapshot of each slot. Under Lazy SMP two stores can pick the same slot and lose
-	// an entry, or interleave and leave a mixed slot (see Slot); at one thread every snapshot is exact.
+	// an entry, put one key in two slots (probes then find the first), or interleave and leave a mixed
+	// slot (see Slot). At one thread every snapshot is exact.
 	TTStoreOutcome store(std::uint64_t key, int16_t value, int16_t depth, int16_t ply, Move best_move, BoundType bound,
 	                     NodeType node_type, SearchPhase phase)
 	{

@@ -336,9 +336,10 @@ is a green build (#513):
 
 **TSan runs per-PR and has no suppression file — the empty suppression list is the finding.**
 Every `TranspositionTable` entry access is a relaxed atomic, and `clear()` runs only while no search
-stores. The survey that set this rule, at `Threads=1/4/8` across six configurations plus the fast
-tier, reported **zero races**, verified against a deliberately injected race that TSan did report. So
-the job gates on any finding at all. If a suppression is ever added it must name why that race is
+stores. The survey that set this rule predates the lock-free table: at `Threads=1/4/8` across six
+configurations plus the fast tier it reported **zero races**, verified against a deliberately
+injected race that TSan did report. The lock-free table's own evidence is the job itself. So the job
+gates on any finding at all. If a suppression is ever added it must name why that race is
 tolerated — a permanently suppressed sanitizer looks like coverage and is worse than none.
 
 **A change that claims to preserve behaviour is gated by fixed-depth equivalence, and the gate is
@@ -512,10 +513,8 @@ samples by caller. Its `-?` help carries the traps it encodes: Release writes no
 `pvs`, `quiescence` and the TT functions behind unrelated public symbols, so it builds a `/Z7`
 variant; collection costs about 30% nps, so shares are approximate.
 
-**Reading the two side by side.** The platforms differ in more than codegen. Their standard
-libraries' synchronisation primitives differ in size and cost — libstdc++'s `std::shared_mutex` is a
-56-byte `pthread_rwlock_t`, MSVC's an 8-byte `SRWLOCK` — and clang-cl inlines the TT probe into
-`pvs`/`quiescence`, so its cache miss shows up as search time. Windows is authoritative for
+**Reading the two side by side.** The platforms differ in more than codegen: clang-cl inlines the
+TT probe into `pvs`/`quiescence`, so its cache miss shows up as search time. Windows is authoritative for
 anything that ships; the Linux profile is the strength lab's.
 
 ## Threat model

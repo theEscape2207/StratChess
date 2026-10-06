@@ -33,10 +33,10 @@ class TranspositionTableTestFixture {
 
 	static Words encode(const Entry& entry) { return TranspositionTable::encode(entry); }
 
-	// Writes one raw word of bucket 0's slot, as one half of a store would.
-	static void write_word(TranspositionTable& table, size_t slot, size_t word, std::uint64_t value)
+	// Writes one word of the table's first slot, as one half of a store would.
+	static void write_word(TranspositionTable& table, size_t word, std::uint64_t value)
 	{
-		auto& target = table.table[0].slots[slot];
+		auto& target = table.table[0].slots[0];
 		(word == 0 ? target.key_xor_data : target.data).store(value, std::memory_order_relaxed);
 	}
 };
@@ -375,7 +375,6 @@ TEST_CASE("TT - repeated clear reports no work after the table is empty", "[tt]"
 
 namespace {
 	using SlotEntry = TranspositionTableTestFixture::Entry;
-	using SlotWords = TranspositionTableTestFixture::Words;
 
 	SlotEntry make_entry(uint64_t key, int16_t value, int16_t depth, Move move)
 	{
@@ -389,17 +388,26 @@ namespace {
 		return entry;
 	}
 
+	SlotEntry entry_a() { return make_entry(KEY_A, 100, 5, Move(e2, e4, MoveFlags::QUIET)); }
+	SlotEntry entry_b() { return make_entry(KEY_B, 200, 7, Move(d2, d4, MoveFlags::QUIET)); }
+
+	// Writes one word of the entry's encoding into the table's first slot.
+	void write_word_of(TranspositionTable& tt, size_t word, const SlotEntry& entry)
+	{
+		TranspositionTableTestFixture::write_word(tt, word, TranspositionTableTestFixture::encode(entry)[word]);
+	}
+
 	// A slot holding word 0 of one entry and word 1 of another claims neither key, but the pseudo-key
 	// that the two words decode to, carrying the payload of word 1's entry.
-	void check_mixed_slot(const TranspositionTable& tt, const SlotWords& word0_owner, const SlotWords& word1_owner,
-	                      uint64_t word0_key, uint64_t word1_key, const SlotEntry& word1_entry)
+	void check_mixed_slot(const TranspositionTable& tt, const SlotEntry& word0_entry, const SlotEntry& word1_entry)
 	{
-		CHECK_FALSE(tt.probe(word0_key, 0).has_value());
-		CHECK_FALSE(tt.probe(word1_key, 0).has_value());
+		CHECK_FALSE(tt.probe(word0_entry.key, 0).has_value());
+		CHECK_FALSE(tt.probe(word1_entry.key, 0).has_value());
 
-		const uint64_t pseudo_key = word0_owner[0] ^ word1_owner[1];
-		REQUIRE(pseudo_key != word0_key);
-		REQUIRE(pseudo_key != word1_key);
+		const uint64_t pseudo_key = TranspositionTableTestFixture::encode(word0_entry)[0] ^
+		                            TranspositionTableTestFixture::encode(word1_entry)[1];
+		REQUIRE(pseudo_key != word0_entry.key);
+		REQUIRE(pseudo_key != word1_entry.key);
 		const auto result = tt.probe(pseudo_key, 0);
 		REQUIRE(result.has_value());
 		CHECK(result->value == word1_entry.value);
@@ -410,41 +418,32 @@ namespace {
 
 TEST_CASE("TT - a slot holding words from two entries decodes to a pseudo-key", "[tt]")
 {
-	const SlotEntry entry_a = make_entry(KEY_A, 100, 5, Move(e2, e4, MoveFlags::QUIET));
-	const SlotEntry entry_b = make_entry(KEY_B, 200, 7, Move(d2, d4, MoveFlags::QUIET));
-	const SlotWords words_a = TranspositionTableTestFixture::encode(entry_a);
-	const SlotWords words_b = TranspositionTableTestFixture::encode(entry_b);
-
 	TranspositionTable tt(0);
-	TranspositionTableTestFixture::write_word(tt, 0, 0, words_a[0]);
-	TranspositionTableTestFixture::write_word(tt, 0, 1, words_b[1]);
+	write_word_of(tt, 0, entry_a());
+	write_word_of(tt, 1, entry_b());
 
-	check_mixed_slot(tt, words_a, words_b, KEY_A, KEY_B, entry_b);
+	check_mixed_slot(tt, entry_a(), entry_b());
 }
 
 TEST_CASE("TT - two interleaved stores into one slot leave a mixed pair", "[tt]")
 {
-	const SlotEntry entry_a = make_entry(KEY_A, 100, 5, Move(e2, e4, MoveFlags::QUIET));
-	const SlotEntry entry_b = make_entry(KEY_B, 200, 7, Move(d2, d4, MoveFlags::QUIET));
-	const SlotWords words_a = TranspositionTableTestFixture::encode(entry_a);
-	const SlotWords words_b = TranspositionTableTestFixture::encode(entry_b);
 	TranspositionTable tt(0);
 
 	SECTION("A's payload, then all of B, then A's key word")
 	{
-		TranspositionTableTestFixture::write_word(tt, 0, 1, words_a[1]);
-		TranspositionTableTestFixture::write_word(tt, 0, 1, words_b[1]);
-		TranspositionTableTestFixture::write_word(tt, 0, 0, words_b[0]);
-		TranspositionTableTestFixture::write_word(tt, 0, 0, words_a[0]);
-		check_mixed_slot(tt, words_a, words_b, KEY_A, KEY_B, entry_b);
+		write_word_of(tt, 1, entry_a());
+		write_word_of(tt, 1, entry_b());
+		write_word_of(tt, 0, entry_b());
+		write_word_of(tt, 0, entry_a());
+		check_mixed_slot(tt, entry_a(), entry_b());
 	}
 	SECTION("A's key word, then all of B, then A's payload")
 	{
-		TranspositionTableTestFixture::write_word(tt, 0, 0, words_a[0]);
-		TranspositionTableTestFixture::write_word(tt, 0, 0, words_b[0]);
-		TranspositionTableTestFixture::write_word(tt, 0, 1, words_b[1]);
-		TranspositionTableTestFixture::write_word(tt, 0, 1, words_a[1]);
-		check_mixed_slot(tt, words_b, words_a, KEY_B, KEY_A, entry_a);
+		write_word_of(tt, 0, entry_a());
+		write_word_of(tt, 0, entry_b());
+		write_word_of(tt, 1, entry_b());
+		write_word_of(tt, 1, entry_a());
+		check_mixed_slot(tt, entry_b(), entry_a());
 	}
 }
 
@@ -504,9 +503,9 @@ TEST_CASE("TT - concurrent probes return only the probed key's payload", "[tt][s
 						continue;
 					++tally.hits;
 					const Payload expected = payload_of(probed);
-					tally.wrong += result->key != probed || result->value != expected.value ||
-					               result->depth != expected.depth || result->best_move != expected.move ||
-					               result->bound != expected.bound || result->node_type != expected.node_type;
+					tally.wrong += result->value != expected.value || result->depth != expected.depth ||
+					               result->best_move != expected.move || result->bound != expected.bound ||
+					               result->node_type != expected.node_type;
 				}
 			});
 		}
