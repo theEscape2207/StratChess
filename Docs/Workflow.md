@@ -489,7 +489,7 @@ strength is measured here, not a universal constant.
 
 `Run-Bench` says *that* time changed. A sampling profiler says *where* it goes, and that sets the
 ceiling: no speedup of an area can buy more than that area's share of runtime. Write down the shares
-you expect before you look, or the profile cannot surprise you (#719). Both recipes drive the
+you expect before you look, or the profile cannot surprise you (#719). Both platforms drive the
 `Run-Bench` positions over UCI at `Threads=1` and fixed depth. The driver must read stdout until
 `bestmove`, because a piped `go` returns immediately.
 
@@ -506,33 +506,12 @@ perf report -i perf.data --stdio --no-children -g none --sort sym      # or sym,
 `perf` is `/usr/bin/perf` (package `linux-perf`). `perf_event_paranoid` is 2, so sample user space
 only (`:u`); the engine spends nothing in the kernel.
 
-**Windows (clang-cl, what ships). No elevation needed.** Release writes no PDB, and a
-public-symbols-only one misattributes: LTO internalises `pvs`, `quiescence` and the TT functions, so
-their samples land on whatever public symbol precedes them. Configure a separate tree from a VS
-developer environment:
-
-```powershell
-cmake --preset windows-clang-cl -B build/prof-clang-cl `
-    "-DCMAKE_CXX_FLAGS=/DWIN32 /D_WINDOWS /EHsc /Z7" `
-    "-DCMAKE_EXE_LINKER_FLAGS_RELEASE=/DEBUG /OPT:REF /OPT:ICF"
-cmake --build build/prof-clang-cl --target StratChessEvolved
-```
-
-`/OPT:REF /OPT:ICF` restate what `/DEBUG` would otherwise turn off, so the image matches Release
-(same size, same node counts). Then start the engine under the driver and attach the VS collector
-(`<VS>\Team Tools\DiagnosticsHub\Collector`) before sending `go`:
-
-```powershell
-VSDiagnostics.exe start 71 /attach:<pid> /loadConfig:<Collector>\AgentConfigs\CpuUsageBase.json
-# ... search runs ...
-VSDiagnostics.exe stop 71 /output:run.diagsession
-VSDiagnostics.exe expandDiagSession run.diagsession          # yields an .etl
-$env:_NT_SYMBOL_PATH = "<build dir>;srv*<cache>*https://msdl.microsoft.com/download/symbols"
-xperf -i <etl> -symbols -a profile -detail                    # per-function self weight
-```
-
-The session id must be 0-255. The Microsoft symbol server is what resolves `ntdll` (the `SRWLock`
-calls). Collection costs about 30% nps even at 1 kHz, so treat shares as approximate.
+**Windows (clang-cl, what ships). No elevation needed.** `Scripts\Measure-CpuProfile.ps1 -Before
+<ref> -After <ref>` does it: two worktree paths or commits in, a markdown table of per-area shares
+out, with the baseline's run-to-run spread as the noise floor. `-Callers <regex>` splits one symbol's
+samples by caller. Its `-?` help carries the traps it encodes: Release writes no PDB and LTO hides
+`pvs`, `quiescence` and the TT functions behind unrelated public symbols, so it builds a `/Z7`
+variant; collection costs about 30% nps, so shares are approximate.
 
 **Reading the two side by side.** The platforms differ in more than codegen. libstdc++'s
 `std::shared_mutex` is a 56-byte `pthread_rwlock_t` and MSVC's an 8-byte `SRWLOCK` — the TT locks

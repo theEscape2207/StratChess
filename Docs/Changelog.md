@@ -15,6 +15,22 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-06: Measure-CpuProfile.ps1, a before/after CPU profile of two refs (#740)
+
+`Scripts/Measure-CpuProfile.ps1 -Before <ref> -After <ref>` codifies the hand-run profiles of #719
+and #725. It builds a `/Z7` clang-cl variant of each ref, then samples the bench positions under
+VSDiagnostics, interleaved before/after/before. xperf self time is grouped into #719's areas, and the
+output is a markdown table with the baseline's spread as its noise floor. `-Callers <regex>` splits
+one symbol by caller from the butterfly view. `-Reanalyse <dir>` rereads saved traces.
+`Scripts/QuietWindow.ps1` prints the phase plan and the QUIET NEEDED / Machine free banners, for
+reuse by the other measuring scripts (#743).
+
+- **Acceptance (#725 rerun, 2a6062b → 1f93312):** move ordering 23.4% → 17.5% (−5.9; #725
+  published −6.8), sort symbol −7.1 (−7.8). The baseline arm lands within 1.3 points of #725's in
+  every area; the after arm differs by up to 3.1 (evaluation). Within-run spread was ≤0.6, but
+  one build moved about 1.3 points between sessions, so compare arms of one run only.
+  `-Callers '_Sort_unchecked'`: pvs 77% → 53%, quiescence 22% → 47%.
+
 ## 2026-10-06: Lazy move ordering in pvs() (#725)
 
 `pvs()` now brings only its first move into order before searching it
