@@ -253,9 +253,9 @@ unchanged, and `tt_mutex` still serialises concurrent `clear()` calls.
 ## Validation
 
 Engine tier, search-change validation: it changes synchronisation on the hottest shared structure.
-**PR readiness and merge readiness are separate.** The implementation PR opens once the first five
-items pass. Merging waits for the two multi-thread items as well, unless the owner explicitly waives
-them.
+**PR readiness and merge readiness are separate.** The implementation PR opens once items 1–5 pass.
+Merging also waits for items 6–8. Items 9–12 are indicative only: their results are reported, but none
+of them blocks the merge or is read as a pass or fail.
 
 `<mb>` below is the PR branch's merge-base with `origin/main` at measurement time, recorded in the PR.
 `origin/main` moves, so a fixed `79c3217` would not be the matched baseline.
@@ -295,24 +295,52 @@ them.
      `New-OrderedBuildPair.ps1` placement-equalised pair. Report the result against the 9.4% ceiling.
    - Report Linux GCC Release nps, measured the same way, before claiming any Linux benefit. It is
      context, not the shipping number.
-   - No multi-thread speed claim is made, so none is measured.
-6. **TSan.** The `tsan-linux` job stays green over its six multi-threaded UCI scenarios at
-   `Threads=4`, `8` and `16`. That covers data races only, not strength.
+6. **TSan (merge gate).** The `tsan-linux` job stays green over its six multi-threaded UCI
+   scenarios at `Threads=4`, `8` and `16`. That covers data races only, not strength.
 7. **Multi-thread tactical stability (merge gate).** Run `StratChessEvolved.exe tactical stability
    10 tactical_test_cases.json 4` on the baseline and candidate exes. Pass: the candidate clears the
    suite's 90% threshold, and no position the baseline solves in 10 of 10 runs falls below 8 of 10.
-8. **Multi-thread strength (merge gate; owner approves the budget before it starts).**
-   - Command: `Run-EloMatch.ps1 -Sprt NonRegression -ReferenceExe <mb exe> -ReferenceTag <mb>
-     -CandidateOptions 'option.Threads=2' -ReferenceOptions 'option.Threads=2' -Concurrency 3
-     -Games 4000 -Tc 10+0.1`.
-   - Bounds: −5/0 Elo, α = β = 0.05.
-   - Concurrency: two 2-thread engines per game × 3 games = 12 threads, the dev machine's 12
-     physical cores. The script's default of six games assumes single-threaded engines.
-     `Threads=4` would allow only one game at a time, so a capped run would take days.
-   - At the 4000-game cap an undecided SPRT is **inconclusive, not a pass**. It goes back to the
-     owner, who extends it, waives the gate or parks the change.
-   - The strength lab cannot cover this because it pins `Threads=1`. A `Threads=1` lab run would
-     measure only speed, inflated by the GCC lock; it is optional and not a gate.
+8. **CI strength lab at `Threads=1` (merge gate).** This is the project's usual strength evidence;
+   #442's node-identical TT change shipped on it the same way.
+   - Run `strength.yml` at its defaults against reference `<mb>`: about 20k games, about 3 h,
+     roughly ±3.5 Elo.
+   - Pass: the interval does not show a regression.
+   - The lab builds GCC, where the lock costs about 3× its Windows share, so its Elo overstates the
+     shipping gain. Report it next to item 5's Windows nps.
+
+   **No local multi-thread SPRT.** A simulation of a [−5, 0] SPRT capped at 4000 games found it
+   inconclusive in 53–72% of runs at a true +4 to +6 Elo, after about 11 h. The races D4 lists also
+   have no code path that only multi-threaded search runs, and are far too rare to cost measurable
+   Elo. TSan, the stress test and item 7 carry the multi-thread risk instead.
+9. **Indicative Windows Elo (not a gate).** A fixed-length local match with no SPRT, so there is no
+   verdict to mis-read and no optional-stopping bias: `Run-EloMatch.ps1 -ReferenceExe <mb exe>
+   -ReferenceTag <mb> -Games 1400 -Tc 10+0.1` at the default `-Concurrency 6`, about 2 h.
+   - Expect about ±16 Elo. Against an expected effect of a few Elo it shows the likely direction and
+     rules out a large surprise; it cannot size the gain.
+   - It runs only while nothing else times on the machine: never alongside items 5 or 10.
+10. **Indicative `Threads=4` speed (not a gate).** Run `Run-Bench.ps1 -Threads 4` on the clang-cl
+    Release pair, about 6 rounds each, in alternating order.
+    - Compare nps and wall time to depth. Node counts differ run to run at 4 threads, so
+      `Compare-Bench`'s equivalence-based verdict does not apply; report medians and spreads only.
+    - A larger gain than item 5's is plausible: a shared lock still writes its cache line on every
+      probe, so helpers converging on the same buckets bounce it, and the removed counter
+      `fetch_add` was a shared line too. That is unmeasured until this item runs.
+    - Timing the TSan job or the tactical stability run would not answer this. TSan instruments
+      every atomic access, and the stability suite is too few, too short searches to read a speed
+      difference from.
+11. **Indicative multi-thread lab Elo (not a gate; needs a tooling change first).** `strength.yml`
+    hard-codes `option.Threads=1` and reserves `Threads`. A multi-thread run needs a separate tooling
+    PR that adds a `threads` input applied to both sides, with per-shard concurrency cut to fit the
+    4-vCPU runners (`Threads=4` → concurrency 1). At about a third of the default game rate, 3 h gives
+    about 6.6k games, roughly ±6 Elo.
+12. **Where the time goes next (not a gate).** The change has two aims: remove the bottleneck, and
+    learn what to improve after it. So re-profile once it lands.
+    - Windows: `Measure-CpuProfile.ps1 -Before <mb> -After <branch>`. It gives per-area shares, with
+      the baseline's run-to-run spread as the noise floor.
+    - Linux: the #719 `perf` recipe in `Docs/Workflow.md` → Profiling, on both builds.
+    - Report the before/after area table. The lock share should go to about zero; the question is
+      which area now leads. #719 had move ordering second, at about 23–24%. Each area that now looks
+      worth attacking becomes its own triage issue, citing the table.
 
 ## Cost
 
@@ -322,10 +350,13 @@ them.
 - **Review:** one code review run, plus the search-reviewer agent.
 - **Measurement:**
   - Items 5 and 7: about 1–2 hours of local machine time.
-  - Item 8: the dominant cost and the owner's call. At 3 concurrent games of about 25 s each, the
-    4000-game cap is about 9 h; a decisive SPRT stops earlier.
-- **Optional parts:** none left. A1 is now a required check, and items 7–8 are merge gates the owner
-  can waive.
+  - Item 8: one CI lab run, about 3 h. It costs nothing, because the repo is public.
+- **Optional parts:**
+  - Item 9, the indicative Windows match: about 2 h of local machine time.
+  - Item 10, the `Threads=4` bench: about 20 min.
+  - Item 11, the multi-thread lab run: a small `strength.yml` tooling PR, then about 3 h of lab
+    time.
+  - Item 12, the re-profile: about 30 min per platform.
 
 ## Harvest
 
@@ -336,5 +367,5 @@ them.
 | D4 races can lose an entry or leave a mixed pair | comment in `store()` |
 | D5 a probe's entry may belong to another position; its move is only a hint | comment on `probe()` |
 | lock array gone; TT synchronisation model | `Docs/Architecture.md` TT rows (lines 67, 131, 177) |
-| measured Windows and Linux nps, equivalence, tactical and SPRT results | `Docs/Changelog.md` and the PR body |
+| measured Windows and Linux nps, equivalence, tactical, lab and indicative results | `Docs/Changelog.md` and the PR body; lab and local match rows in `Measurements/` |
 | review findings and their dispositions | PR body |
