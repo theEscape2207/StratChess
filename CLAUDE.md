@@ -133,8 +133,9 @@ Three tripwires are repeated here because violating them fails *silently*:
 ## Development Guidelines
 
 - C++23; favour `constexpr`, RAII, move semantics, strong types.
-- Current external dependencies are `spdlog`, `nlohmann/json` and `Catch2`. **No new external
-  dependency without explicit approval from the project owner** — ask, with a rationale.
+- Current external dependencies are `spdlog`, `nlohmann/json` and `Catch2`; bumping one:
+  `Docs/Dependencies.md`. **No new external dependency without explicit approval from the project
+  owner** — ask, with a rationale.
 - All changes must be thread-safe, especially around the transposition table.
 - No regressions in search accuracy or Elo without explicit justification; keep behaviour
   deterministic.
