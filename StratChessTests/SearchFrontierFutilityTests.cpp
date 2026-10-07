@@ -1,4 +1,4 @@
-// SearchFrontierFutilityTests.cpp — frontier futility pruning (#504).
+// SearchFrontierFutilityTests.cpp — frontier futility pruning.
 //
 // The eligibility tests move one node-level guard at a time off a passing baseline. The node tests
 // hold the engine's skip count against an independent tally, so removing a move-level guard shows

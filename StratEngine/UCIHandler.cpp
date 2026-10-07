@@ -139,10 +139,10 @@ namespace {
 	// This is not a build id and not an engine version: refactors and strength changes
 	// leave it alone, because they do not change what the numbers mean.
 	//
-	//   1 — UCI 'nodes' is the main tree plus the quiescence tree (#312), both counted in
+	//   1 — UCI 'nodes' is the main tree plus the quiescence tree, both counted in
 	//       MOVE EDGES, so the two sum with nothing counted twice. pvs() also counted moves
 	//       DoMove() rejects as illegal and moves frontier futility skips.
-	//   2 — Both trees count only legal move edges actually searched (#402). Still NOT a
+	//   2 — Both trees count only legal move edges actually searched. Still NOT a
 	//       complete census of nodes visited, and the gaps are unmeasured: null-move edges
 	//       and LMR/PV re-searches of an already-counted edge belong to neither column.
 	constexpr int MEASUREMENT_CONTRACT = 2;
@@ -270,7 +270,7 @@ void UciHandler::cmd_eval()
 		const std::string sum_label = "sum (white pov)";
 		send(sum_label + pad_left(std::to_string(net_sum), EVAL_TABLE_WIDTH - static_cast<int>(sum_label.size())));
 
-		// Phase rather than a stage name (issue #99): the evaluator no longer
+		// Phase rather than a stage name: the evaluator no longer
 		// has a middlegame/endgame boolean, and how far through the taper a
 		// position sits is what actually explains the pst row.
 		send("phase: " + std::to_string(terms.phase) + "/" + std::to_string(MAX_GAME_PHASE));
@@ -316,7 +316,7 @@ void UciHandler::cmd_position(std::string_view line)
 			// a position the caller never sent, with the answer depending on what
 			// was loaded before -- so the same command yields different results in
 			// different sessions. That is how a whole perftcheck corpus run got
-			// misread as move-generation faults (#200).
+			// misread as move-generation faults.
 			//
 			// `info string` is the error channel UCI actually has. The move list
 			// below is deliberately not replayed: it describes a position that was
@@ -367,8 +367,7 @@ void UciHandler::cmd_position(std::string_view line)
 			// once after the loop: state_history_ holds MAX_PLY entries,
 			// so a single post-loop reset lets DoMove
 			// write out of bounds during any replay longer than MAX_PLY
-			// plies (issue #53 follow-up; found by the first fastchess
-			// smoke match — 265-ply game, access violation in Release).
+			// plies, and real games run past it (a 265-ply game crashed Release).
 			replay.ResetSearchDepth();
 		}
 		board_ = std::move(replay);
@@ -432,8 +431,8 @@ void UciHandler::cmd_go(std::string_view line)
 		             (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
 
 		// The split, as an 'info string' so GUIs and match runners ignore it: without it a
-		// change that relocates work between the trees looks like one that simply got slower
-		// (#312). The two must sum to 'nodes' above -- Run-Bench.ps1 refuses a run if they
+		// change that relocates work between the trees looks like one that simply got slower.
+		// The two must sum to 'nodes' above -- Run-Bench.ps1 refuses a run if they
 		// do not. 'main' not 'pv' because pvs() searches PV and non-PV nodes alike.
 		writer->send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
 		             std::to_string(result.qnodes_searched));

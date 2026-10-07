@@ -218,13 +218,13 @@ namespace {
 	}
 
 	// Batch-scores a file of FENs (one per line) and prints "<fen>\t<score>" to
-	// stdout, one line per input FEN — machine-parseable for #117's tuner and
-	// for #127's before/after score-identity check.
+	// stdout, one line per input FEN — machine-parseable for a tuner and
+	// for a before/after score-identity check.
 	//
 	// The printed score is the RAW value Evaluator::Evaluate() returns:
 	// side-to-move-relative, no sign transformation. This preserves a single
 	// source of truth (the search calls the same Evaluate()), and it is exactly
-	// the value #127's byte-identity check needs to diff. This Evaluator is its
+	// the value a byte-identity check needs to diff. This Evaluator is its
 	// own instance and nothing calls SetDrawScores() on it, so a drawn position
 	// prints GameValues::Draw here even where a contempt search would tint it.
 	// A consumer that wants a White-relative score already has the side-to-move
@@ -274,7 +274,7 @@ namespace {
 			Board board;
 			if (!board.SetupFromFEN(line)) {
 				// ClassifyLine checks syntax only; this is where an illegal position (waiting side in
-				// check, issue #45) is caught, and what keeps one out of a tuning corpus.
+				// check) is caught, and what keeps one out of a tuning corpus.
 				std::cerr << "Warning: line " << line_no << ": parses but will not load"
 				          << " (illegal position?), skipped: '" << line << "'\n";
 				continue;

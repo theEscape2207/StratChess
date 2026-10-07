@@ -311,20 +311,20 @@ jobs:
 
   # Citations in skills, subagents, CLAUDE.md and AGENTS.md that no longer resolve.
   # Pure PowerShell over the checkout, so it costs seconds.
-  agent-docs:
+  citations:
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
-      - name: Agent docs
+      - name: Citations
         shell: pwsh
         run: |
-          pwsh -NoProfile -File Scripts/Test-AgentDocs.ps1
+          pwsh -NoProfile -File Scripts/Test-Citations.ps1
           exit $LASTEXITCODE
 
   nightly-result:
-    needs: [deep-perft, extended-tests, sanitize-extended, tactical-stability, lint-tree, lint-deep-linux, lint-deep-windows, agent-docs]
+    needs: [deep-perft, extended-tests, sanitize-extended, tactical-stability, lint-tree, lint-deep-linux, lint-deep-windows, citations]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -353,5 +353,5 @@ jobs:
           check "whole-tree lint"   "${{ needs.lint-tree.result }}"
           check "deep lint Linux"   "${{ needs.lint-deep-linux.result }}"
           check "deep lint Windows" "${{ needs.lint-deep-windows.result }}"
-          check "agent docs"        "${{ needs.agent-docs.result }}"
+          check "citations"         "${{ needs.citations.result }}"
           exit $fail

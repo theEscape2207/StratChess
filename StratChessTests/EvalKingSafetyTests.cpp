@@ -1,6 +1,6 @@
 #include "EvalTestFixture.h"
 
-// ── King safety: shelter, storm and king-file openness (issue #97) ────────────
+// ── King safety: shelter, storm and king-file openness ────────────────────────
 //
 // All three contributions are middlegame-only, so every position here keeps a
 // queen on each side. A bare-king position sits at phase 0, where each of them
@@ -221,7 +221,7 @@ TEST_CASE("Eval - eval_king_files: open is worse than half-open, which is worse 
 	CHECK(closed == 0);
 	// The isolation rests on Black's g7 pawn scoring no storm: it IS inside
 	// White's scan and does index the storm table, at a row that is zero today.
-	// Asserted so a #117 retune breaks this loudly rather than quietly making
+	// Asserted so a retune breaks this loudly rather than quietly making
 	// the comparison below measure two terms at once.
 	CHECK(EvaluatorTestFixture::KingStorm(Board(FEN_KING_FILE_HALF_OPEN), WHITE) == 0);
 	CHECK(halfOpen < closed);
@@ -263,7 +263,7 @@ TEST_CASE("Eval - king safety: fades to nothing as the pieces come off", "[eval]
 {
 	// Same shattered White kingside; the second position has no pieces left to
 	// exploit it. At phase 0 every king-safety contribution blends to exactly 0,
-	// which is the property that made tapering (#99) a hard prerequisite.
+	// which is the property that made tapering a hard prerequisite.
 	Board middlegame(FEN_KING_SHIELD_ABSENT);
 	Board endgame("6k1/5ppp/8/8/8/8/1PPP4/6K1 w - - 0 1");
 
@@ -435,7 +435,7 @@ TEST_CASE("Eval - king danger: the curve saturates at the cap and never above it
 TEST_CASE("Eval - eval_king_attack: two attackers cost more than one", "[eval]")
 {
 	// The inequality, not the values: what the term exists for is that pressure
-	// is worth more than the sum of its parts, and the tuned numbers are #117's.
+	// is worth more than the sum of its parts, and the numbers are left to tuning.
 	Board one(FEN_KING_ATTACK_ONE);
 	Board two(FEN_KING_ATTACK_TWO);
 
@@ -487,7 +487,7 @@ TEST_CASE("Eval - eval_king_attack: who attacks matters, not just how much is at
 	// weighted-attacker term outright would leave them all passing: here the
 	// coverage is held equal and only the attacker's type varies.
 	//
-	// Ordering, not values -- the weights themselves are #117's to tune. A
+	// Ordering, not values -- the weights themselves are left to tuning. A
 	// knight and a bishop are deliberately equal, which is a claim about the
 	// table and not an accident of these positions.
 	struct Bucket {

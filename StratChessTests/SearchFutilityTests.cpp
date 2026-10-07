@@ -1,4 +1,4 @@
-// SearchFutilityTests.cpp — reverse futility pruning (#87).
+// SearchFutilityTests.cpp — reverse futility pruning.
 //
 // Two groups. The eligibility tests move one guard at a time off a baseline that is known to
 // pass, so a failure names the guard that broke; removing any single guard from
@@ -17,7 +17,7 @@ namespace {
 	constexpr const char* kBaselineFen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
 	// King and pawn against king: the side to move has no non-pawn piece, which is the endgame
-	// class the material floor exists for (#66).
+	// class the material floor exists for.
 	constexpr const char* kZugzwangFen = "8/8/8/4k3/8/4K3/4P3/8 w - - 0 1";
 
 	// White a queen and a bishop up against a bare king, so the static evaluation clears any

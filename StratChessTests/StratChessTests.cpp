@@ -22,7 +22,7 @@ namespace {
 	// console stays clean. Never discarded blind, though: FlushToStderr() exists for
 	// exactly the case a bare mute would break -- a failing test's diagnostics (what a
 	// rejected FEN was rejected for, an EMERGENCY move's cause) are otherwise stranded
-	// in logs/multisink.txt, which CI never uploads (PR #290 review).
+	// in logs/multisink.txt, which CI never uploads.
 	class BufferingSink : public spdlog::sinks::base_sink<std::mutex> {
 	  public:
 		void Clear() { lines_.clear(); }

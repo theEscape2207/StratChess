@@ -109,7 +109,7 @@ ScorePair Evaluator::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 			// LEVEL with this pawn, which clause (a) has already ruled out. It is
 			// kept because it is half of the stated definition and would start
 			// mattering the moment clause (a) were relaxed to "strictly behind" --
-			// but #117 should not try to tune a condition that never fires today.
+			// but a tuner should not try to fit a condition that never fires today.
 			const BITBOARD stopSquare = stop_square();
 			if ((ctx.pawn_attacks[enemy] & stopSquare) && !(ctx.pawn_attacks[color] & stopSquare))
 				score -= BACKWARDS_PAWN_PENALTY;
@@ -160,8 +160,8 @@ ScorePair Evaluator::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 		// Rook on the 7th rank: 0 at the mg endpoint and ROOK_ON_7TH_BONUS at eg.
 		// Whether a 7th-rank rook really deserves to be endgame-only is dubious
 		// chess — it is often strongest in the middlegame against pawns still on
-		// their starting squares — but re-weighting it is a tuning decision for
-		// #117, deliberately not made here.
+		// their starting squares — but re-weighting it is a tuning decision,
+		// deliberately not made here.
 		if (rank == seventhRank)
 			seventhRankEg += ROOK_ON_7TH_BONUS;
 
@@ -259,7 +259,7 @@ ScorePair Evaluator::eval_outposts(const EvalContext& ctx, eColor color) noexcep
 // that depended on it would make Evaluate() a function of how a position was
 // reached rather than of the position -- two paths to one position would then
 // disagree about its score while sharing a transposition-table entry, and
-// #117's FEN corpus would score every position as never-castled.
+// a tuning corpus of FENs would score every position as never-castled.
 //
 // While a right remains the side has decided nothing, so the term is silent.
 // Once both rights are gone, the king is either tucked away (bonus) or was
@@ -355,7 +355,7 @@ ScorePair Evaluator::eval_pst(const EvalContext& ctx, eColor color) noexcept
 	// disincentive it was written to remove. Letting mop-up own king placement
 	// outright restores the standard formulation, and decouples
 	// MOPUP_CMD_WEIGHT from the endgame king PST slope — two numbers that
-	// otherwise express one concept and would fight each other under #117.
+	// otherwise express one concept and would fight each other under tuning.
 	int kingMg = 0;
 	int kingEg = 0;
 	const eSquare kingSq = ctx.king_sq[color];
@@ -523,7 +523,7 @@ KingPawnCover Evaluator::eval_king_pawn_cover(const EvalContext& ctx, eColor col
 // danger table: non-linear by construction, which is the property the term
 // exists for -- two attackers cost four times one, not twice -- monotone after
 // the clamp, and a handful of weights instead of a hundred table entries.
-// Fitting a table's extra shape needs data this project does not yet have; #117
+// Fitting a table's extra shape needs data this project does not yet have; tuning
 // can replace the formula with one if it ever does.
 //
 // Two inputs, deliberately measuring different things: WHICH enemy pieces bear

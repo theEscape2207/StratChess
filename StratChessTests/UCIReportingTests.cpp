@@ -21,7 +21,7 @@
 #include <vector>
 
 // ---------------------------------------------------------------------------
-// cmd_eval — static evaluation introspection (issue #129 phase 1)
+// cmd_eval — static evaluation introspection
 // ---------------------------------------------------------------------------
 
 // Parses the integer centipawn value out of a "<label><N> cp" line, e.g.
@@ -61,8 +61,8 @@ TEST_CASE("cmd_eval: before position matches the starting position evaluator sco
 
 TEST_CASE("cmd_eval: printed score matches Evaluator::Evaluate() directly (honesty invariant)", "[uci]")
 {
-	// The property that makes this tool trustworthy for #117 (Texel tuning)
-	// and #127 (EvalContext restructure's byte-identity check): 'eval' must
+	// The property that makes this tool trustworthy for Texel tuning
+	// and for a byte-identity check across an eval refactor: 'eval' must
 	// never compute its own parallel score, only report the same Evaluate()
 	// the search calls.
 	const std::string fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"; // Kiwipete
@@ -126,12 +126,12 @@ TEST_CASE("cmd_eval: white-pov line matches the stated sign convention", "[uci]"
 }
 
 // ---------------------------------------------------------------------------
-// cmd_eval — per-term breakdown (issue #129 phase 2)
+// cmd_eval — per-term breakdown
 // ---------------------------------------------------------------------------
 //
 // These assert on the *printed* table rather than on EvalBreakdown directly.
 // A breakdown that is right internally and mis-rendered is still a debugging
-// tool that lies, and #117 (Texel tuning) will be reading the output, not the
+// tool that lies, and Texel tuning will be reading the output, not the
 // struct. The struct-level check that the rows really are the same terms
 // Evaluator::Evaluate() sums lives in EvalTermTests.cpp ([eval]).
 
@@ -234,7 +234,7 @@ TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the
 	             "8/8/8/3k4/8/8/3N4/3K4 w - - 0 1", // K+N vs K — scaled to a draw
 	             // A pawn-supported White knight on d5 that no Black pawn can
 	             // challenge: the outposts row is zero in every case above, which
-	             // would leave the sum invariant unable to see it (issue #112).
+	             // would leave the sum invariant unable to see it.
 	             "4k3/p6p/8/3N4/2P5/8/8/4K3 w - - 0 1");
 	CAPTURE(fen);
 
@@ -268,7 +268,7 @@ TEST_CASE("cmd_eval: breakdown reports the game phase the evaluator computed", "
 	// Phase is printed because it is not derivable from the rows, yet it sets
 	// where between the mg and eg endpoints every tapered term landed — so a
 	// reader debugging the pst row needs it to interpret that row at all
-	// (issue #99, replacing the old middlegame/endgame stage name).
+	// (in place of a middlegame/endgame stage name).
 	UciHandlerTestFixture fix;
 
 	SECTION("full starting material is the maximum phase")
@@ -314,7 +314,7 @@ TEST_CASE("cmd_eval: a term that is active for exactly one side shows it in the 
 // cmd_perft — "perft <depth>" / "go perft <depth>"
 //
 // The divide lines are a wire format, not diagnostics: external harnesses parse
-// them with ^\s*([a-h][1-8][a-h][1-8][rnbqRNBQ]?)\s*[:\s]\s*(\d+)$ (#196), so
+// them with ^\s*([a-h][1-8][a-h][1-8][rnbqRNBQ]?)\s*[:\s]\s*(\d+)$, so
 // these tests assert against that regex rather than against a substring.
 // kDivideLine/parse_divide/divide_total live in UCITestFixture.h, since
 // UCITests.cpp uses divide_total as a board-state oracle too.
@@ -432,7 +432,7 @@ TEST_CASE("run(): a bare 'go' still searches after the perft branch was added", 
 }
 
 // ---------------------------------------------------------------------------
-// cmd_go — per-iteration 'info' reporting (issue #237 stage 0)
+// cmd_go — per-iteration 'info' reporting
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -906,7 +906,7 @@ TEST_CASE("cmd_go: back-to-back searches emit only their own per-call iterations
 }
 
 // ---------------------------------------------------------------------------
-// Measurement contract over the wire (issue #312)
+// Measurement contract over the wire
 // ---------------------------------------------------------------------------
 // Between the counters (covered in SearchTests) and the bench parser sits the
 // protocol text itself, which nothing else asserts on.
@@ -943,7 +943,7 @@ namespace {
 
 TEST_CASE("cmd_uci: the handshake advertises a measurement contract version", "[uci][nodes]")
 {
-	// Run-Bench.ps1 reads absence as "pre-#312 build", so losing this line would not
+	// Run-Bench.ps1 reads absence as "an older build", so losing this line would not
 	// error out — it would silently relabel every future run as an old one.
 	UciHandlerTestFixture fix;
 	const std::string output = fix.capture([&] { fix.uci(); });

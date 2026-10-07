@@ -77,7 +77,7 @@ TEST_CASE("compute_budget: hard is always >= soft invariant", "[time_mgr]")
 
 TEST_CASE("compute_budget: hard never exceeds remaining", "[time_mgr]")
 {
-	// The assertion that would have caught issue #204 without playing a game:
+	// The assertion that catches a clock forfeit without playing a game:
 	// a budget larger than the clock it was drawn from is a forfeit waiting to
 	// happen, whatever the increment or horizon says.
 	for (int r : {0, 1, 10, 30, 49, 50, 51, 100, 150, 200, 250, 500, 1'000, 10'000, 100'000}) {
@@ -97,8 +97,8 @@ TEST_CASE("compute_budget: hard never exceeds remaining", "[time_mgr]")
 
 TEST_CASE("compute_budget: sub-100 ms increments do not drain the clock", "[time_mgr]")
 {
-	// Issue #204's failure mode: at an increment below the old 100 ms floor every
-	// move cost more than it repaid, so the clock walked down to a forfeit.
+	// The forfeit this guards against: at an increment below a 100 ms floor every
+	// move costs more than it repays, so the clock walked down to a forfeit.
 	// Spending the *hard* limit every move is the worst case; the search normally
 	// stops at soft. The clock must instead settle on a positive fixed point.
 	// The clock settles where hard == increment, i.e. (r - 50) / 2 == inc. Integer

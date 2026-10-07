@@ -22,7 +22,7 @@ TEST_CASE("parse_int: rejects anything that is not exactly an integer", "[argpar
 	for (std::string_view bad : {
 	         "", // no argument supplied
 	         " ",
-	         "abc", // issue #178's `perft run abc`
+	         "abc", // `perft run abc`
 	         "1 2",
 	         "1.5",
 	         "--3",

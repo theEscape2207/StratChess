@@ -152,7 +152,7 @@ TEST_CASE("Search - should_try_null_move: zugzwang (no non-pawn material) return
 
 TEST_CASE("Search - should_try_null_move: single non-pawn piece returns false (issue #66)", "[search]")
 {
-	// QFORK-001 (issue #66): KQ vs KR is won via domination/zugzwang — Black
+	// QFORK-001: KQ vs KR is won via domination/zugzwang — Black
 	// loses only because he must move. Letting the side with a lone rook
 	// "pass" makes the null search report that Black holds, hiding the win.
 	// The zugzwang guard must refuse NMP whenever the side to move has fewer

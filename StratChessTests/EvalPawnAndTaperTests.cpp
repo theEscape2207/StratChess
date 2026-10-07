@@ -1,5 +1,5 @@
 #include "EvalTestFixture.h"
-// ── Tapering behaviour (issue #99) ───────────────────────────────────────────
+// ── Tapering behaviour ───────────────────────────────────────────────────────
 
 TEST_CASE("Eval - BlendPhase is exact at both endpoints", "[eval]")
 {
@@ -49,7 +49,7 @@ TEST_CASE("Eval - king centralization is worth more as the phase drops", "[eval]
 	const EvalBreakdown low = eval.Breakdown(ending);
 
 	// Subtract White's queen PST explicitly rather than relying on it being 0.
-	// It happens to be 0 on d1 today, but #117 is a PST-tuning issue: a queen
+	// It happens to be 0 on d1 today, but PST tuning may change it: a queen
 	// table change would otherwise silently turn this into a test of the queen.
 	const int highKingOnly = high.at(EvalTerm::Pst, WHITE) - EvalProbe::GetPositionalScore(d1, WHITE_QUEEN);
 	const int lowKingOnly = low.at(EvalTerm::Pst, WHITE);
@@ -61,7 +61,7 @@ TEST_CASE("Eval - king centralization is worth more as the phase drops", "[eval]
 
 TEST_CASE("Eval - crossing the old stage threshold no longer produces a cliff", "[eval]")
 {
-	// The property this change exists to create. Before #99, a capture that took
+	// The property this change exists to create. Without tapering, a capture that took
 	// min(material) across 11500 flipped the king from the middlegame table to
 	// the endgame one, moving a centralized king's score by up to ~100 cp in a
 	// single ply.
@@ -111,9 +111,7 @@ TEST_CASE("Eval - mop-up: walking the winning king toward the loser must raise t
 	// per step of approach, while that same king's endgame PST charges it 10 cp
 	// per step of centralization surrendered to walk toward the corner. The two
 	// terms are pulling in opposite directions and the PST wins, so mop-up only
-	// ever *softened* a disincentive to approach — it never reversed it. That is
-	// the most likely reason #70 measured ≈0 Elo.
-	//
+	// ever *softened* a disincentive to approach — it never reversed it. 	//
 	// Pawnless K+Q vs K+R: a 400 cp lead (exactly MOPUP_MATERIAL_THRESHOLD), so
 	// mop-up is gated on. The Black king is cornered on a8; White's king moves
 	// from d4 to c5, strictly closer to it (Chebyshev 4 -> 3) and no other piece
@@ -157,7 +155,7 @@ TEST_CASE("Eval - mop-up: walking the winning king toward the loser must raise t
 }
 
 // ---------------------------------------------------------------------------
-// Passed and backwards pawns (issue #116)
+// Passed and backwards pawns
 //
 // The span masks are tested for CONTENT first, before anything that consumes
 // them: a wrong mask produces a term that is subtly wrong in every position at
@@ -400,7 +398,7 @@ TEST_CASE("Eval - does not score the rear pawn of a doubled pair as passed", "[e
 
 TEST_CASE("Eval - mop-up: gated on the defender's force, not its phase", "[eval]")
 {
-	// Q+R vs Q is the case issue #118 item 5 named: a lone queen is phase 4 and
+	// Q+R vs Q is the case that matters: a lone queen is phase 4 and
 	// passed the retired `loser phase <= 6` gate, so the winner was paid for
 	// chasing a king its opponent could always check away from.
 	Board defendingQueen(FEN_MOPUP_DEFENDER_HAS_QUEEN);

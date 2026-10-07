@@ -70,7 +70,7 @@ std::optional<std::string> FENParser::ParseFENImpl(const std::string& fen, FENGa
 	// number while omitting the halfmove clock.
 	//
 	// Trailing content after field 6 is rejected. Full EPD (operations such as `c9 "1-0";` after
-	// the four core fields) is deliberately out of scope: that belongs in #117's corpus loader,
+	// the four core fields) is deliberately out of scope: that belongs in a tuning corpus loader,
 	// not in the FEN grammar.
 	//
 	// En-passant accepts any rank here; only ValidatePositionAgainstFENMetadata knows enough
@@ -137,7 +137,7 @@ std::optional<std::string> FENParser::ParseFENImpl(const std::string& fen, FENGa
 	// into Board::halfmove_clock(), so a 4-field FEN is treated as having made no progress toward
 	// the 50-move draw. That understates progress for a position lifted out of a real game, but
 	// 0 is the conventional default (python-chess does the same) and it is bookkeeping only --
-	// unlike a missing side-to-move field, it cannot change whose move it is (cf. issue #46).
+	// unlike a missing side-to-move field, it cannot change whose move it is.
 	if (parts.size() >= 5) {
 		try {
 			const int half = std::stoi(parts[4]);

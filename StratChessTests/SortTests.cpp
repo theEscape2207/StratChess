@@ -234,7 +234,7 @@ TEST_CASE("Sort - two SEE-winning captures order by MVV-LVA within the tier", "[
 
 TEST_CASE("Sort - a promotion onto a defended square is still tactical", "[sort]")
 {
-	// The D11 constraint #398 and PR 3's pruning both rest on, pinned in both directions.
+	// The capture-tier constraint SEE-based pruning rests on, pinned in both directions.
 	//
 	// Non-capturing: a7-a8=Q with Rb8 covering a8 is see_ge(.., 0) == false — SEE sees 800 - 900.
 	// Only the !IsCapture() short-circuit keeps it out of the losing tier, so the SEE verdict is

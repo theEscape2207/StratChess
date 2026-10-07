@@ -35,8 +35,8 @@ static constexpr TacticalCase kFastCases[] = {
     // d8/f8 are still on it, and Ra8 cannot interpose past its own king), then
     // Rxa8. The check must come from h8, not e8: with the king on b8/c8 its own
     // escape squares defend a8, and with the king ON e8 a rook on e1 is already
-    // giving check — which made this position illegal, and its "expected" move
-    // a king capture, until issue #146.
+    // giving check — which would make the position illegal and its "expected"
+    // move a king capture.
     {"skewer: Rh8+ wins Ra8", "r3k3/8/8/8/8/8/8/6KR w - - 0 1", h1, h8, 4},
     {"skewer: Qc8+ wins Rg8", "4k1r1/5p2/8/8/2Q5/8/8/4K3 w - - 0 1", c4, c8, 4},
 };

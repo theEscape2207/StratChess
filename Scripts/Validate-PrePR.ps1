@@ -13,7 +13,8 @@
     script that carries one -- or of the script that covers it, for a dot-sourced
     library or a fixture that cannot carry one.
     On every tier, including the Docs and Tooling fast paths, it also checks that every
-    Build-tier script carries a -SelfTest at all, and warns about any plan left in the
+    Build-tier script carries a -SelfTest at all, runs Test-Citations.ps1 (doc links and
+    citations resolve, no code comment cites an issue), and warns about any plan left in the
     transient top level of .claude/plans/.
     clang-format alone short-circuits (issue #478): its fix is already known and
     cannot be changed by anything later, so a failure there exits immediately,
@@ -511,6 +512,17 @@ if ($coverageViolations.Count -gt 0) {
     exit 1
 }
 Write-Host '  PASS  every Build-tier script carries a -SelfTest' -ForegroundColor Green
+
+# Whole-tree, ahead of the fast paths: deleting or renaming a doc breaks links in files the
+# diff never touched, and a Docs-tier diff is exactly the one that does it. About a second.
+Write-Host "`n==> Citations" -ForegroundColor Cyan
+& pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Test-Citations.ps1') | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ''
+    Write-Host 'Pre-PR validation FAILED (citations).' -ForegroundColor Red
+    Write-Host '      Repoint or remove each link above; reword each comment to describe the code as it stands.' -ForegroundColor Yellow
+    exit 1
+}
 
 # Whole-tree and warn-only, ahead of the fast paths: a plan-only diff is Docs tier.
 Write-Host "`n==> Top-level design documents" -ForegroundColor Cyan
