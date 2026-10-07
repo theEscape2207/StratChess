@@ -1257,9 +1257,9 @@ int AIPerplex::adjust_score_for_game_state(ThreadData& td, bool move_found, int 
 // instead, so a king evasion rises on measured merit rather than by fiat.
 //
 // ScoreMoves reports an order rather than permuting, so the scratch arrays that turn it into one
-// live here and not in quiescence(). That is deliberate: in check the node ignores qsearch_budget
-// and is bounded only by MAX_PLY, so anything held in its frame is multiplied by up to 256 nested
-// calls. This frame pops before quiescence() recurses.
+// live here. Keeping this helper out of line releases that scratch before quiescence() recurses;
+// the source does not enforce that compiler decision. In-check nodes ignore qsearch_budget,
+// so retained scratch could accumulate along a deep line until the MAX_PLY backstop.
 //
 // The hash move is deliberately EmptyMove(). Quiescence must not mine best_move from the table in
 // either phase: store() inherits a same-key entry's move across a phase change, so an entry can hold

@@ -322,6 +322,9 @@ function(strat_configure_target tgt)
        OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         target_compile_options(${tgt} PRIVATE /Brepro)
         target_link_options(${tgt} PRIVATE /Brepro)
+        # Recursive search needs headroom for retained frames and compiler-dependent scratch.
+        # Reserve 8 MiB for executable and worker stacks; leave initial commitment unchanged.
+        target_link_options(${tgt} PRIVATE /STACK:8388608)
     endif()
 
     if(STRAT_STDLIB_DEBUG)
