@@ -16,7 +16,7 @@
     Build-tier script carries a -SelfTest at all, runs Test-Citations.ps1 (doc links and
     citations resolve, no code comment cites an issue), and warns about any plan left in the
     transient top level of .claude/plans/.
-    clang-format alone short-circuits (issue #478): its fix is already known and
+    clang-format alone short-circuits: its fix is already known and
     cannot be changed by anything later, so a failure there exits immediately,
     before blame-ignore, the build, or any other gate runs. Every other check keeps
     aggregating so all remaining failures are visible in one pass.
@@ -92,7 +92,7 @@ function Resolve-SelfTestFile {
 # Pure: which cheap gates short-circuit rather than join $checkResults. Reserved
 # for a check that is cheap, deterministic, auto-fixable, and whose remedy cannot
 # be changed by any later result -- clang-format is the only one that currently
-# qualifies (issue #478). Blame-ignore and the text guards stay aggregated: each can
+# qualifies. Blame-ignore and the text guards stay aggregated: each can
 # still call for judgement (-AllowUnlistedReformat, which workflow to fix) that a
 # later result could add to.
 function Test-IsFastFailCheck {
@@ -514,7 +514,7 @@ if ($coverageViolations.Count -gt 0) {
 Write-Host '  PASS  every Build-tier script carries a -SelfTest' -ForegroundColor Green
 
 # Whole-tree, ahead of the fast paths: deleting or renaming a doc breaks links in files the
-# diff never touched, and a Docs-tier diff is exactly the one that does it. About a second.
+# diff never touched, and a Docs-tier diff is exactly the one that does it. No build, so it is cheap.
 Write-Host "`n==> Citations" -ForegroundColor Cyan
 & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Test-Citations.ps1') | Out-Host
 if ($LASTEXITCODE -ne 0) {
@@ -579,7 +579,7 @@ $checkResults['Build wrapper self-test'] = if ($buildSelfTestFailed) { 'FAIL' } 
 # to be reachable before pushing -- otherwise this is the only gate in the repo that
 # can only be discovered after a push. It runs first because it is by far the
 # cheapest: seconds against several minutes for the build.
-# Short-circuits on failure (issue #478): the remedy is already known and fixed --
+# Short-circuits on failure: the remedy is already known and fixed --
 # `Run-Lint.ps1 -Check Format -Fix` -- and no later gate can change that, so this is
 # the one check in the whole run that exits immediately instead of joining
 # $checkResults.
