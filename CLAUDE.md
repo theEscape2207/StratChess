@@ -9,6 +9,7 @@ This file holds the rules that change what you do. Detail is pointed at, not dup
 |---|---|
 | module ownership, state lifetimes, search lifecycle | `Docs/Architecture.md` |
 | non-obvious API contracts before an engine edit | `Docs/EngineContracts.md` |
+| coding standards, applied at review | `Docs/CodingStandards.md` |
 | validation tiers, standing decisions, worktree gotchas | `Docs/Workflow.md` |
 | what each CI workflow runs, and when | `Docs/CI.md` |
 | coverage map + how to write a test | `Docs/TestDesign.md` |
@@ -119,18 +120,10 @@ configuration. One tripwire is repeated here because violating it fails *silentl
   child that never finished. Node counters and the quiescence stand-pat cutoff store are the
   documented exemptions; a write added above that guard must justify itself the same way.
 
-## Development Guidelines
+## Dependencies
 
-- C++23; favour `constexpr`, RAII, move semantics, strong types, and the standard library over
-  hand-rolled equivalents.
-- Clarity over micro-optimisation; a less readable fast path needs a measured gain.
-- Current external dependencies are `spdlog`, `nlohmann/json` and `Catch2`; bumping one:
-  `Docs/Dependencies.md`. **No new external dependency without explicit approval from the project
-  owner** — ask, with a rationale.
-- English, unambiguous naming and comments. **Comments describe the code as it stands** — no task or
-  PR references, no point-in-time measurements, no describing what the code used to be. Keep them to
-  1–2 lines unless they record a key fact or tripwire; history goes in the PR body or
-  `Docs/Changelog.md`.
+`spdlog`, `nlohmann/json` and `Catch2`; bumping one: `Docs/Dependencies.md`. **A new external
+dependency needs explicit approval from the project owner** — ask, with a rationale.
 
 ## Testing
 

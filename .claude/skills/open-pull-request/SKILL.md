@@ -20,9 +20,9 @@ size. Load skill `code-review` (Claude: `mattpocock-skills:code-review`, not the
   branch added, including one deleted after Harvest:
   `git log --diff-filter=A --name-only origin/main..HEAD -- .claude/plans`, then `git show
   <sha>:<path>`. With neither, tell it "no spec available".
-- **Standards sources:** `Docs/agents/simplify.md`, CLAUDE.md → Development Guidelines, and
-  `Docs/EngineContracts.md` for a diff under `StratEngine/`.
-- **Append to the Standards brief:** "Also apply question 4 of `Docs/agents/simplify.md`. Report it
+- **Standards sources:** `Docs/CodingStandards.md`, and `Docs/EngineContracts.md` for a diff
+  under `StratEngine/`.
+- **Append to the Standards brief:** "Also apply question 4 of `Docs/CodingStandards.md`. Report it
   under a separate `Nearby debt` heading with `file:line`; these items are not findings. List each behaviour the diff removes (a recovery path,
   a guard, a message) and whether anything still needs it."
 

@@ -1,13 +1,19 @@
-# Simplify lens
+# Coding standards
 
-A standards source for code review, read beside CLAUDE.md → Development Guidelines, which wins where
-the two disagree. It asks what the change could do without. Every item it raises is a judgement
-call.
+The standards source for code review. Every item is a judgement call; the mechanical rules are
+checks already (clang-format, clang-tidy, warnings as errors, `Test-Citations.ps1`).
+
+## Conventions
+
+- C++23; favour `constexpr`, RAII, move semantics, strong types, and the standard library over
+  hand-rolled equivalents.
+- Clarity over micro-optimisation; a less readable fast path needs a measured gain.
 
 ## Per hunk
 
-1. **Comments.** A comment that restates the code, refers to a task, a PR or an earlier version, or
-   runs past two lines without recording a key fact or tripwire.
+1. **Comments.** A comment describes the code as it stands. Flag one that restates the code, refers
+   to a task, a PR, a point-in-time measurement or an earlier version, or runs past two lines
+   without recording a key fact or tripwire. History belongs in the PR body or `Docs/Changelog.md`.
 2. **Over-detail.** Anything the change does not need:
    - an option or parameter only ever given one value;
    - an abstraction with a single caller;

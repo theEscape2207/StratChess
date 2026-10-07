@@ -377,8 +377,7 @@ quiescence(alpha, beta, budget):
   checks plus the absolute ply backstop bound the recursion instead
 - **TT caching**: Stores quiescence results separately from main search, keyed on remaining budget
 
-Delta and SEE-based pruning are implemented with guards in `AIPerplex::quiescence`;
-see [search contracts](EngineContracts.md#search-internals) for their constraints.
+Delta and SEE-based pruning are implemented with guards in `AIPerplex::quiescence`.
 
 ---
 
