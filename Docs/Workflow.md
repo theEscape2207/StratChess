@@ -469,7 +469,7 @@ solves this internally for tag-resolved references; by hand, for `origin/main` o
 ```powershell
 git worktree add --detach <main-repo>\.claude\worktrees\bench-ref origin/main
 pwsh -ExecutionPolicy Bypass -File <...>\bench-ref\build.ps1 main
-Copy-Item <...>\bench-ref\build\windows-clang-cl\StratChessEvolved.exe EngineTesting\bench-main-<sha>.exe
+Copy-Item <...>\bench-ref\build\windows-clang-cl\StratChessEvolved.exe <repos>\StratChessSupport\EngineTesting\bench-main-<sha>.exe
 git worktree remove --force <...>\bench-ref
 ```
 

@@ -63,7 +63,7 @@ if (-not $BranchName) { $BranchName = "worktree-$Name" }
 
 # Resolve the MAIN checkout, not whatever worktree we happen to be in. --git-common-dir
 # points at the shared .git directory (the main checkout's) from any worktree; its parent
-# is the main working tree, which is what EngineTesting\ is resolved against.
+# is the main working tree, which is what StratChessSupport\ is resolved against.
 $commonDir = & git rev-parse --path-format=absolute --git-common-dir 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "FAIL: not inside a git repository." -ForegroundColor Red

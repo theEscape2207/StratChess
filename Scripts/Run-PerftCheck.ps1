@@ -61,7 +61,7 @@ param(
     # they are where a move-generation gap would surface. A failure among them is
     # not automatically a defect -- production engines disagree on them too.
     [switch]$SkipEdgeCases,
-    # Report path. Default: a timestamped file in EngineTesting\, never in the repo.
+    # Report path. Default: a timestamped file in StratChessSupport\EngineTesting\, never in the repo.
     [string]$Report = '',
     # Per-case timeout. A case that hits it is a performance cliff, not a wrong
     # answer, and is counted separately.
@@ -70,7 +70,7 @@ param(
     # survey -- the rejected-FEN failures below would end the run immediately.
     [switch]$FailFast,
     # Classify an existing report and exit, running nothing. A run costs 25 minutes
-    # and re-reading one costs nothing, so a past report in EngineTesting\ can be
+    # and re-reading one costs nothing, so a past report in StratChessSupport\EngineTesting\ can be
     # re-examined without the engine or the tool being present.
     [string]$ClassifyReport = ''
 )
@@ -86,8 +86,8 @@ $GameDir  = Join-Path $RepoRoot 'StratChessEvolved'
 # .git is a file, and --git-common-dir always points at the main repository's
 # .git however deeply the worktree is nested.
 $mainRoot      = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir) -replace '[\\/]\.git[\\/]?$', ''
-$DepsRoot      = Split-Path $mainRoot -Parent
-$EngineTesting = Join-Path $DepsRoot 'StratChessSupport\EngineTesting'
+$ReposRoot     = Split-Path $mainRoot -Parent
+$EngineTesting = Join-Path $ReposRoot 'StratChessSupport\EngineTesting'
 
 # --- Run ---------------------------------------------------------------------
 # Sets $script:reportFile rather than returning it: a native command's stdout

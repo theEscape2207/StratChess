@@ -81,8 +81,8 @@ annotation, and that the score perspective is the one every formula assumes. `--
 other half — fixture games covering every annotation shape, plus a corrupt game that must be counted
 once, not as both parsed and skipped. Tier 1's full scan is about 6 seconds over 18 shards.
 
-Tier 2's oracle is a Stockfish binary in `StratChessSupport/EngineTesting/` beside `fastchess.exe`, outside the
-checkout: it is GPL-3, and keeping it out keeps the repo free of that obligation. `--engine` or
+Tier 2's oracle is a Stockfish binary in `StratChessSupport/EngineTesting/` beside `fastchess.exe`,
+outside the checkout: it is GPL-3, and keeping it out keeps the repo free of that obligation. `--engine` or
 `STOCKFISH_PATH` override the search. **Its `--self-test` is not optional** — a point-of-view slip
 inverts every loss it reports without failing anything else, so four of its checks exist only to
 catch that, and they need the binary to run.
