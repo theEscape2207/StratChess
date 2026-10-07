@@ -95,10 +95,7 @@ cleaning up after a merge (`New-PullRequest.ps1`, `Remove-Worktree.ps1`,
 
 **Speed serves strength; the goal is measured positive Elo, not nps.** Anything adding per-node work
 — evaluation terms as much as compiler flags — gets a bench pass, and a measured slowdown needs a
-stated benefit that outweighs it. Compare **nps**, never node counts at fixed depth: node count is a
-property of the search, not the machine code, which is what makes it the right *equivalence* check
-(two builds of identical source must visit identical nodes at `Threads=1`). Choosing an instrument
-and reading its error bar: skill `measure-strength`.
+stated benefit that outweighs it: skill `measure-strength`.
 
 **CI is a gate** — `build-and-test-result` is required on `main` and a red run blocks the merge.
 Linux Debug + sanitizers is the primary correctness gate; Windows CI covers the shipping toolchain.
@@ -125,14 +122,8 @@ configuration. One tripwire is repeated here because violating it fails *silentl
 `spdlog`, `nlohmann/json` and `Catch2`; bumping one: `Docs/Dependencies.md`. **A new external
 dependency needs explicit approval from the project owner** — ask, with a rationale.
 
-## Testing
-
-Execute validation steps autonomously; flag any step needing user assistance (interactive GUI, manual
-input) rather than skipping it silently.
-
 ## Commit & PR Conventions
 
-Opening or updating a PR, reviewer dispatch and post-merge cleanup: skill `open-pull-request`.
 PRs stay script-mediated — `New-PullRequest.ps1`, never `gh pr create` or a bare push.
 
 - Every task forks fresh from `origin/main`; PRs target `main`. Two ways to run one, both enforcing
@@ -145,11 +136,11 @@ PRs stay script-mediated — `New-PullRequest.ps1`, never `gh pr create` or a ba
   so earlier slices are paid for on every call.
 - Local `master` is a personal scratch branch — safe to commit to, safe to let drift. Never fork a
   worktree from it. `origin/master` is retired; nothing should reference it.
-- Keep PRs small and logically scoped. Keep commit messages short — detail goes in the PR body or
-  chat. Commit each fix as it lands rather than reverse-splitting a combined diff at the end.
+- Keep commit messages short — detail goes in the PR body or chat. Commit each fix as it lands
+  rather than reverse-splitting a combined diff at the end.
 - Stage named files, never `git add -A` — it sweeps tool-downloaded trees into the commit.
-- Commit only what was explicitly asked for. If a branch carries unrelated commits, cherry-pick the
-  relevant ones onto a fresh branch from `origin/main`.
+- If a branch carries unrelated commits, cherry-pick the relevant ones onto a fresh branch from
+  `origin/main`.
 
 ## Design Documents
 
@@ -171,8 +162,6 @@ keeping its code is a new change.
 - **Always give an explicit worktree-relative binary path.** A `..` path pointing outside the
   worktree can be satisfied by the main repo's stale binary while producing wrong results, and
   "file not found" guards do not catch a stale one. Build from current sources first.
-- **Long background waits do not reliably resume a subagent's turn.** Check in every 15–20 minutes
-  rather than waiting for a notification.
 
 ## Shell Notes
 
