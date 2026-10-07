@@ -29,10 +29,9 @@ Live backlog is GitHub Issues (`theEscape2207/StratChess`) via `gh`, bodies alwa
 
 ## Build
 
-- **Only `x64` builds work** — the x86/Win32 configuration is not maintained for C++23.
-- **Warnings are errors everywhere** — `/W4 /WX` on MSVC and clang-cl, `-Wall -Wextra -Werror` on
-  GCC, in both Debug and Release. Approved suppressions: `[[maybe_unused]]` for params used only in
-  `assert()`; `static_cast<>` for intentional narrowing. Never `#pragma warning(disable)` in source.
+- **Warnings are errors everywhere**, in Debug and Release on every compiler. Approved
+  suppressions: `[[maybe_unused]]` for params used only in `assert()`; `static_cast<>` for
+  intentional narrowing. `#pragma warning(disable)` lives only around `StdAfx.h`'s STL includes.
 - `StratEngine/StdAfx.h` is the shared common-include header (no build precompiles it) — add
   frequently-used STL headers there, alphabetically inside the `#pragma warning push/pop` block, not
   in individual `.cpp` files.
@@ -80,9 +79,6 @@ target the repo of their own `$PSScriptRoot`.
 | `Validate-PreCommit.ps1` | Before every commit — the pre-commit hook runs it |
 | `Validate-PrePR.ps1` | Before a PR — scopes itself to the change tier |
 | `Compare-SearchEquivalence.ps1 -After <exe>` | The gate for a change claiming to preserve behaviour |
-| `Measure-UciLatency.ps1 -Command <cmd>` | Protocol-level round-trip cost of one UCI command |
-| `Run-PerftCheck.ps1` | Move generation vs a 142,953-position corpus (~25 min) |
-| `Test-ReleaseReproducibility.ps1` | Builds byte-compared — after a build-configuration or toolchain change |
 | `New-Worktree.ps1 -Name <task>` | Start a task needing its own directory |
 | `New-TaskBranch.ps1 -Name <task>` | Start a task **in the current worktree** |
 | `Get-Worktrees.ps1` | Session start, or before resuming an idle worktree |
@@ -103,42 +99,34 @@ property of the search, not the machine code, which is what makes it the right *
 (two builds of identical source must visit identical nodes at `Threads=1`). Choosing an instrument
 and reading its error bar: skill `measure-strength`.
 
-**CI is a gate** — `build-and-test-result` is required on `main` and a red run blocks the merge. A
-SKIPPED leg reports success on purpose, so Docs and Tooling PRs are not blocked by jobs that
-correctly never ran. **Linux Debug + sanitizers is the primary correctness gate; Windows CI covers
-the shipping toolchain.** Neither replaces the other — clang-cl silently drops flags Linux can never
-observe — so do not add a Windows Debug configuration to a gate. Details: `Docs/CI.md`.
+**CI is a gate** — `build-and-test-result` is required on `main` and a red run blocks the merge.
+Linux Debug + sanitizers is the primary correctness gate; Windows CI covers the shipping toolchain.
+Changing a workflow: `Docs/CI.md`.
 
 **Threat model**: not network-facing, no privilege boundary, no attacker. External-input work aims at
 robustness — a clear diagnostic and a clean exit — not security. Exploit mitigations need a reason
-beyond sounding prudent; CFG was declined on exactly that basis (#218). Full statement:
-`Docs/Workflow.md` → Threat model.
+beyond sounding prudent: `Docs/Workflow.md` → Threat model.
 
 ## Engine contracts
 
 `Docs/EngineContracts.md` carries the non-obvious API contracts, indexed by what you are editing —
-read the relevant section before touching moves, `Board`, the search service or search internals.
-Three tripwires are repeated here because violating them fails *silently*:
+read the relevant section before touching moves, the search service, search internals or
+configuration. One tripwire is repeated here because violating it fails *silently*:
 
-- **`Move` equality is exact** — it compares the raw 2 bytes, flags included. Moves differing only in
-  promotion piece, or quiet vs. capture on the same squares, compare unequal.
-- **`ThreadData&` is the first parameter of every search method.** Search runs on `td.board`, never
-  the game board, and writes nothing back to it.
 - **An aborted frame keeps no results.** Once a move's recursive search sequence is done — `pvs()`
   may run a reduced, a full-depth and a PV re-search first — the board is restored and `IsAborted()`
   checked, before any persistent write. So no TT store, PV row, killer or history write survives a
-  child that never finished. Node counters are the deliberate exception — they measure work done,
-  not results kept. A write added above that guard must justify itself.
+  child that never finished. Node counters and the quiescence stand-pat cutoff store are the
+  documented exemptions; a write added above that guard must justify itself the same way.
 
 ## Development Guidelines
 
-- C++23; favour `constexpr`, RAII, move semantics, strong types.
+- C++23; favour `constexpr`, RAII, move semantics, strong types, and the standard library over
+  hand-rolled equivalents.
+- Clarity over micro-optimisation; a less readable fast path needs a measured gain.
 - Current external dependencies are `spdlog`, `nlohmann/json` and `Catch2`; bumping one:
   `Docs/Dependencies.md`. **No new external dependency without explicit approval from the project
   owner** — ask, with a rationale.
-- All changes must be thread-safe, especially around the transposition table.
-- No regressions in search accuracy or Elo without explicit justification; keep behaviour
-  deterministic.
 - English, unambiguous naming and comments. **Comments describe the code as it stands** — no task or
   PR references, no point-in-time measurements, no describing what the code used to be. Keep them to
   1–2 lines unless they record a key fact or tripwire; history goes in the PR body or
@@ -146,7 +134,6 @@ Three tripwires are repeated here because violating them fails *silently*:
 
 ## Testing
 
-`Docs/TestDesign.md` is the coverage map and the guide to writing tests — check it before adding any.
 Execute validation steps autonomously; flag any step needing user assistance (interactive GUI, manual
 input) rather than skipping it silently.
 
@@ -196,9 +183,5 @@ keeping its code is a new change.
 
 ## Shell Notes
 
-- PS7 syntax inlined into the Git Bash tool fails silently. Write non-trivial PowerShell to a
-  `.ps1` file and run it with `pwsh -ExecutionPolicy Bypass -File`.
-- **Editing `.ps1` files**: multi-line `sed`/bash substitutions mangle backslashes and
-  line-continuation backticks — use a small Python script written to a temp file, with raw
-  strings (`r"..."`): in a plain string `\v` and `\b` become control characters. Validate without
-  executing: `[System.Management.Automation.Language.Parser]::ParseInput($c, [ref]$t, [ref]$errors)`.
+- Run PowerShell in a PowerShell shell or from a `.ps1` file; PS7 syntax inlined into the Git Bash
+  tool fails silently.
