@@ -822,7 +822,7 @@ kind of change.
 
 ## Future Enhancements
 
-The live backlog is GitHub Issues; `Docs/Roadmap.md` carries the larger themes.
+The live backlog is GitHub Issues.
 
 **Evaluation**:
 - The evaluation-improvement epic and its sub-issues
@@ -853,7 +853,6 @@ The live backlog is GitHub Issues; `Docs/Roadmap.md` carries the larger themes.
 - `Docs/CI.md` - What each CI workflow runs
 - `Docs/TestDesign.md` - Coverage map and guide to writing tests
 - `Docs/Changelog.md` - Version history
-- `Docs/Roadmap.md` - Future development themes
 - `Measurements/` - Strength measurement records, and the setup they were taken with
 
 ---

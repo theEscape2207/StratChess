@@ -104,7 +104,6 @@ default.
 | [Docs/TestDesign.md](Docs/TestDesign.md) | Test coverage map and how to write new tests |
 | [Docs/Changelog.md](Docs/Changelog.md) | What changed and when |
 | [Measurements/](Measurements/) | Every strength measurement taken, plus the setup and the recording convention |
-| [Docs/Roadmap.md](Docs/Roadmap.md) | Direction; the live backlog is GitHub Issues |
 | [CLAUDE.md](CLAUDE.md) | Coding conventions and contributor workflow |
 
 ## Licence

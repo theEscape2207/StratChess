@@ -33,6 +33,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 ### Removed
 
 - `Docs/Developer Guidelines.md`: duplicated `CLAUDE.md` or gave no actionable guidance.
+- `Docs/Roadmap.md`: untouched since July; its targets and decision framework predate the issue
+  tracker and Lazy SMP, and its label list repeats `Docs/agents/triage-labels.md`.
 
 ## 2026-10-07: Measure-CpuProfile.ps1 -Linux, the strength lab's profile (#740, slice 2)
 
