@@ -15,6 +15,15 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-07: Cross-agent review files live in StratChessSupport\Reviews
+
+### Changed
+- Skill `cross-agent-review`: a design doc, plan or PR review is a file in `StratChessSupport\Reviews\`
+  beside the main checkout (`pr-<n>.review.md`, `<artifact>.review.md`), kept after landing. It used
+  to sit beside the artifact in the worktree, and PR reviews had no channel; #766's landed in `build/`.
+- `Docs/Workflow.md`: PRs are not sent by default; the owner may route one. `exec-plan` no longer
+  deletes a `.review.md` with the plan.
+
 ## 2026-10-07: GCC nps comparison in WSL (#753, slice 1)
 
 ### Added
