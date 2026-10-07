@@ -1252,8 +1252,8 @@ int AIPerplex::adjust_score_for_game_state(ThreadData& td, bool move_found, int 
 //
 // In check the list is every legal evasion, so that same sort would score each quiet evasion as
 // -piece/16 and sink the heaviest quiet to the bottom. The king is the heaviest piece that can move
-// and a king evasion is very often the only legal reply, so the move most likely to be best was
-// searched last. ScoreMoves — the scoring pvs() shares — scores quiet moves by history
+// and a king evasion is very often the only legal reply, so that ordering can delay a strong reply.
+// ScoreMoves — the scoring pvs() shares — scores quiet moves by history
 // instead, so a king evasion rises on measured merit rather than by fiat.
 //
 // ScoreMoves reports an order rather than permuting, so the scratch arrays that turn it into one
