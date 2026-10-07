@@ -635,8 +635,7 @@ Bits 12-15: Move type (quiet, capture, castle, promotion, etc.)
 - The moving and captured pieces are **not** stored. Use `Board::GetEffectiveMovPiece(m)` (pre-move
   only) and `Board::GetCapturedPiece(m)`; after `DoMove`, identify the moved piece with
   `board.GetPiece(m.to())`.
-- Equality compares the whole encoded value, including flags; see the
-  [Move contract](EngineContracts.md#moves).
+- Equality compares the whole encoded value, including flags.
 - `is_null()` tests for the empty move.
 - Formatting lives entirely in `MoveFormatter` (`ToCoord`, `ToShort`, `ToUCI`, `ToVerbose`,
   `FromUCI`), not on `Move` itself.
@@ -823,7 +822,7 @@ kind of change.
 
 ## Future Enhancements
 
-The live backlog is GitHub Issues; `Docs/Roadmap.md` carries the larger themes.
+The live backlog is GitHub Issues.
 
 **Evaluation**:
 - The evaluation-improvement epic and its sub-issues
@@ -854,7 +853,6 @@ The live backlog is GitHub Issues; `Docs/Roadmap.md` carries the larger themes.
 - `Docs/CI.md` - What each CI workflow runs
 - `Docs/TestDesign.md` - Coverage map and guide to writing tests
 - `Docs/Changelog.md` - Version history
-- `Docs/Roadmap.md` - Future development themes
 - `Measurements/` - Strength measurement records, and the setup they were taken with
 
 ---

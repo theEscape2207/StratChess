@@ -47,7 +47,8 @@ Elo result, or what a #636 child is judged by): `Compare-SearchProfile.ps1 -Befo
 `-DSTRAT_SEARCH_PROFILE=1` builds. It prints ordering, LMR, node types, pruning, quiescence,
 iterations and stability, pooled and by endgame group. It measures no time: a speed change with an
 unchanged tree is `Run-Bench.ps1`'s question, and where the time goes is
-`Measure-CpuProfile.ps1 -Before -After`'s. It gives direction, never a
+`Measure-CpuProfile.ps1 -Before -After`'s; one UCI command's round trip is
+`Measure-UciLatency.ps1 -Command <cmd>`'s. It gives direction, never a
 verdict: gate on wall clock and Elo as above. Screen with
 `-Seeds 8 -Depth 12 -Positions Tests/profile-screen.fen` (~24 min; catches a 5% late-cut change 97% of the time, a 3% one about 3 times in 5) and
 read the Screen block's ±2 SE. One run per side carries tree noise larger than a typical ordering

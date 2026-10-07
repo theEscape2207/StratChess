@@ -15,6 +15,27 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-07: Coding-standards docs pruned; code review reads EngineContracts
+
+### Changed
+
+- `open-pull-request`: the Standards reviewer now receives `Docs/EngineContracts.md` for a diff
+  under `StratEngine/`.
+- `Docs/EngineContracts.md`: dropped entries that are trivial, describe code without constraining
+  it, or repeat a header or source comment (`Move` equality, `MoveFormatter`, `IterationPolicy`,
+  continuation, late move pruning, quiescence ordering) or `Architecture.md` (`AIPerplex`
+  ownership, `Board` metadata); trimmed history from the contempt entries.
+- `CLAUDE.md`: keeps only the aborted-frame tripwire, now naming both exemptions; drops the x64
+  note, two stale guidelines and the `.ps1`-editing note `write-powershell` already carries; adds
+  standard-library and clarity-over-micro-optimisation guidelines. `Measure-UciLatency.ps1` moved
+  to `measure-strength`.
+
+### Removed
+
+- `Docs/Developer Guidelines.md`: duplicated `CLAUDE.md` or gave no actionable guidance.
+- `Docs/Roadmap.md`: untouched since July; its targets and decision framework predate the issue
+  tracker and Lazy SMP, and its label list repeats `Docs/agents/triage-labels.md`.
+
 ## 2026-10-07: Measure-CpuProfile.ps1 -Linux, the strength lab's profile (#740, slice 2)
 
 `-Linux` profiles GCC 15 Release builds plus `-g` in WSL Ubuntu-26.04 with

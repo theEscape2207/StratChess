@@ -1,18 +1,15 @@
 # Engine Contracts
 
-Non-obvious API contracts in `StratEngine/`. The rest of the layout is discoverable by reading it;
-what is here is what reading the signature does **not** tell you.
-
-Read the relevant section before editing that area. `CLAUDE.md` carries only the three tripwires
-whose violation is silent.
+Non-obvious API contracts in `StratEngine/`: what neither the signature nor the header comment tells
+you. Read the relevant section before editing that area. `CLAUDE.md` repeats the aborted-frame rule;
+change both together.
 
 | Editing… | Read |
 |---|---|
-| move encoding, comparison or formatting | [Moves](#moves) |
-| `Board`, make/unmake, FEN, move generation | [Board and position state](#board-and-position-state) |
+| move encoding or formatting | [Moves](#moves) |
 | `AIPerplex`, `SearchPlayer`, UCI, time management | [The search service](#the-search-service) |
-| `pvs()`, `quiescence()`, `Sort.cpp`, pruning | [Search internals](#search-internals) |
-| `game_settings.json` or its consumers | [Configuration](#configuration) |
+| `pvs()`, `quiescence()`, `Sort.cpp`, pruning, contempt | [Search internals](#search-internals) |
+| `game_settings.json`, `SearchTuning` or its consumers | [Configuration](#configuration) |
 
 ---
 
@@ -20,34 +17,11 @@ whose violation is silent.
 
 - `Move` is a pure 2-byte value (from/to/flags). The moving and captured pieces are **not** stored:
   use `Board::GetEffectiveMovPiece(m)` (pre-move only) and `Board::GetCapturedPiece(m)`. After
-  `DoMove`, identify the moved piece with `board.GetPiece(m.to())`.
-- **`Move` equality is exact** — it compares the raw 2-byte encoding, flags included. Two moves
-  differing only in promotion piece, or a quiet move vs. a capture on the same squares, compare
-  unequal.
-- Move formatting lives entirely in `MoveFormatter`: `ToCoord` (coordinate-only, no board),
-  `ToShort` (piece-prefixed; the `Board` overload appends `+` and reads the board, so never call it
-  after a failed or unpaired `DoMove`), `ToUCI`, `ToVerbose`, `FromUCI`.
-- Most `MoveHelper` predicates (`IsCapture`, `IsPromote`, `Value`, …) take a `const Move&`;
-  `IsPawnMove` is the exception, taking a bare `ePiece`.
-
-## Board and position state
-
-- **`Board` is the sole authority for position metadata**: `ep_square()`, `castling_rights()`,
-  `halfmove_clock()`, `fullmove_count()`, `last_move()`. Move generation reads them from the board it
-  is given, so nothing can hand it state that disagrees with the position's Zobrist hash. One private
-  `PositionState` per ply holds all of it plus the Zobrist hash, the last-irreversible ply and the
-  captured piece.
-- Sliding-piece attacks use PEXT magic bitboards (`StratEngine/Magic.h`).
+  `DoMove`, identify the moved piece with `board.GetPiece(m.to())`. Which board state each formatter
+  expects is in `MoveFormatter.h`.
 
 ## The search service
 
-- `AIPerplex` is a standalone concrete search service: `Search(Board, limits, observer)` receives a
-  root and observer per call and returns a `SearchResult` by value. It owns evaluator, TT, tuning and
-  composed `SearchControl`; it is not an `IPlayer`, retains no caller Board or Board reference and
-  no result cache, and has no compatibility player metadata. Each call copies its supplied root into
-  owned `ThreadData` before search. `SearchPlayer { Board&, AIPerplex value }` is the required
-  Game adapter; `CreatePlayer` maps config before type erasure. `ISearchEngine` is deliberately
-  deferred until a second real implementation needs it.
 - `ThreadData&` is the **first parameter of every search method**. The search runs on `td.board`,
   never the game board, and writes nothing back to it: the root verdict leaves via
   `SearchResult::game_state` and no other channel. The TT is a separate shared parameter — Lazy SMP
@@ -56,11 +30,6 @@ whose violation is silent.
   player adjudicated at its own root. It is never `DRAW_50_MOVES`: the fifty-move rule is a fact about
   the committed position, and `Game::Run` adjudicates it. The returned value is the **post-join
   aggregate** and remains the authoritative record after later searches; Game owns combined totals.
-- `SearchLimits` carries every per-call constraint (clock/movetime/depth/infinite, all optional);
-  `Engine::resolve_limits()` resolves it and composed `SearchControl` arms the timer and owns stop/
-  node-limit state. Every `Search(…, limits)` or `GetMove(limits)` call is self-contained — there
-  is no pre-call ordering contract. UCI owns its concrete service directly for one session and passes
-  a fresh observer per `go`; `ucinewgame` clears per-game state without rebuilding it.
 - **`StartAsync(root, limits, observer, on_done)` is UCI's launch path.** It stops and joins any
   previous launch, then arms the stop handshake, copies the root and starts the thread; join-before-arm
   is load-bearing, because an unwinding `Search()` would otherwise clear the fresh arm. A `Stop()` made
@@ -69,103 +38,47 @@ whose violation is silent.
   `bestmove` is accepted. `on_done` must not call `StartAsync`, `Wait`, `StopAndWait`, `SetHash`,
   `SetThreads`, `SetTuning`, `StartNewGame` or destroy the service (Debug-asserted). Those methods
   come from one controlling thread; only `Stop()` and `IsSearching()` are callable from any thread.
-- `Engine::compute_budget(remaining, increment, moves_to_go)` → `TimeBudget{soft, hard}` is pure.
-- Verbose logging is opt-in per call site — the `AIPerplex` constructor does not enable it.
 
 ## Search internals
 
-- **`IterationPolicy` owns the main-thread acceptance and continuation decisions.** It receives raw
-  iteration observations, prior retained state and three explicit tuning thresholds. Main-tree node
-  deltas exclude quiescence; the completion ratio is delta/prior nodes or `1.0` without a positive
-  denominator. Completed observations bypass quality checks. Interrupted checks run in order:
-  empty move/insufficient nodes, insufficient ratio, short PV (`max(1, int(depth * ratio))`), changed
-  move. Rejection preserves all state; either acceptance updates the retained result, but only
-  completed acceptance updates `last_iteration_move`. `REJECTED` holds iff rejection reason is not
-  `NONE`. The policy has no engine, Board, TT, clock or callback dependency.
-- **Continuation samples the soft limit after the accepted iteration observer.** `AIPerplex`
-  applies the assessed state, logs and publishes the observer, then samples `ShouldStopIteration()`
-  and passes the completed assessment to `Engine::continue_iteration` exactly once. A callback can
-  consume time or request stop. At the soft limit an unchanged move or used extension stops before
-  any mate check; otherwise the changed move consumes the one extension, even if mate then stops.
-  Depth/PV length do not trigger early stop. This state is local to one main-thread search; helpers
-  use their existing loop. The callback/clock ordering is enforced by source review and the header
-  contract; the observer-stop integration test only pins retained results and no later publication.
 - **An aborted frame keeps no results.** The guard is **per move iteration, not per recursive call**:
-  `pvs()` may run a reduced null-window search, a full-depth re-search and a PV re-search for a
-  single move before reaching `UndoMove` and the one `IsAborted()` check that follows it. The
-  invariant is that the board is restored and `IsAborted()` checked after that whole sequence and
-  before any persistent write — the ordering against `UndoMove` matters because returning first
-  would leave the board corrupt. So no TT store, PV row, killer or history write is reachable from a
-  child that never finished; `best_value` (the best score over the
-  children that *did* complete) is a valid lower bound and is what the root reports for an
-  interrupted iteration. A write added below that guard is covered by it; one added above it has to
-  justify itself the way the two documented exemptions do in comments there:
+  `pvs()` may run a reduced null-window search, a full-depth re-search and a PV re-search for one
+  move before reaching `UndoMove` and the one `IsAborted()` check that follows it. The board is
+  restored first — returning earlier would leave it corrupt — and `IsAborted()` checked before any
+  persistent write, so no TT store, PV row, killer or history write is reachable from a child that
+  never finished. `best_value`, the best score over the children that *did* complete, is a valid
+  lower bound and is what the root reports for an interrupted iteration. A write added above the
+  guard has to justify itself the way the two exemptions do in comments there:
   - **Node counters** are incremented before the guard and stay incremented — they measure work
     done, not results kept.
   - **The quiescence stand-pat cutoff store** is reached before the node searches anything, so what
-    it records owes nothing to a child; an impending abort does not make a static evaluation less
-    true.
-- Null-move pruning is gated by `tuning_.null_move_enabled` via `should_try_null_move()` (covers
-  zugzwang, mate-score contamination, consecutive nulls, PV/in-check, min-depth).
-- **Late move pruning returns entry alpha from a completed fail-low and stores nothing.** A depth-2
-  null-window frame that skipped a late quiet move and then failed low returns `original_alpha`,
-  fail-hard, and writes no TT entry — neither UPPER nor EXACT — because the bound would rest on moves
-  it never searched. It is a selective result, not a proof: it neither makes an ancestor exact nor
-  removes earlier entries, and an ancestor may still cut off on it and store normally. A *searched*
-  cutoff after a skip stores LOWER as usual; an aborted frame takes the unwind guard first. Skips
-  advance the legal-move index and need make/unmake, so checking moves and immediate repetition or
-  fifty-move draws are never skipped. A quiet move that stalemates the opponent is not detected and
-  can be skipped.
+    it records owes nothing to a child.
 - **A drawn score is context the Zobrist key does not carry.** With `contempt` non-zero, the score
   of a draw — repetition, fifty-move, stalemate, or a position the evaluator settles as drawn —
-  depends on the root colour and on the contempt value, and propagates into parent entries through
-  the terminal store in `pvs()` and the bare-king store in `quiescence()`. The key holds neither, so `Search()` keeps the
-  `(root_color, contempt)` pair its table was filled under and clears the table when the incoming pair
-  differs *and* either side of the change is non-zero. Both halves matter: only a contempt search can
-  tint an entry or misread an untinted one, so a process left at the shipped default of 0 must never
-  clear — that would be a behaviour change where nothing was ever tinted. The sign comes from
-  `td.board.GetCurrentColor()` against `root_color_`, which is the contract itself. Ply parity is
-  equivalent today — every construct that advances a ply also flips the side to move, null moves
-  included — but that is an unstated invariant of the search rather than a property of the draw
-  score, and parity would invert silently if it ever stopped holding. Abort and time-limit unwind
-  values stay at
-  `GameValues::Draw`: they are fabricated, not game results.
+  depends on the root colour and the contempt value, and reaches parent entries through the terminal
+  store in `pvs()` and the bare-king store in `quiescence()`. So `Search()` keeps the
+  `(root_color, contempt)` pair its table was filled under and clears the table when the incoming
+  pair differs *and* either side of the change is non-zero; a process at the default of 0 never
+  clears. The sign comes from `td.board.GetCurrentColor()` against `root_color_`, not from ply
+  parity, which matches only because every ply-advancing construct, null moves included, flips the
+  side to move. Abort and time-limit unwind values stay `GameValues::Draw`: they are fabricated, not
+  game results.
 - **Every draw the search can report carries contempt, including the ones the evaluator settles.**
-  A liquidation into a dead ending and a repetition are both draws; tinting only one would make the
-  engine prefer the draw it can never come back from — a gradient pointing the wrong way, not
-  merely an inconsistent score. `Evaluate()`'s `endgame_scale == 0` early-out returns
-  `dead_draw_score_[side to move]` rather than the constant `GameValues::Draw`, and `Search()` sets
-  that pair once through `AIPerplex::publish_draw_scores()`, beside `root_color_`. A position whose
-  scale is non-zero never reaches that line, so contempt cannot shift anything the evaluator does not
-  already call drawn — tinting an evaluation that merely landed on zero would put a step in the
-  middle of the scale.
-- **`Evaluator` is no longer literally stateless, and the weakened contract is what search relies
-  on.** `dead_draw_score_` is written only by `SetDrawScores()` before any helper thread exists and
-  is read-only for the rest of the search, exactly as `AIPerplex::tuning_` is. Calling it mid-search
-  would be a data race, so `Evaluator::SetDrawScores()` is **private with `AIPerplex` its only
-  friend** — the single-writer rule is enforced by the compiler rather than asserted in a comment.
-  *When* it is written is positional and not: the call sits above the helper-spawn block in
-  `Search()`, where a comment says so and a `[contempt][smp]` test searches a drawn position at
-  `Threads > 1` so that moving it below is a race tsan reports. Every other `Evaluator` in the
-  process — the UCI `eval` command's, the batch scorer's, every test's — is its own instance that
-  nobody configures, so it keeps answering `GameValues::Draw`. Putting the value here rather than guarding each `Evaluate()`
-  call was a cost decision, and it was measured: three different per-evaluation guards each cost
-  ~1% nps at a default that tints nothing, while reading it on a branch already being taken is free.
-- **At `contempt > 0` a static evaluation is no longer a function of the position alone** — it
-  depends on `root_color_`. Its consumers are reverse futility, frontier futility and the quiescence
-  stand-pat; all shift by at most `contempt`, none caches a static eval across a root-colour change,
-  and the TT stores scores rather than static evals. Recorded because "the evaluation depends only
-  on the board" was previously true engine-wide, which makes it the kind of assumption a later
-  change inherits without checking.
-  A cost, also only at `contempt > 0`: the clear fires on every root-colour flip, so a GUI
-  analysing both sides, or the tactical runner sweeping colours, discards the table each search.
-  That is the guard working, not a TT bug.
-- **Quiescence orders its two move lists differently**, via `AIPerplex::order_quiescence_moves()`.
-  Out of check the list is captures and promotions and `SortMovesByValue` sorts it in place, keeping
-  generation order among equal values so every standard library searches the same tree; in check
-  it is every legal evasion and `MoveSorter::ScoreMoves` writes an order into a `scored_idx` array
-  instead, so quiet evasions are ranked by history rather than by `-piece/16` (#320). Quiescence
-  passes `Move::EmptyMove()` as the hash move in both phases and must keep doing so.
+  Tinting only repetitions would steer the engine into the dead ending it can never come back from.
+  `Evaluate()`'s `endgame_scale == 0` early-out returns `dead_draw_score_[side to move]`, which
+  `Search()` sets once through `AIPerplex::publish_draw_scores()`, beside `root_color_`. A position
+  with a non-zero scale never reaches that line, so contempt shifts nothing the evaluator does not
+  already call drawn.
+- **`dead_draw_score_` has one writer, before any helper thread exists.** `Evaluator::SetDrawScores()`
+  is private with `AIPerplex` its only friend, and the call sits above the helper-spawn block in
+  `Search()`; below it, it is a data race the `[contempt][smp]` test exposes under tsan. Every other
+  `Evaluator` — the UCI `eval` command's, the batch scorer's, every test's — is unconfigured and
+  answers `GameValues::Draw`. Guarding each `Evaluate()` call instead costs ~1% nps.
+- **At `contempt > 0` a static evaluation depends on `root_color_`, not on the position alone.** Its
+  consumers — reverse futility, frontier futility and the quiescence stand-pat — shift by at most
+  `contempt`; none caches a static eval across a root-colour change, and the TT stores scores, not
+  static evals. The TT clear fires on every root-colour flip, so a GUI analysing both sides, or the
+  tactical runner sweeping colours, discards the table each search: the guard working, not a TT bug.
 - **A probed TT entry may belong to another position** — through a key collision, or a slot whose
   two words racing Lazy SMP stores mixed. Its `best_move` is only a hint, matched against moves the
   engine generated. A change that searches the hash move before generating (a staged move generator)
@@ -202,6 +115,6 @@ whose violation is silent.
   changes** — stored scores came from the old pruning. It is idle-only like `SetHash`, so UCI refuses
   it mid-search. An applied value is echoed as `info string <Name> <value>`, so a match's protocol
   log shows what each engine ran; an invalid value prints an `info string` and changes nothing, TT
-  included; an unknown name stays silent. `ucinewgame` keeps the tuning. Any field without a UCI name is still
-  reachable only through `game_settings.json` in `game` mode, or by rebuilding with a new default —
-  and `Run-Bench.ps1`, `Compare-SearchEquivalence.ps1` and every match harness drive UCI.
+  included; an unknown name stays silent. `ucinewgame` keeps the tuning. Any field without a UCI name
+  is still reachable only through `game_settings.json` in `game` mode, or by rebuilding with a new
+  default — and `Run-Bench.ps1`, `Compare-SearchEquivalence.ps1` and every match harness drive UCI.
