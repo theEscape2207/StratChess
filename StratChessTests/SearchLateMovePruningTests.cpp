@@ -1,4 +1,4 @@
-// SearchLateMovePruningTests.cpp — depth-two late move pruning (#547).
+// SearchLateMovePruningTests.cpp — depth-two late move pruning.
 //
 // The eligibility tests move one node-level guard at a time off a passing baseline. The node tests
 // hold the engine's skip count against the fixture's independent tally, after requiring that the

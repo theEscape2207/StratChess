@@ -215,7 +215,7 @@ TEST_CASE("Config: a missing key is an error, not undefined behaviour", "[config
 TEST_CASE("Config: a key of the wrong type is reported", "[config]")
 {
 	// .value() tolerates a MISSING key but still throws on a present key of the
-	// wrong type, which is the case issue #178 predicted and this pins.
+	// wrong type, which is the case this pins.
 	TempConfig cfg(R"({
         "game": { "players": {
             "white": { "type": 1, "search_limits": { "depth": "five" } },

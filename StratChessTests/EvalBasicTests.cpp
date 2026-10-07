@@ -20,7 +20,7 @@ TEST_CASE("Eval - a kingless board evaluates to 0 (pre-#127 behaviour, regressio
 	// StratChessTests/UCITests.cpp, "cmd_eval: works before any position
 	// command, does not crash").
 	//
-	// Before the #127 restructure this was well-defined and always 0: the
+	// Before EvalContext this was well-defined and always 0: the
 	// king PST lived inside a loop over ALL_PIECES, which never iterates on
 	// an empty board, and the mop-up block returned early on
 	// absMatDiff == 0 < MOPUP_MATERIAL_THRESHOLD before ever touching a king
@@ -31,7 +31,7 @@ TEST_CASE("Eval - a kingless board evaluates to 0 (pre-#127 behaviour, regressio
 	// it) and Release silently violates, indexing g_Eval_Bitboards out of
 	// bounds. EvalContext::king_sq is NO_SQUARE for a color with no king
 	// (see the comment on that field in Eval.h), and eval_pst/eval_mopup
-	// both check for it, restoring the pre-#127 "always 0" result exactly.
+	// both check for it, restoring the original "always 0" result exactly.
 	//
 	// Evaluate() now settles a piece-less board through the endgame classifier
 	// before any term runs, so this assertion alone no longer reaches the
@@ -129,7 +129,7 @@ TEST_CASE("Eval - mop-up: gated off below the decisive material threshold", "[ev
 	REQUIRE(decisiveDelta > marginalDelta);
 }
 
-// ── Rook open-file definition (issue #126) ────────────────────────────────────
+// ── Rook open-file definition ─────────────────────────────────────────────────
 
 TEST_CASE("Eval - an enemy pawn on the rook's file still demotes it to half-open", "[eval]")
 {

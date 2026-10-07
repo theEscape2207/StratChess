@@ -9,14 +9,14 @@ TEST_CASE("Eval - eval_pawns: pawns with no isolation and no doubling score exac
 
 TEST_CASE("Eval - eval_rooks: an enemy knight on the rook's file does not demote an open file", "[eval]")
 {
-	// Issue #126's discriminator: "open file" must test for absence of enemy
-	// PAWNS, not of any enemy piece. Before the fix, a knight sharing the rook's
-	// file wrongly demoted it from open to half-open (-5 cp). The knight's PST
+	// The discriminator: "open file" must test for absence of enemy
+	// PAWNS, not of any enemy piece. A knight sharing the rook's
+	// file must not demote it from open to half-open (-5 cp). The knight's PST
 	// value is identical on d5 and e5 and material is identical, so the file
 	// classification is the only thing that can make the ROOK term differ.
 	//
 	// Asserted term-level rather than on whole-position Evaluate(): moving the
-	// knight legitimately changes mobility (#98), so the totals differ even
+	// knight legitimately changes mobility, so the totals differ even
 	// though the open-file classification does not. The term-level assertion is
 	// what this test always meant.
 	Board knightOn(FEN_ROOK_OPEN_FILE_KNIGHT_ON);
@@ -38,7 +38,7 @@ TEST_CASE("Eval - eval_rooks: an own pawn behind the rook leaves the file fully 
 	// proves the file is still scored as fully OPEN.
 	//
 	// Asserted on eval_rooks rather than on whole-position Evaluate(): moving a
-	// pawn legitimately changes mobility (#98), so the two positions' total
+	// pawn legitimately changes mobility, so the two positions' total
 	// scores are no longer equal even though the rook term is. Comparing totals
 	// to prove a claim about one term was over-coupling that a later term was
 	// always going to break.
@@ -48,7 +48,7 @@ TEST_CASE("Eval - eval_rooks: an own pawn behind the rook leaves the file fully 
 	REQUIRE(EvaluatorTestFixture::Rooks(pawnOffFile, WHITE) == EvaluatorTestFixture::Rooks(pawnBehindRook, WHITE));
 }
 
-// ── eval_mobility (issues #98, #113) ─────────────────────────────────────────
+// ── eval_mobility ────────────────────────────────────────────────────────────
 
 TEST_CASE("Eval - eval_mobility: a central knight outscores a cornered one", "[eval]")
 {
@@ -98,8 +98,8 @@ TEST_CASE("Eval - eval_mobility: the safe-mobility mask is colour-symmetric", "[
 	//
 	// Worth its own case because the failure is silent: a transposed shift or a
 	// swapped file mask would compile, pass every other test, and quietly cost
-	// Black a few squares per node in every game of a 20,000-game run. Issue
-	// #125 was this exact class of defect.
+	// Black a few squares per node in every game of a 20,000-game run. The
+	// mirror-square bug was this exact class of defect.
 	//
 	// The pawn must be on an EDGE FILE. A central pawn cannot discriminate:
 	// both file masks pass it through, so `p<<9 | p<<7` is the same set however
@@ -138,8 +138,8 @@ TEST_CASE("Eval - eval_mobility: own pieces block, enemy pieces are capture targ
 
 TEST_CASE("Eval - eval_mobility: the queen is scored, not skipped (issue #113)", "[eval]")
 {
-	// #113 exists so the queen is not left out if mobility scopes down to cheap
-	// pieces. A lone queen must produce a nonzero term.
+	// Mobility covers the queen, not just the cheap pieces: a lone queen must produce
+	// a nonzero term.
 	Board queen("4k3/8/8/8/3Q4/8/8/4K3 w - - 0 1");
 
 	REQUIRE(EvaluatorTestFixture::Mobility(queen, WHITE) > 0);
@@ -147,7 +147,7 @@ TEST_CASE("Eval - eval_mobility: the queen is scored, not skipped (issue #113)",
 
 TEST_CASE("Eval - eval_mobility: a bare king contributes nothing", "[eval]")
 {
-	// The king is deliberately excluded -- king mobility belongs to #97, where
+	// The king is deliberately excluded -- king mobility belongs to king safety, where
 	// it can be weighed against attacker counts rather than paid per square.
 	//
 	// The idle pawn is load-bearing: bare kings are a dead-drawn class, and the
@@ -197,8 +197,8 @@ TEST_CASE("Eval - eval_rooks: the 7th-rank bonus is endgame-weighted, the file b
 {
 	// FEN_ROOK_ON_7TH: White Re7 alone against a bare king. The fully open
 	// file (no pawns of either colour) is phase-independent and so appears at
-	// both endpoints; the 7th-rank bonus is endgame-weighted (D3, issue #99)
-	// and so appears only at eg. Asserting the endpoints rather than the
+	// both endpoints; the 7th-rank bonus is endgame-weighted and so
+	// appears only at eg. Asserting the endpoints rather than the
 	// blended value keeps this independent of the position's own phase.
 	Board board(FEN_ROOK_ON_7TH);
 
@@ -210,8 +210,8 @@ TEST_CASE("Eval - eval_rooks: the 7th-rank bonus is endgame-weighted, the file b
 
 TEST_CASE("Eval - eval_rooks: term-level result matches the #126 open-file guard exactly", "[eval]")
 {
-	// Re-runs the issue #126 open-file case (an enemy knight sharing the
-	// file must not demote it) directly against the extracted term, not just
+	// Re-runs the open-file case (an enemy knight sharing the file must not
+	// demote it) directly against the extracted term, not just
 	// through the whole-position score — pins the term itself, not merely
 	// its net effect once summed with unrelated PST noise.
 	//
@@ -260,7 +260,7 @@ TEST_CASE("Eval - eval_pst: the king's two PST endpoints are the two king tables
 	// verified: no queen shares a rank, file, or diagonal with either king),
 	// so the position is legal despite the unusual material.
 	//
-	// Post-#99 the king is no longer assigned one table by a material
+	// With tapering the king is no longer assigned one table by a material
 	// threshold: g_Eval_Bitboards[5] and [6] are its mg and eg endpoints. Each
 	// endpoint must equal the independently-computed non-king PST sum (via
 	// EvalProbe::GetPositionalScore, a different call path than eval_pst's own
@@ -297,7 +297,7 @@ TEST_CASE("Eval - eval_pst: the reported king contribution is its endpoints blen
 	REQUIRE(EvaluatorTestFixture::Pst(board, WHITE) == BlendPhase(pst, phase));
 }
 
-// ── eval_bishops (issue #111) ────────────────────────────────────────────────
+// ── eval_bishops ─────────────────────────────────────────────────────────────
 
 TEST_CASE("Eval - eval_bishops: pair requires opposite square colours", "[eval]")
 {
@@ -331,9 +331,9 @@ TEST_CASE("Eval - eval_bishops: pair requires opposite square colours", "[eval]"
 	}
 }
 
-// ── connected rooks (issue #114, inside eval_rooks) ──────────────────────────
+// ── connected rooks (inside eval_rooks) ──────────────────────────────────────
 
-// ── eval_outposts (issue #112) ───────────────────────────────────────────────
+// ── eval_outposts ────────────────────────────────────────────────────────────
 //
 // Asserted directly on the term rather than through whole-position deltas: the
 // positions below differ by a pawn or a piece square, which legitimately moves
@@ -576,7 +576,7 @@ TEST_CASE("Eval - eval_rooks: connected pairs are counted exactly, not doubled",
 	CHECK(rooks.eg == 61);
 }
 
-// ── eval_castling (issue #115) ───────────────────────────────────────────────
+// ── eval_castling ────────────────────────────────────────────────────────────
 
 TEST_CASE("Eval - eval_castling: silent while any castling right remains", "[eval]")
 {
@@ -822,7 +822,7 @@ TEST_CASE("Eval - the per-term functions sum exactly to Evaluator::Evaluate()'s 
 	REQUIRE(eval.Evaluate(board) == expected);
 }
 
-// ── Evaluator::Breakdown() (issue #129 phase 2) ───────────────────────────────
+// ── Evaluator::Breakdown() ────────────────────────────────────────────────────
 //
 // Breakdown() is the public, production path to the per-term values that the
 // UCI 'eval' command prints. The tests below tie it to the terms that are

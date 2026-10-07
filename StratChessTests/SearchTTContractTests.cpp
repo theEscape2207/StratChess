@@ -268,7 +268,7 @@ TEST_CASE("Search - a TT bound at or beyond beta cuts off", "[search][tt]")
 	      stored);
 }
 
-// The UPPER half of the same cutoff contract. Neither the pair above nor #392's qsearch pair
+// The UPPER half of the same cutoff contract. Neither the pair above nor the quiescence pair
 // reaches it, so without this the branch is untested.
 TEST_CASE("Search - a TT bound at or below alpha cuts off", "[search][tt]")
 {

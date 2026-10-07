@@ -46,7 +46,7 @@ TEST_CASE("See - a capture nothing defends is worth the victim", "[see]")
 
 TEST_CASE("See - QxP defended by a pawn loses the queen", "[see]")
 {
-	// The case #306 made reachable: quiescence generates officer captures, and delta pruning
+	// A reachable case: quiescence generates officer captures, and delta pruning
 	// cannot filter this one — it prunes captures that cannot raise alpha, not captures that lose.
 	const Board board("4k3/8/2p5/3p4/8/8/8/3QK3 w - - 0 1");
 	RequireSeeExactly(board, FindMove(board, d1, d5), 100 - 900);

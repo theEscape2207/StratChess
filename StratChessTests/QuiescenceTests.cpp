@@ -19,8 +19,7 @@
 // is MVV-LVA — an ordering heuristic that subtracts a sixteenth of the moving piece —
 // so it understates the gain and is not usable as a bound. For a king (10 000) that
 // subtraction is 625, which turns a won pawn into -525 and discards the capture.
-// Officer and king captures only became reachable in quiescence with #306, which is
-// what exposed this.
+// Quiescence generates officer and king captures, so this is reachable.
 
 TEST_CASE("Qsearch - delta pruning keeps a king capture that wins a pawn", "[search][qsearch]")
 {
@@ -47,7 +46,7 @@ TEST_CASE("Qsearch - delta pruning keeps a king capture that wins a pawn", "[sea
 // Material bounds near an endgame-scaled class
 // ============================================================================
 // Delta and SEE pruning both assume a child's value is this node's score plus the
-// material the move wins. An endgame scale (#128) multiplies the score instead, so a
+// material the move wins. An endgame scale multiplies the score instead, so a
 // capture that ENTERS or LEAVES a scaled class moves the child by a fraction of the
 // position's value and both pruners lose their bound. Each case below places alpha
 // where the bound would discard the move, and asserts the move survives.
@@ -510,7 +509,7 @@ TEST_CASE("Qsearch - the root of a check chain records its full budget", "[searc
 	CHECK(entry->depth == AIPerlexTestFixture::QSEARCH_BUDGET);
 }
 
-// --- Quiescence in-check ordering (#320) -------------------------------------------------
+// --- Quiescence in-check ordering --------------------------------------------------------
 //
 // Position: black to move, in check from Re1 down the open e-file. The evasions are
 //   Qa5xe1          — a capture of the attacker
@@ -538,7 +537,7 @@ TEST_CASE("Search - in check, a king evasion with history outranks a quiet inter
 	REQUIRE(king_walk != order.end());
 	REQUIRE(interposition != order.end());
 
-	// The whole point of #320: history decides between two quiet evasions, so the king walk
+	// The point: history decides between two quiet evasions, so the king walk
 	// is no longer sunk below the queen purely for being the heavier piece.
 	CHECK(king_walk < interposition);
 }

@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-    Fail when a skill, a subagent, CLAUDE.md or AGENTS.md cites something that does not exist.
+    Fail when a doc cites something that does not exist, or a code comment cites an issue.
 
 .DESCRIPTION
-    Four shape checks over the working tree:
+    Six shape checks over the working tree:
 
     - Frontmatter: each skill, Codex adapter and agent file opens with `---` delimiters, its
       `name` equals its directory or file name, and its `description` is non-empty.
@@ -16,6 +16,10 @@
       or a directory beside the citing file, must be tracked or gitignored.
     - Identifiers, in `.claude/agents/*.md` only: a camelCase, PascalCase, g_/m_ or UPPER_SNAKE span
       must occur as a whole word in a tracked .cpp or .h file.
+    - Links, in every tracked Markdown file: a relative link outside code must name a tracked file
+      or directory, and its `#anchor` a heading (GitHub's slug) or an `<a id>` in the target.
+    - Comment references, in every tracked C++ source: a comment citing `#<number>`. Comments
+      describe the code as it stands; the history behind it belongs in the PR or the changelog.
 
     A pass means the citations exist, not that a doc is right or a dispatch rule complete. A false
     positive is fixed in the rule, with a self-test case, or by rewording the doc.
@@ -27,8 +31,8 @@
     Run the checks against an in-memory fixture tree and exit.
 
 .HOW TO INVOKE
-    pwsh -File Scripts/Test-AgentDocs.ps1
-    pwsh -File Scripts/Test-AgentDocs.ps1 -SelfTest
+    pwsh -File Scripts/Test-Citations.ps1
+    pwsh -File Scripts/Test-Citations.ps1 -SelfTest
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Run')]
@@ -65,7 +69,35 @@ function Join-RepoPath {
     $parts -join '/'
 }
 
-function Get-AgentDocFailure {
+function Get-MarkdownProse {
+    # Each line outside fenced code blocks, inline code spans blanked, with its 1-based line number.
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+    $lineNo = 0
+    $fenced = $false
+    foreach ($line in $Text -split "`n") {
+        $lineNo++
+        if ($line -match '^\s*(```|~~~)') { $fenced = -not $fenced; continue }
+        if (-not $fenced) { [pscustomobject]@{ Line = $lineNo; Raw = $line; Text = $line -replace '`[^`]*`' } }
+    }
+}
+
+function Get-HeadingAnchor {
+    # The anchors GitHub renders for a Markdown file: one slug per heading, a -N suffix on repeats.
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+    $anchors = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $seen = @{}
+    foreach ($p in Get-MarkdownProse $Text) {
+        if ($p.Raw -notmatch '^#{1,6}\s+(.*?)\s*#*\s*$') { continue }
+        $slug = (($Matches[1] -replace '\[([^\]]*)\]\([^)]*\)', '$1').ToLowerInvariant() -replace '[^\w\- ]') -replace ' ', '-'
+        $n = if ($seen.ContainsKey($slug)) { $seen[$slug] } else { 0 }
+        $seen[$slug] = $n + 1
+        [void]$anchors.Add($(if ($n -eq 0) { $slug } else { "$slug-$n" }))
+    }
+    foreach ($m in [regex]::Matches($Text, '<a\s+(?:name|id)="([^"]+)"')) { [void]$anchors.Add($m.Groups[1].Value.ToLowerInvariant()) }
+    , $anchors
+}
+
+function Get-CitationFailure {
     param(
         # Every tracked path mapped to its LF-normalised text; files no check reads may map to ''.
         [Parameter(Mandatory)][hashtable]$Files,
@@ -88,7 +120,7 @@ function Get-AgentDocFailure {
     $tomls = @($paths | Where-Object { $_ -match '^\.codex/agents/[^/]+\.toml$' } | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) })
     $adapters = @($paths | Where-Object { $_ -match '^\.agents/skills/[^/]+/SKILL\.md$' })
     $docs = @($paths | Where-Object { $_ -match '^(\.claude/skills/.+\.md|\.claude/agents/[^/]+\.md|CLAUDE\.md|AGENTS\.md)$' })
-    $counts = [ordered]@{ Docs = $docs.Count; Skills = $skills.Count; Agents = $agents.Count; Paths = 0; Identifiers = 0 }
+    $counts = [ordered]@{ Docs = $docs.Count; Skills = $skills.Count; Agents = $agents.Count; Paths = 0; Identifiers = 0; Links = 0; Sources = 0 }
 
     $frontmatterFiles = @($skills | ForEach-Object { ".claude/skills/$_/SKILL.md" }) + $adapters +
         @($agents | ForEach-Object { ".claude/agents/$_.md" })
@@ -172,6 +204,35 @@ function Get-AgentDocFailure {
         }
     }
 
+    $anchorCache = @{}
+    foreach ($doc in @($paths | Where-Object { $_ -like '*.md' })) {
+        $docDir = $doc -replace '/?[^/]+$'
+        foreach ($p in Get-MarkdownProse $Files[$doc]) {
+            foreach ($m in [regex]::Matches($p.Text, '\]\(\s*<?([^)\s>]+)>?(\s+"[^"]*")?\s*\)')) {
+                $link = $m.Groups[1].Value
+                if ($link -match '^[a-z][a-z0-9+.-]*:') { continue }
+                $counts['Links']++
+                $linkPath, $anchor = $link -split '#', 2
+                $linkPath = [uri]::UnescapeDataString($linkPath)
+                $target = if (-not $linkPath) { $doc } elseif ($linkPath.StartsWith('/')) { Join-RepoPath '' $linkPath } else { Join-RepoPath $docDir $linkPath }
+                if (-not ($tracked.Contains($target) -or $dirs.Contains($target))) { Add-Failure $doc $p.Line 'link' $link; continue }
+                if ($anchor -and $target -like '*.md') {
+                    if (-not $anchorCache.ContainsKey($target)) { $anchorCache[$target] = Get-HeadingAnchor $Files[$target] }
+                    if (-not $anchorCache[$target].Contains($anchor.ToLowerInvariant())) { Add-Failure $doc $p.Line 'anchor' $link }
+                }
+            }
+        }
+    }
+
+    foreach ($src in @($paths | Where-Object { $_ -match '\.(cpp|h|hpp|def)$' })) {
+        $counts['Sources']++
+        $lineNo = 0
+        foreach ($line in $Files[$src] -split "`n") {
+            $lineNo++
+            if ($line -match '(//|/\*|^\s*\*).*?(#\d+)\b') { Add-Failure $src $lineNo 'comment-ref' $Matches[2] }
+        }
+    }
+
     # Fail closed: a check that saw nothing proves nothing.
     foreach ($k in @($counts.Keys)) {
         if ($counts[$k] -eq 0) { Add-Failure '(tree)' 0 'empty' "no $k" }
@@ -184,7 +245,9 @@ if ($SelfTest) {
     $base = @{
         'CLAUDE.md'                               = 'Use `alpha`; read `Docs/Guide.md#setup`, `Docs/Guide.md:12`, `Docs/Guide.md:3-9`, `Docs/local/run.log`. Not paths: `origin/main`, `/code-review`, `-Name a/b`, `Docs/<n>.md`, `Docs/*.md`, `Docs/{a,b}.md`, `Docs/x…`, `Docs/...`, `https://x.y/z`.'
         'AGENTS.md'                               = 'Use skill `alpha`.'
-        'Docs/Guide.md'                           = ''
+        'Docs/Guide.md'                           = "# Guide`n## Set up ``x```n## Notes`n## Notes`n<a id=`"Raw`"></a>`n```````n[fenced](Gone.md)`n``````"
+        'Docs/My Guide.md'                        = ''
+        'README.md'                               = '[a](Docs/Guide.md#set-up-x), [b](Docs/Guide.md#notes-1), [c](Docs/Guide.md#raw), [d](Docs/My%20Guide.md), [e](./Src), [f](https://x.y/z.md), [g](#readme), `[h](Gone.md)`' + "`n# README"
         '.claude/skills/alpha/SKILL.md'           = New-Doc 'alpha' 'Load `beta`, dispatch `rev`, see `reference/notes.md`.'
         '.claude/skills/alpha/reference/notes.md' = 'Built from `Src/Eval.cpp:3`.'
         '.claude/skills/beta/SKILL.md'            = New-Doc 'beta' 'Nothing.'
@@ -193,7 +256,7 @@ if ($SelfTest) {
         '.agents/skills/tdd/SKILL.md'             = New-Doc 'tdd' 'A vendored skill with no project counterpart.'
         '.claude/agents/rev.md'                   = New-Doc 'rev' 'Check `g_iValue`, `m_iDepth`, `PlayScore::Eval()` and `MAX_PLY`.'
         '.codex/agents/rev.toml'                  = "name = `"rev`"`ninstructions = `"Read .claude/agents/rev.md`""
-        'Src/Eval.cpp'                            = 'int g_iValue; struct PlayScore { int m_iDepth; }; constexpr int MAX_PLY = 64;'
+        'Src/Eval.cpp'                            = "#include `"Eval.h`"`nint g_iValue; struct PlayScore { int m_iDepth; }; constexpr int MAX_PLY = 64;`nconst char* tag = `"#12`"; // a #define, not a reference"
     }
     $emptied = @{}
     foreach ($k in $base.Keys) { $emptied[$k] = $null }
@@ -216,7 +279,10 @@ if ($SelfTest) {
         @{ Name = 'unresolved path beside the doc';     Change = @{ '.claude/skills/alpha/SKILL.md' = New-Doc 'alpha' '`beta`, `rev`, `reference/gone.md`' }; Expect = @('path') }
         @{ Name = 'identifiers absent from source';     Change = @{ '.claude/agents/rev.md' = New-Doc 'rev' '`PlayState`, `iMinScore`, `gameStage`, `PVNode`' }; Expect = @('identifier') * 4 }
         @{ Name = 'no identifier spans fails closed';   Change = @{ '.claude/agents/rev.md' = New-Doc 'rev' 'Nothing to cite.' }; Expect = @('empty') }
-        @{ Name = 'empty tree fails closed';            Change = $emptied; Expect = @('empty') * 5 }
+        @{ Name = 'link to a missing file';             Change = @{ 'Docs/Guide.md' = '[gone](Roadmap.md) [up](../README.md)' }; Expect = @('link', 'anchor', 'anchor', 'anchor') }
+        @{ Name = 'link to a missing anchor';           Change = @{ 'README.md' = '[a](Docs/Guide.md#board) [b](#nowhere)' }; Expect = @('anchor', 'anchor') }
+        @{ Name = 'comment cites an issue';             Change = @{ 'Src/Eval.cpp' = "int g_iValue; // see issue #123`n/* PR #9 */`n * from #77"; 'Src/Eval.h' = 'struct PlayScore { int m_iDepth; }; constexpr int MAX_PLY = 64;' }; Expect = @('comment-ref') * 3 }
+        @{ Name = 'empty tree fails closed';            Change = $emptied; Expect = @('empty') * 7 }
     )
     $failed = 0
     foreach ($case in $cases) {
@@ -224,7 +290,7 @@ if ($SelfTest) {
         foreach ($k in $case.Change.Keys) {
             if ($null -eq $case.Change[$k]) { $tree.Remove($k) } else { $tree[$k] = $case.Change[$k] }
         }
-        $result = Get-AgentDocFailure -Files $tree -IsIgnored { param($p) $p -like 'Docs/local/*' }
+        $result = Get-CitationFailure -Files $tree -IsIgnored { param($p) $p -like 'Docs/local/*' }
         $got = @($result.Failures | ForEach-Object Rule | Sort-Object) -join ','
         $want = @($case.Expect | Sort-Object) -join ','
         if ($got -ceq $want) { Write-Host "PASS  $($case.Name)" }
@@ -241,10 +307,10 @@ if ($LASTEXITCODE -ne 0) { throw "git ls-files failed in $Root" }
 $tree = @{}
 foreach ($p in $listing) {
     $full = Join-Path $Root $p
-    $read = $p -match '^(\.claude/|\.agents/|\.codex/|CLAUDE\.md$|AGENTS\.md$)|\.(cpp|h)$' -and (Test-Path -LiteralPath $full -PathType Leaf)
+    $read = $p -match '^(\.claude/|\.agents/|\.codex/|CLAUDE\.md$|AGENTS\.md$)|\.(md|cpp|h|hpp|def)$' -and (Test-Path -LiteralPath $full -PathType Leaf)
     $tree[$p] = if ($read) { [string](Get-Content -LiteralPath $full -Raw) -replace "`r`n", "`n" } else { '' }
 }
-$result = Get-AgentDocFailure -Files $tree -IsIgnored {
+$result = Get-CitationFailure -Files $tree -IsIgnored {
     param($p)
     git -C $Root check-ignore -q -- $p | Out-Host
     $LASTEXITCODE -eq 0
@@ -255,5 +321,5 @@ foreach ($f in $result.Failures) {
 }
 $c = $result.Counts
 $seconds = $clock.Elapsed.TotalSeconds.ToString('F1', [cultureinfo]::InvariantCulture)
-Write-Host "Checked $($c.Docs) docs, $($c.Skills) skills, $($c.Agents) agents, $($c.Paths) path and $($c.Identifiers) identifier spans in ${seconds}s: $($result.Failures.Count) failure(s)."
+Write-Host "Checked $($c.Docs) docs, $($c.Skills) skills, $($c.Agents) agents, $($c.Paths) path and $($c.Identifiers) identifier spans, $($c.Links) links and $($c.Sources) sources in ${seconds}s: $($result.Failures.Count) failure(s)."
 exit [int]($result.Failures.Count -gt 0)

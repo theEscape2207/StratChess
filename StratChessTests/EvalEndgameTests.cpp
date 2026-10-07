@@ -1,5 +1,5 @@
 #include "EvalTestFixture.h"
-// ── Drawish material recognition (issue #128) ─────────────────────────────────
+// ── Drawish material recognition ──────────────────────────────────────────────
 //
 // The evaluator scored a bare minor against a lone king at roughly +300 and a
 // pair of knights at +580. Those are draws by material whatever the kings are
@@ -120,7 +120,7 @@ TEST_CASE("Eval - minors on both sides are left unscaled", "[eval]")
 	REQUIRE(eval.Breakdown(knightVsBishop).endgame_scale == ENDGAME_SCALE_MAX);
 }
 
-// ── Scaled pawnless rook endings (issue #128) ────────────────────────────────
+// ── Scaled pawnless rook endings ─────────────────────────────────────────────
 //
 // Unlike the classes above these are not draws, so the assertions are on the
 // scale and on the direction of the score, never on an exact value: the point
@@ -273,7 +273,7 @@ TEST_CASE("Eval - one change takes a position out of the opposite-bishop class",
 	}
 }
 
-// ── Wrong-coloured-bishop fortress (issue #128) ──────────────────────────────
+// ── Wrong-coloured-bishop fortress ───────────────────────────────────────────
 //
 // The one class the classifier decides from a square rather than from a count,
 // so it needs the complements a piece-count rule does not: the same material
@@ -364,7 +364,7 @@ TEST_CASE("Eval - a kingless board reaches the terms that guard against it", "[e
 
 TEST_CASE("Eval - Breakdown(): the endgame row accounts for the whole scale", "[eval]")
 {
-	// The #129 honesty invariant extended to the scale: the rows plus the
+	// The breakdown's honesty invariant extended to the scale: the rows plus the
 	// adjustment must still reproduce `total` exactly. Asserted on a zero and a
 	// fractional scale, where the adjustment is the largest number in the table.
 	struct ScaledCase {

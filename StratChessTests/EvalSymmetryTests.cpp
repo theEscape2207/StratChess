@@ -1,13 +1,13 @@
 #include "EvalTestFixture.h"
-// ── Color-mirroring correctness (issue #125) ──────────────────────────────────
+// ── Color-mirroring correctness ───────────────────────────────────────────────
 //
 // Exposes Evaluator's protected mirroring/PST helpers for direct testing —
 // no production visibility change; both stay protected on Evaluator. Also
-// used by the term-level tests below (issue #127 restructure) to compute an
-// independently-derived expected PST value.
+// used by the term-level tests below to compute an independently-derived
+// expected PST value.
 TEST_CASE("Eval - getEvalBoard mirrors a Black piece's square vertically, not by 180-degree rotation", "[eval]")
 {
-	// Direct proof of the issue #125 defect: the pre-fix implementation used
+	// Pins the vertical flip against a rotation: an earlier implementation used
 	// (63 - square), a 180-degree rotation. c3 -> c6 is the correct vertical
 	// flip; the buggy code instead produced f6 (63 - 42 == 21 == f6).
 	REQUIRE(EvalProbe::getEvalBoard(BLACK_QUEEN, c3) == c6);
@@ -57,7 +57,7 @@ TEST_CASE("Eval - MirrorFen self-test: castling rights and en-passant square are
 {
 	// FEN_START leaves both helpers untested: its "KQkq" maps to itself under a
 	// case swap, and its en-passant field is "-". Evaluate() reads the castling
-	// field (eval_castling, issue #115) but not the en-passant one, so a broken
+	// field (eval_castling) but not the en-passant one, so a broken
 	// MirrorCastling would silently make the symmetry cases compare two
 	// differently-scored positions -- this self-test is the only thing that
 	// catches either helper going wrong.
@@ -70,7 +70,7 @@ TEST_CASE("Eval - MirrorFen self-test: castling rights and en-passant square are
 	REQUIRE(MirrorFen("r3k3/8/8/8/8/8/8/4K2R w Kq - 5 30") == "4k2r/8/8/8/8/8/8/R3K3 b Qk - 5 30");
 }
 
-// ── Whole-position color symmetry (issue #125) ────────────────────────────────
+// ── Whole-position color symmetry ─────────────────────────────────────────────
 //
 // Evaluate() is side-to-move-relative: it scores from the perspective of
 // whichever color is on move. Mirroring swaps which color is on move along
@@ -90,14 +90,14 @@ TEST_CASE("Eval - color symmetry: a position and its mirror score equally", "[ev
 	REQUIRE(eval.Evaluate(board) == eval.Evaluate(mirrored));
 }
 
-// ── Term-level tests (issue #127 restructure) ─────────────────────────────────
+// ── Term-level tests ──────────────────────────────────────────────────────────
 //
 // Evaluator::Evaluate() is now a thin context-build-and-sum wrapper around
 // four private per-term functions (eval_pawns, eval_rooks, eval_pst,
 // eval_mopup), each taking (const EvalContext&, eColor) and returning that
 // color's contribution only.
-// The term accessors return each term BLENDED at the position's own phase
-// (issue #99) — the value that term actually contributes to Evaluate() there.
+// The term accessors return each term BLENDED at the position's own phase:
+// the value that term actually contributes to Evaluate() there.
 // Endpoint behaviour (mg vs eg) is asserted separately by the tapering tests,
 // which drive phase directly rather than inferring it.
 //

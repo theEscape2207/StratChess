@@ -376,7 +376,7 @@ TEST_CASE("cmd_setoption: Hash replacement is refused while a search is running"
 }
 
 // The board never carries DRAW_50_MOVES: Game::Run adjudicates the fifty-move rule.
-// A high clock therefore has to be handled by the search itself, not by the seed (#345).
+// A high clock therefore has to be handled by the search itself, not by the seed.
 TEST_CASE("UCI: a high halfmove clock still yields a searched move", "[uci]")
 {
 	const int clock = GENERATE(50, 99, 100);
@@ -396,7 +396,6 @@ TEST_CASE("UCI: a high halfmove clock still yields a searched move", "[uci]")
 
 // ---------------------------------------------------------------------------
 // Board::SetupFromFEN failure reporting, and cmd_position's response to it
-// (issues #155, #46)
 // ---------------------------------------------------------------------------
 
 TEST_CASE("cmd_position: malformed FEN resets to the start position and reports it", "[uci]")
@@ -411,7 +410,7 @@ TEST_CASE("cmd_position: malformed FEN resets to the start position and reports 
 
 	// The e2e4 position is gone: keeping it would make the engine answer for a
 	// position the caller never sent, and the answer would depend on session
-	// history (#200).
+	// history.
 	CHECK(fx.board().GetPiece(e4) == NO_PIECE);
 	CHECK(fx.board().GetPiece(e2) == WHITE_PAWN);
 	CHECK(fx.board().GetCurrentColor() == WHITE);
@@ -580,7 +579,7 @@ TEST_CASE("cmd_position: an illegal position is declined", "[uci]")
 }
 
 // ---------------------------------------------------------------------------
-// A rejected FEN must not leave the previous position on the board (#200).
+// A rejected FEN must not leave the previous position on the board.
 //
 // The load-bearing property is that the answer does not depend on what was
 // loaded before: the same rejected FEN from two different prior positions must
@@ -630,7 +629,7 @@ TEST_CASE("cmd_position: an unparseable move rejects the entire replay and repor
 }
 
 // ---------------------------------------------------------------------------
-// Commands that mutate state a running search reads are refused (issue #178)
+// Commands that mutate state a running search reads are refused
 // ---------------------------------------------------------------------------
 
 TEST_CASE("cmd_position: refused while a search is running, board untouched", "[uci]")
@@ -690,7 +689,7 @@ TEST_CASE("Both commands work normally once the search is over", "[uci]")
 }
 
 // ---------------------------------------------------------------------------
-// dispatch() and the received-command log (issue #269)
+// dispatch() and the received-command log
 // ---------------------------------------------------------------------------
 
 // A path in the system temp directory, unique per test, so two tests never

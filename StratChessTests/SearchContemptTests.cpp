@@ -1,4 +1,4 @@
-// SearchContemptTests.cpp — contempt on search-detected draw scores (#452).
+// SearchContemptTests.cpp — contempt on search-detected draw scores.
 //
 // Contempt makes a draw score slightly below equality for the side the engine is playing, so it
 // declines a repetition in a position it believes equal. Three things have to hold and none of

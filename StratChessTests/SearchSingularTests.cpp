@@ -1,4 +1,4 @@
-// SearchSingularTests.cpp — singular extensions (#95).
+// SearchSingularTests.cpp — singular extensions.
 //
 // Two groups. The eligibility tests move one knob at a time off a baseline that is known to
 // trigger, so a failure names the gate that broke. The exclusion-semantics tests drive a

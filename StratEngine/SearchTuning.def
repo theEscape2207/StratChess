@@ -24,7 +24,7 @@ TUNING_FIELD(double,  min_pv_ratio,         0.33, 0.0,                          
 // consumes the room -- one capture beside a king moves shelter (24), king-file openness (11) or
 // storm (15), the isolated-pawn penalty (20, twice in the corner case) and the attack row (5-25),
 // so roughly 110 cp worst case at the middlegame endpoint. Still inside 200, but a king-safety
-// retune upward (#117) has to re-derive this rather than inherit it. Raising the margin is a SEARCH change
+// retune upward has to re-derive this rather than inherit it. Raising the margin is a SEARCH change
 // needing its own measurement. The upper bound keeps eval + gain + margin clear of int overflow.
 TUNING_FIELD(int,     delta_pruning_margin, 200,  0,     10000, true, nullptr, true)
 

@@ -2,7 +2,7 @@
 //
 // ComputeCaptures() feeds quiescence and nothing else, and no test exercised it in
 // isolation, so a one-token colour-index inversion left it unable to generate any
-// capture by a knight, bishop, rook, queen or king for either side (#306). Perft
+// capture by a knight, bishop, rook, queen or king for either side. Perft
 // could not see it: that drives ComputeLegalMoves(), which takes the other branch.
 //
 // The cases below cover one capture per piece type per colour, the promotion output
@@ -68,7 +68,7 @@ static std::vector<std::string> CaptureMoves(const char* fen)
 //
 // The non-emptiness REQUIRE is load-bearing, not decoration: a property expressed as a
 // loop over the move list holds vacuously when the list is empty, which is precisely the
-// state #306 left ComputeCaptures() in. Without it this helper passes on the broken code.
+// state that inversion left ComputeCaptures() in. Without it this helper passes on the broken code.
 static void CheckEveryTargetHoldsAnEnemyPiece(const char* fen)
 {
 	INFO("fen = " << fen);

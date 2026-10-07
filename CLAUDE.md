@@ -9,6 +9,7 @@ This file holds the rules that change what you do. Detail is pointed at, not dup
 |---|---|
 | module ownership, state lifetimes, search lifecycle | `Docs/Architecture.md` |
 | non-obvious API contracts before an engine edit | `Docs/EngineContracts.md` |
+| coding standards, for writing or reviewing code | `Docs/CodingStandards.md` |
 | validation tiers, standing decisions, worktree gotchas | `Docs/Workflow.md` |
 | what each CI workflow runs, and when | `Docs/CI.md` |
 | coverage map + how to write a test | `Docs/TestDesign.md` |
@@ -94,10 +95,7 @@ cleaning up after a merge (`New-PullRequest.ps1`, `Remove-Worktree.ps1`,
 
 **Speed serves strength; the goal is measured positive Elo, not nps.** Anything adding per-node work
 — evaluation terms as much as compiler flags — gets a bench pass, and a measured slowdown needs a
-stated benefit that outweighs it. Compare **nps**, never node counts at fixed depth: node count is a
-property of the search, not the machine code, which is what makes it the right *equivalence* check
-(two builds of identical source must visit identical nodes at `Threads=1`). Choosing an instrument
-and reading its error bar: skill `measure-strength`.
+stated benefit that outweighs it: skill `measure-strength`.
 
 **CI is a gate** — `build-and-test-result` is required on `main` and a red run blocks the merge.
 Linux Debug + sanitizers is the primary correctness gate; Windows CI covers the shipping toolchain.
@@ -119,27 +117,13 @@ configuration. One tripwire is repeated here because violating it fails *silentl
   child that never finished. Node counters and the quiescence stand-pat cutoff store are the
   documented exemptions; a write added above that guard must justify itself the same way.
 
-## Development Guidelines
+## Dependencies
 
-- C++23; favour `constexpr`, RAII, move semantics, strong types, and the standard library over
-  hand-rolled equivalents.
-- Clarity over micro-optimisation; a less readable fast path needs a measured gain.
-- Current external dependencies are `spdlog`, `nlohmann/json` and `Catch2`; bumping one:
-  `Docs/Dependencies.md`. **No new external dependency without explicit approval from the project
-  owner** — ask, with a rationale.
-- English, unambiguous naming and comments. **Comments describe the code as it stands** — no task or
-  PR references, no point-in-time measurements, no describing what the code used to be. Keep them to
-  1–2 lines unless they record a key fact or tripwire; history goes in the PR body or
-  `Docs/Changelog.md`.
-
-## Testing
-
-Execute validation steps autonomously; flag any step needing user assistance (interactive GUI, manual
-input) rather than skipping it silently.
+`spdlog`, `nlohmann/json` and `Catch2`; bumping one: `Docs/Dependencies.md`. **A new external
+dependency needs explicit approval from the project owner** — ask, with a rationale.
 
 ## Commit & PR Conventions
 
-Opening or updating a PR, reviewer dispatch and post-merge cleanup: skill `open-pull-request`.
 PRs stay script-mediated — `New-PullRequest.ps1`, never `gh pr create` or a bare push.
 
 - Every task forks fresh from `origin/main`; PRs target `main`. Two ways to run one, both enforcing
@@ -152,11 +136,11 @@ PRs stay script-mediated — `New-PullRequest.ps1`, never `gh pr create` or a ba
   so earlier slices are paid for on every call.
 - Local `master` is a personal scratch branch — safe to commit to, safe to let drift. Never fork a
   worktree from it. `origin/master` is retired; nothing should reference it.
-- Keep PRs small and logically scoped. Keep commit messages short — detail goes in the PR body or
-  chat. Commit each fix as it lands rather than reverse-splitting a combined diff at the end.
+- Keep commit messages short — detail goes in the PR body or chat. Commit each fix as it lands
+  rather than reverse-splitting a combined diff at the end.
 - Stage named files, never `git add -A` — it sweeps tool-downloaded trees into the commit.
-- Commit only what was explicitly asked for. If a branch carries unrelated commits, cherry-pick the
-  relevant ones onto a fresh branch from `origin/main`.
+- If a branch carries unrelated commits, cherry-pick the relevant ones onto a fresh branch from
+  `origin/main`.
 
 ## Design Documents
 
@@ -178,8 +162,6 @@ keeping its code is a new change.
 - **Always give an explicit worktree-relative binary path.** A `..` path pointing outside the
   worktree can be satisfied by the main repo's stale binary while producing wrong results, and
   "file not found" guards do not catch a stale one. Build from current sources first.
-- **Long background waits do not reliably resume a subagent's turn.** Check in every 15–20 minutes
-  rather than waiting for a notification.
 
 ## Shell Notes
 

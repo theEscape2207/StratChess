@@ -15,6 +15,23 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-07: Citation check in PrePR; coding standards leave CLAUDE.md
+
+### Added
+- `Scripts/Test-Citations.ps1` (was `Test-AgentDocs.ps1`) also fails on a broken Markdown link or
+  anchor, and on a C++ comment citing an issue or PR. `Validate-PrePR.ps1` now runs it on every tier;
+  the nightly job stays as the backstop.
+
+### Changed
+- `Docs/agents/simplify.md` becomes `Docs/CodingStandards.md` and absorbs CLAUDE.md's Development
+  Guidelines; it is the code reviewer's one standards source. CLAUDE.md keeps a pointer and the
+  dependency-approval rule.
+- 97 code comments that cited an issue or PR now describe the code instead.
+- CLAUDE.md drops lines a skill already carries or that restate default agent behaviour.
+
+### Removed
+- `Engine-Readme.md`'s pointer to delta/SEE pruning constraints `EngineContracts.md` never held.
+
 ## 2026-10-07: Coding-standards docs pruned; code review reads EngineContracts
 
 ### Changed
