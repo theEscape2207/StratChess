@@ -469,7 +469,7 @@ solves this internally for tag-resolved references; by hand, for `origin/main` o
 ```powershell
 git worktree add --detach <main-repo>\.claude\worktrees\bench-ref origin/main
 pwsh -ExecutionPolicy Bypass -File <...>\bench-ref\build.ps1 main
-Copy-Item <...>\bench-ref\build\windows-clang-cl\StratChessEvolved.exe EngineTesting\bench-main-<sha>.exe
+Copy-Item <...>\bench-ref\build\windows-clang-cl\StratChessEvolved.exe <repos>\StratChessSupport\EngineTesting\bench-main-<sha>.exe
 git worktree remove --force <...>\bench-ref
 ```
 
@@ -552,7 +552,7 @@ the executable's own folder, which satisfies none of them.
 **a fresh worktree's first build needs network**. The committed presets place them in
 `${sourceDir}/build/_deps` — per worktree, and the path CI caches.
 
-`build.ps1` overrides that at configure time with `-D FETCHCONTENT_BASE_DIR=<repos>/StratChessDeps`,
+`build.ps1` overrides that at configure time with `-D FETCHCONTENT_BASE_DIR=<repos>/StratChessSupport/Deps`,
 a single cache beside the main checkout — so only the first worktree on a machine ever clones and the
 rest need no network. It is skipped when `GITHUB_ACTIONS` is set, leaving CI on `build/_deps` where
 its cache key expects them.
@@ -568,7 +568,7 @@ definition.
 ## Compiler cache
 
 When `ccache` is on PATH, `build.ps1` configures the clang-cl presets with
-`-D CMAKE_CXX_COMPILER_LAUNCHER=ccache` and points `CCACHE_DIR` at `<repos>/StratChessCcache`, beside
+`-D CMAKE_CXX_COMPILER_LAUNCHER=ccache` and points `CCACHE_DIR` at `<repos>/StratChessSupport/Ccache`, beside
 the main checkout like the dependency cache. Measured on a full `all` build: 44.1 s cold, **12.5 s
 warm**, with ~1% overhead when nothing hits. Nothing changes if it is absent, and CI never uses it —
 the workflows have their own ccache setup with their own keys (`Docs/CI.md`).

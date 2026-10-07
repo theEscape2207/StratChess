@@ -8,8 +8,8 @@
     reports the ELO difference with its error bound and appends a row to
     Measurements/local.md.
 
-    The reference exe is cached in EngineTesting\ beside the main checkout and is
-    rebuilt on demand from its git tag via a temporary worktree, so the procedure
+    The reference exe is cached in StratChessSupport\EngineTesting\ beside the main
+    checkout and is rebuilt on demand from its git tag via a temporary worktree, so the procedure
     survives a wiped cache. The candidate is NOT built by this script — build it
     first (.\build.ps1 main), and note that build.ps1 defaults to the shipping
     clang-cl build, which is the only one comparable against the reference.
@@ -72,12 +72,12 @@ param(
     # -Sprt this is only an upper bound, not a resolution target; see
     # the measure-strength skill's sizing guidance before changing it.
     [int]$Games = 500,
-    # Opening book. Empty auto-resolves: a large book in EngineTesting\ if one is
+    # Opening book. Empty auto-resolves: a large book in StratChessSupport\EngineTesting\ if one is
     # present, otherwise the committed 250-position smoke book. Accepts .pgn or
     # .epd -- the format flag passed to fastchess follows the extension.
     #
     # Large books are NOT committed: they are third-party data of varying
-    # provenance, and this repository is public. They live beside the checkout
+    # provenance, and this repository is public. They live in StratChessSupport\EngineTesting\
     # with fastchess and the reference binaries, which is where every other
     # external test asset already lives.
     [string]$Book = '',
@@ -366,20 +366,20 @@ $RepoRoot = Split-Path $PSScriptRoot -Parent
 $GameDir  = Join-Path $RepoRoot 'StratChessEvolved'
 
 # --- Locate EngineTesting\ ---------------------------------------------------
-# fastchess and the cached reference binaries live beside the MAIN checkout, so
-# every worktree shares them instead of re-downloading per branch.
+# fastchess and the cached reference binaries live in StratChessSupport beside the
+# MAIN checkout, so every worktree shares them instead of re-downloading per branch.
 #
 # The main checkout is resolved through git rather than by probing for a marker
 # file: a worktree's .git is a file, and --git-common-dir always points at the
 # main repository's .git regardless of how deeply the worktree is nested.
 $mainRoot      = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir) -replace '[\\/]\.git[\\/]?$', ''
-$DepsRoot      = Split-Path $mainRoot -Parent
-$EngineTesting = Join-Path $DepsRoot 'EngineTesting'
+$ReposRoot     = Split-Path $mainRoot -Parent
+$EngineTesting = Join-Path $ReposRoot 'StratChessSupport\EngineTesting'
 $fastchess     = Join-Path $EngineTesting 'fastchess.exe'
 $smokeBook     = Join-Path $RepoRoot 'Tests\openings\openings-250.pgn'
 
 # --- Resolve the opening book ------------------------------------------------
-# Explicit -Book wins. Otherwise prefer a large book dropped into EngineTesting\
+# Explicit -Book wins. Otherwise prefer a large book dropped into StratChessSupport\EngineTesting\
 # (any openings-large.* file), falling back to the committed smoke book.
 if ($Book -ne '') {
     $book = $Book
@@ -519,7 +519,7 @@ if ($ResumeDir -ne '') {
             Write-Host "MISSING: $book (committed opening book — repo checkout incomplete?)" -ForegroundColor Red
         } else {
             Write-Host "MISSING: $book" -ForegroundColor Red
-            Write-Host 'Drop a book at EngineTesting\openings-large.pgn (or .epd), or pass -Book <path>.'
+            Write-Host "Drop a book at $EngineTesting\openings-large.pgn (or .epd), or pass -Book <path>."
         }
         exit 1
     }
@@ -538,7 +538,7 @@ if ($ResumeDir -ne '') {
     if ($openingCount -gt 0 -and $Games -gt $distinctGames) {
         Write-Host ("WARNING: {0} games requested but the book yields only {1} distinct games." -f $Games, $distinctGames) -ForegroundColor Yellow
         Write-Host '         Openings will repeat; the extra games tighten the error bar without adding information.' -ForegroundColor Yellow
-        Write-Host '         Use a larger book (EngineTesting\openings-large.pgn|.epd) for batches this size.' -ForegroundColor Yellow
+        Write-Host "         Use a larger book ($EngineTesting\openings-large.pgn|.epd) for batches this size." -ForegroundColor Yellow
     }
     if (-not (Test-Path $CandidateExe)) {
         Write-Host "MISSING candidate exe: $CandidateExe" -ForegroundColor Red

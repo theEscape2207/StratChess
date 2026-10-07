@@ -450,11 +450,11 @@ function Import-VsDevEnvironment {
 }
 
 function Get-SharedDepsCache {
-    <# FetchContent's cache beside the main checkout, shared with build.ps1. #>
+    <# FetchContent's cache in StratChessSupport beside the main checkout, shared with build.ps1. #>
     $commonDir = & git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $commonDir) { return $null }
     $mainCheckout = $commonDir -replace '[\\/]\.git[\\/]?$', ''
-    return (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessDeps') -replace '\\', '/'
+    return (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessSupport\Deps') -replace '\\', '/'
 }
 
 function Build-ProfileVariant {

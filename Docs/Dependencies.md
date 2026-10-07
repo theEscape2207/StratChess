@@ -25,7 +25,7 @@ Read the release notes for every version you skip, not only the newest one.
 1. Copy `build/windows-clang-cl/StratChessEvolved.exe` aside as the baseline, and note the fast
    tier's test-case and assertion counts.
 2. Change the `GIT_TAG` in `CMakeLists.txt`. The first build afterwards checks out the new version
-   in the shared `StratChessDeps` cache, which every worktree on the machine uses
+   in the shared `StratChessSupport/Deps` cache, which every worktree on the machine uses
    ([`Workflow.md` → Dependency cache](Workflow.md#dependency-cache)).
 3. Change the CI cache keys. The `actions/cache` keys for the dependencies spell every version
    literally, across `build-and-test.yml`, `nightly.yml` and `strength.yml`. A key you miss keeps

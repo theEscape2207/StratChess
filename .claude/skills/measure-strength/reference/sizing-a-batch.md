@@ -12,7 +12,7 @@ Conflating them is the trap:
 ## The book is not the constraint
 
 A large book is already present and auto-resolved by `Run-EloMatch.ps1` —
-`EngineTesting\openings-large.pgn`, 34,700 openings = **69,400 distinct games**. (`-Book` overrides;
+`StratChessSupport\EngineTesting\openings-large.pgn`, 34,700 openings = **69,400 distinct games**. (`-Book` overrides;
 the committed `openings-250.pgn` is the fallback and yields only 500 distinct games.) The script
 prints the book and its opening count on every run — read that line, and note the **discovery glob
 matches the name, not the content**: that is how #338's first SPRT exhausted the small book while
