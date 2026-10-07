@@ -13,7 +13,7 @@ This file holds the rules that change what you do. Detail is pointed at, not dup
 | what each CI workflow runs, and when | `Docs/CI.md` |
 | coverage map + how to write a test | `Docs/TestDesign.md` |
 | writing a test first, or diagnosing a bug or slowdown | skill `tdd` / `diagnosing-bugs`, then `Docs/TestDesign.md` → Testing and debugging traps |
-| measuring Elo or nps | skill `measure-strength` |
+| before any timing-sensitive measurement (Elo, nps, UCI latency or CPU-profile collection) | follow skill `measure-strength`, including its quiet-window rule |
 | analysing games or positions for engine behaviour | skill `analyze-games` |
 | recording a measurement, or reading past ones | `Measurements/README.md` |
 | opening or updating a PR | skill `open-pull-request` |

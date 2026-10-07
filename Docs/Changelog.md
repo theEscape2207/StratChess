@@ -26,6 +26,14 @@ write to `/mnt/c` ("Bad address"), so it records on ext4 and the file is copied 
 - **Acceptance (79c3217 → origin/main 5a7e94e, depth 13, 2 baseline runs):** TT locks 35.7% → 0.0%
   (baseline spread 0.9), the lock-free TT of #748. Nodes identical across all 3 runs.
 
+## 2026-10-07: Agents announce quiet windows before measurements (#743)
+
+### Changed
+
+- Measurement guidance requires a concise chat estimate of quiet duration and local end time at
+  launch, identifies quiet steps in plans, and waits for go before long runs or deliberately quiet
+  retries after unstable short results. Latency and CPU profiling follow the same route.
+
 ## 2026-10-07: `build.ps1` no longer fails a correct build after a `CMakeLists.txt` edit
 
 ### Fixed
