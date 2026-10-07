@@ -23,6 +23,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   to sit beside the artifact in the worktree, and PR reviews had no channel; #766's landed in `build/`.
 - `Docs/Workflow.md`: PRs are not sent by default; the owner may route one. `exec-plan` no longer
   deletes a `.review.md` with the plan.
+- `Docs/agents/issue-tracker.md`: body files go in the harness scratchpad, else the worktree's
+  gitignored `build/`; Codex found `.codex/` read-only in its sandbox.
 
 ## 2026-10-07: GCC nps comparison in WSL (#753, slice 1)
 
