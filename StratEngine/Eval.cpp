@@ -523,8 +523,8 @@ KingPawnCover Evaluator::eval_king_pawn_cover(const EvalContext& ctx, eColor col
 // danger table: non-linear by construction, which is the property the term
 // exists for -- two attackers cost four times one, not twice -- monotone after
 // the clamp, and a handful of weights instead of a hundred table entries.
-// Fitting a table's extra shape needs data this project does not yet have; tuning
-// can replace the formula with one if it ever does.
+// Fitting a table's extra shape needs data this project does not yet have; a tuning
+// pass could replace the formula with one if it ever does.
 //
 // Two inputs, deliberately measuring different things: WHICH enemy pieces bear
 // on the zone, weighted by type, and HOW MUCH of the zone they cover between

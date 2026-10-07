@@ -3,8 +3,8 @@
 //
 // Exposes Evaluator's protected mirroring/PST helpers for direct testing —
 // no production visibility change; both stay protected on Evaluator. Also
-// used by the term-level tests below to compute an
-// independently-derived expected PST value.
+// used by the term-level tests below to compute an independently-derived
+// expected PST value.
 TEST_CASE("Eval - getEvalBoard mirrors a Black piece's square vertically, not by 180-degree rotation", "[eval]")
 {
 	// Pins the vertical flip against a rotation: an earlier implementation used
@@ -96,8 +96,8 @@ TEST_CASE("Eval - color symmetry: a position and its mirror score equally", "[ev
 // four private per-term functions (eval_pawns, eval_rooks, eval_pst,
 // eval_mopup), each taking (const EvalContext&, eColor) and returning that
 // color's contribution only.
-// The term accessors return each term BLENDED at the position's own phase
-// — the value that term actually contributes to Evaluate() there.
+// The term accessors return each term BLENDED at the position's own phase:
+// the value that term actually contributes to Evaluate() there.
 // Endpoint behaviour (mg vs eg) is asserted separately by the tapering tests,
 // which drive phase directly rather than inferring it.
 //

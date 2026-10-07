@@ -93,7 +93,7 @@ function Get-HeadingAnchor {
         $seen[$slug] = $n + 1
         [void]$anchors.Add($(if ($n -eq 0) { $slug } else { "$slug-$n" }))
     }
-    foreach ($m in [regex]::Matches($Text, '<a\s+(?:name|id)="([^"]+)"')) { [void]$anchors.Add($m.Groups[1].Value) }
+    foreach ($m in [regex]::Matches($Text, '<a\s+(?:name|id)="([^"]+)"')) { [void]$anchors.Add($m.Groups[1].Value.ToLowerInvariant()) }
     , $anchors
 }
 
@@ -245,7 +245,7 @@ if ($SelfTest) {
     $base = @{
         'CLAUDE.md'                               = 'Use `alpha`; read `Docs/Guide.md#setup`, `Docs/Guide.md:12`, `Docs/Guide.md:3-9`, `Docs/local/run.log`. Not paths: `origin/main`, `/code-review`, `-Name a/b`, `Docs/<n>.md`, `Docs/*.md`, `Docs/{a,b}.md`, `Docs/x…`, `Docs/...`, `https://x.y/z`.'
         'AGENTS.md'                               = 'Use skill `alpha`.'
-        'Docs/Guide.md'                           = "# Guide`n## Set up ``x```n## Notes`n## Notes`n<a id=`"raw`"></a>`n```````n[fenced](Gone.md)`n``````"
+        'Docs/Guide.md'                           = "# Guide`n## Set up ``x```n## Notes`n## Notes`n<a id=`"Raw`"></a>`n```````n[fenced](Gone.md)`n``````"
         'Docs/My Guide.md'                        = ''
         'README.md'                               = '[a](Docs/Guide.md#set-up-x), [b](Docs/Guide.md#notes-1), [c](Docs/Guide.md#raw), [d](Docs/My%20Guide.md), [e](./Src), [f](https://x.y/z.md), [g](#readme), `[h](Gone.md)`' + "`n# README"
         '.claude/skills/alpha/SKILL.md'           = New-Doc 'alpha' 'Load `beta`, dispatch `rev`, see `reference/notes.md`.'

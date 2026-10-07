@@ -111,13 +111,14 @@ TEST_CASE("Eval - mop-up: walking the winning king toward the loser must raise t
 	// per step of approach, while that same king's endgame PST charges it 10 cp
 	// per step of centralization surrendered to walk toward the corner. The two
 	// terms are pulling in opposite directions and the PST wins, so mop-up only
-	// ever *softened* a disincentive to approach — it never reversed it. 	//
+	// ever *softened* a disincentive to approach — it never reversed it.
+	//
 	// Pawnless K+Q vs K+R: a 400 cp lead (exactly MOPUP_MATERIAL_THRESHOLD), so
 	// mop-up is gated on. The Black king is cornered on a8; White's king moves
 	// from d4 to c5, strictly closer to it (Chebyshev 4 -> 3) and no other piece
 	// moves.
 	//
-	// The defending ROOK is load-bearing: it is what keeps the item 5 gate open
+	// The defending ROOK is load-bearing: it is what keeps mop-up's defender gate open
 	// here, and with mop-up off eval_pst stops suppressing the winner's
 	// centralizing king table, so approaching the corner would cost centipawns
 	// instead of earning them.

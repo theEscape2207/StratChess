@@ -97,8 +97,8 @@ TEST_CASE("compute_budget: hard never exceeds remaining", "[time_mgr]")
 
 TEST_CASE("compute_budget: sub-100 ms increments do not drain the clock", "[time_mgr]")
 {
-	// The forfeit this guards against: at an increment below a 100 ms floor every
-	// move costs more than it repays, so the clock walked down to a forfeit.
+	// The forfeit this guards against: a per-move floor above the increment makes every
+	// move cost more than it repays, so the clock walks down to a forfeit.
 	// Spending the *hard* limit every move is the worst case; the search normally
 	// stops at soft. The clock must instead settle on a positive fixed point.
 	// The clock settles where hard == increment, i.e. (r - 50) / 2 == inc. Integer

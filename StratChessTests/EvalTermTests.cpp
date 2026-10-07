@@ -138,8 +138,8 @@ TEST_CASE("Eval - eval_mobility: own pieces block, enemy pieces are capture targ
 
 TEST_CASE("Eval - eval_mobility: the queen is scored, not skipped (issue #113)", "[eval]")
 {
-	// The queen counts too, so it is not left out if mobility scopes down to cheap
-	// pieces. A lone queen must produce a nonzero term.
+	// Mobility covers the queen, not just the cheap pieces: a lone queen must produce
+	// a nonzero term.
 	Board queen("4k3/8/8/8/3Q4/8/8/4K3 w - - 0 1");
 
 	REQUIRE(EvaluatorTestFixture::Mobility(queen, WHITE) > 0);
@@ -197,8 +197,8 @@ TEST_CASE("Eval - eval_rooks: the 7th-rank bonus is endgame-weighted, the file b
 {
 	// FEN_ROOK_ON_7TH: White Re7 alone against a bare king. The fully open
 	// file (no pawns of either colour) is phase-independent and so appears at
-	// both endpoints; the 7th-rank bonus is endgame-weighted
-	// and so appears only at eg. Asserting the endpoints rather than the
+	// both endpoints; the 7th-rank bonus is endgame-weighted and so
+	// appears only at eg. Asserting the endpoints rather than the
 	// blended value keeps this independent of the position's own phase.
 	Board board(FEN_ROOK_ON_7TH);
 
@@ -210,8 +210,8 @@ TEST_CASE("Eval - eval_rooks: the 7th-rank bonus is endgame-weighted, the file b
 
 TEST_CASE("Eval - eval_rooks: term-level result matches the #126 open-file guard exactly", "[eval]")
 {
-	// Re-runs the open-file case (an enemy knight sharing the
-	// file must not demote it) directly against the extracted term, not just
+	// Re-runs the open-file case (an enemy knight sharing the file must not
+	// demote it) directly against the extracted term, not just
 	// through the whole-position score — pins the term itself, not merely
 	// its net effect once summed with unrelated PST noise.
 	//
