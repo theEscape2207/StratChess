@@ -114,6 +114,19 @@ function Get-CompareBenchArgument {
     return $argList.ToArray()
 }
 
+function Set-AffinityMetadata {
+    <# Compare-Bench records its own -Affinity, which is 0 here; record the taskset mask instead. #>
+    param(
+        [Parameter(Mandatory)][string]$Json,
+        [Parameter(Mandatory)][int64]$Mask
+    )
+    $metadata = $Json | ConvertFrom-Json
+    $metadata.Affinity = $Mask
+    $mechanism = if ($Mask -ne 0) { 'taskset' } else { 'none' }
+    $metadata | Add-Member -NotePropertyName AffinityMechanism -NotePropertyValue $mechanism -Force
+    return $metadata | ConvertTo-Json -Depth 4
+}
+
 function Get-RefLabel {
     param([Parameter(Mandatory)][object]$Ref)
     $suffix = if ($Ref.Dirty) { '+uncommitted' } else { '' }
@@ -154,6 +167,12 @@ if ($SelfTest) {
     $pinned = @(Get-CompareBenchArgument @common -PositionFile '/p.fen' -Mask 12)
     Assert-Case 'command: an affinity mask runs pwsh under taskset' ($pinned[0] -eq 'taskset' -and $pinned[1] -eq '0xc' -and $pinned[2] -eq 'pwsh') ($pinned -join ' ')
     Assert-Case 'command: a positions file is passed' (($pinned -join ' ') -match '-Positions /p\.fen$') ($pinned -join ' ')
+
+    $saved = '{"Affinity":0,"Rounds":12}'
+    $pinnedMeta = Set-AffinityMetadata -Json $saved -Mask 12 | ConvertFrom-Json
+    Assert-Case 'metadata: a taskset mask survives into metadata.json' ($pinnedMeta.Affinity -eq 12 -and $pinnedMeta.AffinityMechanism -eq 'taskset' -and $pinnedMeta.Rounds -eq 12) ($pinnedMeta | ConvertTo-Json -Compress)
+    $plainMeta = Set-AffinityMetadata -Json $saved -Mask 0 | ConvertFrom-Json
+    Assert-Case 'metadata: FALSIFY: an unpinned run records no mechanism' ($plainMeta.Affinity -eq 0 -and $plainMeta.AffinityMechanism -eq 'none') ($plainMeta | ConvertTo-Json -Compress)
 
     $label = Get-RefLabel -Ref ([pscustomobject]@{ Commit = '0123456789abcdef'; Dirty = $true })
     Assert-Case 'label: short commit plus uncommitted marker' ($label -eq '012345678+uncommitted') "got $label"
@@ -229,6 +248,9 @@ try {
 finally {
     Invoke-Wsl -Argument 'rm', '-rf', $wslRun | Out-Host
 }
+
+$metadataPath = Join-Path $outPath 'compare\metadata.json'
+Set-AffinityMetadata -Json (Get-Content -LiteralPath $metadataPath -Raw) -Mask $Affinity | Set-Content -LiteralPath $metadataPath
 
 $compiler = (Get-Content -LiteralPath (Join-Path $outPath 'baseline\build.log') -Tail 1).Trim()
 $note = "GCC Release in WSL $WslDistro ($compiler)."
