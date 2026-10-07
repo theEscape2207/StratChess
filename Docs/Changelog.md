@@ -23,8 +23,7 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   (`build.ps1`), `Equivalence` (`Compare-SearchEquivalence.ps1`) and `EngineTesting`
   (`Run-EloMatch.ps1`, `Run-PerftCheck.ps1`, `analyze_external_quality.py`). Docs updated to match.
 - An existing build tree keeps its configured `FETCHCONTENT_BASE_DIR`; reconfigure it with
-  `-D FETCHCONTENT_BASE_DIR=<repos>/StratChessSupport/Deps` or delete it. On another machine, move
-  the four folders by hand. A `-BaselineRef` older than this change builds with its own `build.ps1`,
+  `-D FETCHCONTENT_BASE_DIR=<repos>/StratChessSupport/Deps` or delete it. A `-BaselineRef` older than this change builds with its own `build.ps1`,
   which still uses the old `StratChessDeps` and `StratChessCcache` paths.
 
 ## 2026-10-07: GCC nps comparison in WSL (#753, slice 1)
