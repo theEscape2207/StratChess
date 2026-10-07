@@ -22,9 +22,12 @@ Before doing repository work, read `CLAUDE.md` completely. Its project rules are
 - Reading or editing GitHub issues outside triage: read the applicable files under `Docs/agents/`
   first.
 
-Repository skills are exposed to Codex under `.agents/skills/`; their canonical instructions remain
-under `.claude/skills/`. If a required skill cannot be loaded, report the discovery failure instead
-of substituting an ad-hoc workflow.
+Repository skills are exposed to Codex under `.agents/skills/`. Follow each entry's instructions;
+adapters point to canonical instructions under `.claude/skills/`. If a required skill cannot be
+loaded, report the discovery failure instead of substituting an ad-hoc workflow.
+
+When a skill requests the Skill tool and your harness has none, read the named skill's `SKILL.md`
+and follow its instructions.
 
 Every GitHub issue or pull-request body and every non-trivial comment must be supplied through a
 body file, never an inline body argument.
