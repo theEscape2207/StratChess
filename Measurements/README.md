@@ -108,9 +108,9 @@ Changing any of these starts a new setup record.
 | Component | Value |
 |---|---|
 | Match runner | fastchess **v1.8.2-alpha** (`fastchess alpha 1.8.2`, windows-x86-64), from https://github.com/Disservin/fastchess/releases/tag/v1.8.2-alpha |
-| Runner location | `<DepsRoot>EngineTesting\fastchess.exe` (repo sibling, same convention as spdlog/json/Catch2) |
-| Opening book | Resolved by `Run-EloMatch.ps1`: `-Book <path>` if given, else `EngineTesting\openings-large.pgn\|.epd` if present, else the committed `Tests/openings/openings-250.pgn` — first 250 games of `8moves_v3.pgn` (official-stockfish/books), sequential order, each pair color-swapped (`-repeat`). **250 openings = 500 distinct games**, so a 500-game batch exhausts that book exactly |
-| Reference build | git tag **`elo-reference-v2`** (`df9245f`, 2026-08-03). Cached as `EngineTesting\StratChess-elo-reference-v2.exe`; rebuilt from the tag automatically on cache miss |
+| Runner location | `<repos>\StratChessSupport\EngineTesting\fastchess.exe`, beside the main checkout |
+| Opening book | Resolved by `Run-EloMatch.ps1`: `-Book <path>` if given, else `StratChessSupport\EngineTesting\openings-large.pgn\|.epd` if present, else the committed `Tests/openings/openings-250.pgn` — first 250 games of `8moves_v3.pgn` (official-stockfish/books), sequential order, each pair color-swapped (`-repeat`). **250 openings = 500 distinct games**, so a 500-game batch exhausts that book exactly |
+| Reference build | git tag **`elo-reference-v2`** (`df9245f`, 2026-08-03). Cached as `StratChessSupport\EngineTesting\StratChess-elo-reference-v2.exe`; rebuilt from the tag automatically on cache miss |
 | Time control | 10 s + 0.1 s increment |
 | Adjudication | draw: movenumber=40 movecount=8 score=10; resign: movecount=4 score=800 |
 | Machine | Windows 11 Pro x64 (theEscape2207 dev machine) — results are machine-relative; re-establish the sanity row when measuring on different hardware |
@@ -151,7 +151,7 @@ regression look like an improvement.
 
 **Why v1 is kept.** It is the long-run anchor for the eval (#110) and build-modernization (#81)
 epics: a single before/after across both, where the compiler gain is *part of* what is being
-measured rather than a confound. Do not delete `EngineTesting\StratChess-elo-reference-v1.exe` or
+measured rather than a confound. Do not delete `StratChessSupport\EngineTesting\StratChess-elo-reference-v1.exe` or
 the tag. Tracked in #180.
 
 ```

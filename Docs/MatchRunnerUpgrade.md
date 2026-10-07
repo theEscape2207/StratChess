@@ -32,7 +32,7 @@ gated on the new binary's output, not on its changelog.
 
 Then update the pin in `.github/workflows/strength.yml`, the pinned-components table in
 [`../Measurements/README.md`](../Measurements/README.md), and the local
-`EngineTesting\fastchess.exe`.
+`StratChessSupport\EngineTesting\fastchess.exe`.
 
 ## Traps
 
