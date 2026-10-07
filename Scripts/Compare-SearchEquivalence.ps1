@@ -91,8 +91,8 @@
     inferred the same way, else Release.
 
 .PARAMETER CacheRoot
-    Where -BaselineRef builds are cached. Defaults to StratChessEquivalence beside
-    the main checkout, the same placement build.ps1 uses for its shared FetchContent
+    Where -BaselineRef builds are cached. Defaults to StratChessSupport\Equivalence
+    beside the main checkout, the same placement build.ps1 uses for its shared FetchContent
     cache.
 
 .PARAMETER AllowMixedCompiler
@@ -541,7 +541,7 @@ if ($BaselineRef) {
     $compilerName = if ($Compiler) { $Compiler } elseif ($afterFlavour) { $afterFlavour.Compiler } else { 'clang-cl' }
     $configName   = if ($Config)   { $Config }   elseif ($afterFlavour) { $afterFlavour.Config }   else { 'Release' }
     if (-not $CacheRoot) {
-        $CacheRoot = Join-Path (Get-MainCheckoutParent -RepoPath $RepoRoot) 'StratChessEquivalence'
+        $CacheRoot = Join-Path (Get-MainCheckoutParent -RepoPath $RepoRoot) 'StratChessSupport\Equivalence'
     }
     $beforePath = New-BaselineBinary -RepoPath $RepoRoot -Ref $BaselineRef `
                                      -CompilerName $compilerName -ConfigName $configName -Root $CacheRoot

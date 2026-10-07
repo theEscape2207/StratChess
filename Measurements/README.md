@@ -108,7 +108,7 @@ Changing any of these starts a new setup record.
 | Component | Value |
 |---|---|
 | Match runner | fastchess **v1.8.2-alpha** (`fastchess alpha 1.8.2`, windows-x86-64), from https://github.com/Disservin/fastchess/releases/tag/v1.8.2-alpha |
-| Runner location | `<DepsRoot>EngineTesting\fastchess.exe` (repo sibling, same convention as spdlog/json/Catch2) |
+| Runner location | `<repos>\StratChessSupport\EngineTesting\fastchess.exe`, beside the main checkout |
 | Opening book | Resolved by `Run-EloMatch.ps1`: `-Book <path>` if given, else `EngineTesting\openings-large.pgn\|.epd` if present, else the committed `Tests/openings/openings-250.pgn` — first 250 games of `8moves_v3.pgn` (official-stockfish/books), sequential order, each pair color-swapped (`-repeat`). **250 openings = 500 distinct games**, so a 500-game batch exhausts that book exactly |
 | Reference build | git tag **`elo-reference-v2`** (`df9245f`, 2026-08-03). Cached as `EngineTesting\StratChess-elo-reference-v2.exe`; rebuilt from the tag automatically on cache miss |
 | Time control | 10 s + 0.1 s increment |

@@ -8,7 +8,7 @@
     reports the ELO difference with its error bound and appends a row to
     Measurements/local.md.
 
-    The reference exe is cached in EngineTesting\ beside the main checkout and is
+    The reference exe is cached in StratChessSupport\EngineTesting\ beside the main checkout and is
     rebuilt on demand from its git tag via a temporary worktree, so the procedure
     survives a wiped cache. The candidate is NOT built by this script — build it
     first (.\build.ps1 main), and note that build.ps1 defaults to the shipping
@@ -366,7 +366,7 @@ $RepoRoot = Split-Path $PSScriptRoot -Parent
 $GameDir  = Join-Path $RepoRoot 'StratChessEvolved'
 
 # --- Locate EngineTesting\ ---------------------------------------------------
-# fastchess and the cached reference binaries live beside the MAIN checkout, so
+# fastchess and the cached reference binaries live in StratChessSupport beside the MAIN checkout, so
 # every worktree shares them instead of re-downloading per branch.
 #
 # The main checkout is resolved through git rather than by probing for a marker
@@ -374,7 +374,7 @@ $GameDir  = Join-Path $RepoRoot 'StratChessEvolved'
 # main repository's .git regardless of how deeply the worktree is nested.
 $mainRoot      = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir) -replace '[\\/]\.git[\\/]?$', ''
 $DepsRoot      = Split-Path $mainRoot -Parent
-$EngineTesting = Join-Path $DepsRoot 'EngineTesting'
+$EngineTesting = Join-Path $DepsRoot 'StratChessSupport\EngineTesting'
 $fastchess     = Join-Path $EngineTesting 'fastchess.exe'
 $smokeBook     = Join-Path $RepoRoot 'Tests\openings\openings-250.pgn'
 

@@ -17,7 +17,7 @@ Measurements/move-quality-tier2.md. Read both before acting on any number this
 prints.
 
 The oracle is not in the checkout. Put a Stockfish binary and its GPL-3 licence
-in EngineTesting/ beside fastchess.exe, the way the opening book and fastchess
+in StratChessSupport/EngineTesting/ beside fastchess.exe, the way the opening book and fastchess
 already live outside the repo; --engine or STOCKFISH_PATH override the search.
 
     gh run download <run_id> --repo theEscape2207/StratChess \
@@ -85,7 +85,7 @@ if (exp.CLAMP_CP, exp.MATE_CP) != (CLAMP_CP, MATE_CP):
 if exp.MIN_LEGACY_LOSS_CP != amq.BLUNDER_CP:
     raise RuntimeError("the export threshold has drifted from the blunder threshold")
 
-ENGINE_DIR = "EngineTesting"
+ENGINE_DIR = "StratChessSupport/EngineTesting"
 ENGINE_EXE = "stockfish.exe" if os.name == "nt" else "stockfish"
 
 # The oracle's UCI options, applied in _engine() and recorded in the export
@@ -124,7 +124,7 @@ def find_engine() -> str:
     """Locate the oracle binary outside the checkout, or return ''.
 
     STOCKFISH_PATH wins; otherwise walk up from this script looking for a sibling
-    EngineTesting/, which is where the external test assets live. A worktree sits
+    StratChessSupport/EngineTesting/, which is where the external test assets live. A worktree sits
     several levels below the repo root, so the walk has to be a walk.
     """
     env = os.environ.get("STOCKFISH_PATH")

@@ -8,7 +8,7 @@
     this script removes:
 
     1. **Wrong location breaks the tooling.** The build itself no longer cares -- CMake
-       fetches its own dependencies -- but `Run-EloMatch.ps1` finds `EngineTesting\`
+       fetches its own dependencies -- but `Run-EloMatch.ps1` finds `StratChessSupport\EngineTesting\`
        (fastchess and the cached reference binaries) beside the *main* checkout, and a
        worktree planted somewhere else resolves it to the wrong place. This script always
        resolves the main checkout via `git rev-parse --git-common-dir`, so it plants the

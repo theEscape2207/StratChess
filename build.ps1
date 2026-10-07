@@ -477,8 +477,9 @@ function Import-VsDevEnvironment {
 
 # FetchContent clones spdlog, nlohmann/json and Catch2 on a build tree's first
 # configure, so without this every new worktree re-clones all three over the
-# network. Point them at one cache beside the main checkout instead: only the
-# first worktree on a machine pays for the clone, and the rest need no network.
+# network. Point them at one cache in StratChessSupport beside the main checkout
+# instead: only the first worktree on a machine pays for the clone, and the rest
+# need no network.
 #
 # Overridden via -D rather than in CMakePresets.json because a preset's
 # cacheVariables cannot be redefined by CMakeUserPresets.json (duplicate preset
@@ -494,12 +495,12 @@ function Get-SharedDepsCache {
     if ($LASTEXITCODE -ne 0 -or -not $commonDir) { return $null }
 
     $mainCheckout = $commonDir -replace '[\\/]\.git[\\/]?$', ''
-    return (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessDeps') -replace '\\', '/'
+    return (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessSupport\Deps') -replace '\\', '/'
 }
 
 # ccache turns a repeated compile into a cache read: a full clang-cl build measured
 # 44.7 s cold and 11.7 s warm, for ~1% overhead when nothing hits. The cache is shared
-# by every worktree on the machine, beside the checkout, for the same reason the deps
+# by every worktree on the machine, in StratChessSupport, for the same reason the deps
 # cache is.
 #
 # Returns the bare directory, or $null when caching is off: in CI (a runner is discarded
@@ -516,7 +517,7 @@ function Get-SharedCompilerCache {
     if ($LASTEXITCODE -ne 0 -or -not $commonDir) { return $null }
 
     $mainCheckout = $commonDir -replace '[\\/]\.git[\\/]?$', ''
-    return (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessCcache')
+    return (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessSupport\Ccache')
 }
 
 # What launcher, if any, this build tree already compiles through. Returns the recorded

@@ -38,8 +38,8 @@
     Cost per case is superlinear (the corpus is ordered roughly simplest-first), so
     a -Limit run's rate does NOT extrapolate: 1.09 ms/case over the first 5,000
     against 3.29 ms/case over the next 15,000. Measure at the limit you intend.
-    perftcheck.exe (~84 MB) is not committed. It lives in EngineTesting\ beside the
-    main checkout with fastchess and the reference builds, shared by every worktree.
+    perftcheck.exe (~84 MB) is not committed. It lives in StratChessSupport\EngineTesting\
+    beside the main checkout with fastchess and the reference builds, shared by every worktree.
 #>
 
 [CmdletBinding()]
@@ -48,7 +48,7 @@ param(
     # resolved by Get-BuildArtifact.ps1 rather than hardcoded -- a literal path
     # can silently name another checkout's stale binary.
     [string]$Engine = '',
-    # perftcheck binary. Default: EngineTesting\perftcheck.exe beside the main checkout.
+    # perftcheck binary. Default: StratChessSupport\EngineTesting\perftcheck.exe beside the main checkout.
     [string]$PerftCheckExe = '',
     # First N matching cases only. 0 runs the whole corpus. A case is a
     # position-depth pair, not a position.
@@ -87,7 +87,7 @@ $GameDir  = Join-Path $RepoRoot 'StratChessEvolved'
 # .git however deeply the worktree is nested.
 $mainRoot      = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir) -replace '[\\/]\.git[\\/]?$', ''
 $DepsRoot      = Split-Path $mainRoot -Parent
-$EngineTesting = Join-Path $DepsRoot 'EngineTesting'
+$EngineTesting = Join-Path $DepsRoot 'StratChessSupport\EngineTesting'
 
 # --- Run ---------------------------------------------------------------------
 # Sets $script:reportFile rather than returning it: a native command's stdout

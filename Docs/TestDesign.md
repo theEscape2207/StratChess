@@ -902,7 +902,7 @@ pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Run-PerftCheck.ps1
 ... Run-PerftCheck.ps1 -ClassifyReport <report.json>      # re-read a past run, no engine needed
 ```
 
-`perftcheck.exe` (~84 MB, not committed) lives in `EngineTesting\` beside `fastchess.exe`; the script
+`perftcheck.exe` (~84 MB, not committed) lives in `StratChessSupport\EngineTesting\` beside `fastchess.exe`; the script
 prints the download URL if it is missing. Cost per case is superlinear — the corpus is ordered roughly
 simplest-first — so a `-Limit` run's rate does not extrapolate to the whole.
 

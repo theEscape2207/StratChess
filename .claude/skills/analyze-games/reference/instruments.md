@@ -18,7 +18,7 @@ Flags live in each script's `--help`.
 | Question | Script | Read first |
 |---|---|---|
 | Where (phase, piece) the engine loses quality by its own judgement | `Scripts/analyze_move_quality.py` | `Docs/MoveQuality.md` |
-| Mistakes the engine does not know it made (needs Stockfish in `EngineTesting/`) | `Scripts/analyze_external_quality.py` | `Docs/MoveQuality.md` |
+| Mistakes the engine does not know it made (needs Stockfish in `StratChessSupport/EngineTesting/`) | `Scripts/analyze_external_quality.py` | `Docs/MoveQuality.md` |
 | Positions joined to engine eval and an oracle, for eval-term questions | `Scripts/measure_eval_error.py` | its docstring |
 | The option value at which `bestmove` changes | `Scripts/bisect_uci_option.py` | its docstring |
 | A FEN corpus from repository assets | `Scripts/build_corpus.py` | its docstring |
