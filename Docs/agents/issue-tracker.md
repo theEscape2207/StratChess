@@ -6,7 +6,9 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 **Every body or comment goes through `--body-file`, never inline `--body "..."`.** An inline body
 run from Bash executes backtick spans as shell commands and posts the mangled result publicly. Write
-the text to a file first — the scratchpad directory is the right place.
+the text to a file first: your harness's scratchpad directory if it gives you one, otherwise
+`build/` in your own worktree, which is gitignored and writable in every sandbox (create it if
+missing). `.codex/` can be read-only.
 
 - **Create an issue**: `gh issue create --title "..." --body-file <path>`
 - **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.

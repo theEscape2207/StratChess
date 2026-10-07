@@ -1,6 +1,6 @@
 ---
 name: cross-agent-review
-description: Review a design doc, plan, spec or issue another agent wrote, or answer the review of your own. Use when asked to review or cross-review such an artifact, or to address a `*.review.md` file or review comment.
+description: Review a design doc, plan, spec, issue or PR another agent wrote, or answer the review of your own. Use when asked to review or cross-review such an artifact, or to address a `*.review.md` file or review comment.
 ---
 
 # Cross-agent review
@@ -11,9 +11,10 @@ Cross-agent review.
 
 ## The channel
 
-- **A file in a worktree** (a draft design doc or plan): the review is `<artifact>.review.md` beside
-  it — `foo.md` → `foo.review.md`. One review covering several files takes the primary file's name.
-  `*.review.md` is gitignored: never committed.
+- **A design doc, plan or PR**: the review is a file in `StratChessSupport\Reviews\`, beside the main
+  checkout, so it outlives the worktree and both agents reach one path. Name it after what it
+  reviews: `pr-<n>.review.md` for a PR, `foo.review.md` for `foo.md`. One review covering several
+  files takes the primary file's name.
 - **An issue**: a comment, through `--body-file`.
 
 Either way, the artifact's author edits the artifact; the reviewer edits only the review.
@@ -63,4 +64,5 @@ left open, execution is next: load skill `exec-plan` before the first edit.
 
 **One round per artifact.** A second round happens only for a disputed or newly found Blocking
 finding, and covers only those. When the artifact lands, carry each rejected finding and its reason
-into the PR body so the exchange stays auditable, then delete the `.review.md`.
+into the PR body so the exchange stays auditable. The review file stays in `Reviews\` as the local
+record.

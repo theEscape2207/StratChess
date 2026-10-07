@@ -1,6 +1,6 @@
 ---
 name: cross-agent-review
-description: Review a design doc, plan, spec or issue another agent wrote, or answer the review of your own. Use when asked to review or cross-review such an artifact, or to address a `*.review.md` file or review comment.
+description: Review a design doc, plan, spec, issue or PR another agent wrote, or answer the review of your own. Use when asked to review or cross-review such an artifact, or to address a `*.review.md` file or review comment.
 ---
 
 # Codex adapter

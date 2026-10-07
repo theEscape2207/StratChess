@@ -149,7 +149,7 @@ starts. The user routes it.
 **What to send.** Issues and specs before work starts, design docs, measurement and validation
 plans, and documents making provenance claims — these are where a bad premise is expensive and
 invisible to CI. **Skip** mechanical changes where CI is the real gate, and artifacts that have already
-converged. **PRs are not sent.** The author's `code-review`, which also checks the diff against the
+converged. **PRs are not sent by default**; the owner routes one when they choose. The author's `code-review`, which also checks the diff against the
 design doc and lists removed behaviour, plus the specialised reviewers and CI are the PR's review. A
 PR round found only wording on tooling and docs PRs (#624), and nothing on an engine PR that had
 already been through those reviews and a strength lab (#667).
