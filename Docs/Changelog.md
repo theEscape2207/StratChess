@@ -15,6 +15,15 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-07: GCC nps comparison in WSL (#753, slice 1)
+
+### Added
+- `Scripts/Compare-BenchLinux.ps1`: builds two refs with GCC Release in WSL Ubuntu-26.04 (the
+  strength lab's toolchain) and runs `Compare-Bench.ps1 -Control` on them inside WSL under `pwsh`,
+  with binaries and outputs on ext4. Reported as a trend: there is no GCC ordered pair.
+- `Scripts/WslBuild.ps1`: the WSL build library, moved out of `Measure-CpuProfile.ps1` and shared
+  with it; compile flags are a parameter (`-g` for profiling, none for the bench).
+
 ## 2026-10-07: Citation check in PrePR; coding standards leave CLAUDE.md
 
 ### Added

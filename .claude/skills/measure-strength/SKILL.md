@@ -17,6 +17,7 @@ The goal is measured positive Elo — speed serves that, it is not the objective
 |---|---|---|---|
 | Did behaviour change at all? | `Compare-SearchEquivalence.ps1` | minutes | exact node/bestmove equality |
 | Slower or faster? | `Compare-Bench.ps1` (paired `Run-Bench` nps) | ~5 min | a speed verdict, not Elo |
+| Slower or faster on the lab's GCC? | `Compare-BenchLinux.ps1` (WSL) | ~15 min | a trend, read beside a lab row |
 | Did I break something? | local **SPRT** `NonRegression` | 40 min – 1 h | a verdict, if the effect is big enough |
 
 **Regression check** for a change meant to leave search alone — equivalence plus a paired bench
@@ -62,8 +63,8 @@ affordable game count.
 
 ## Before a local measurement: quiet window
 
-For `Run-Bench.ps1`, `Compare-Bench.ps1`, `Run-EloMatch.ps1`, `Measure-UciLatency.ps1` and
-`Measure-CpuProfile.ps1`, do this before each launch:
+For `Run-Bench.ps1`, `Compare-Bench.ps1`, `Compare-BenchLinux.ps1`, `Run-EloMatch.ps1`,
+`Measure-UciLatency.ps1` and `Measure-CpuProfile.ps1`, do this before each launch:
 
 1. **Estimate before launch** from script help, guidance or comparable past runs, adjusted for
    settings. Include benchmark warm-up and all arms/rounds; for matches use the effective game
