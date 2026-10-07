@@ -36,10 +36,7 @@
     Linux (-Linux). The strength lab's toolchain: GCC Release plus -g in WSL Ubuntu-26.04,
     sampled with `perf record -F 1000 -e cycles:u` and read with `perf report --no-children
     --sort sym`. -g leaves GCC's code unchanged, so it is the lab's binary with symbols. Each ref
-    is exported as a tar (git archive; a dirty worktree through a temporary index) and built on
-    WSL's ext4 under ~/strat-cpu-profile, then deleted: FetchContent fails over /mnt/c, and a
-    worktree's .git file holds a Windows path WSL cannot follow. WSL is driven through a generated
-    .sh with `wsl --exec`, never shell text, whose quoting mangles backslashes. perf cannot write
+    is built on WSL's ext4 under ~/strat-cpu-profile by WslBuild.ps1, then deleted. perf cannot write
     its data to /mnt/c ("Bad address"), so it records on ext4 and the file is copied out. The
     engine runs from the output directory's bin\, which perf.data names, so keep the two together.
     Shares differ from Windows in more than codegen (clang-cl inlines the TT probe into the
@@ -128,6 +125,7 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'BenchPositions.ps1')
 . (Join-Path $PSScriptRoot 'QuietWindow.ps1')
+. (Join-Path $PSScriptRoot 'WslBuild.ps1')
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $EngineProcess = 'StratChessEvolved'
@@ -152,27 +150,7 @@ $RoughBuildSeconds = 240
 $RoughRunSeconds = 30
 $RoughAnalysisSeconds = 60
 
-$WslDistro = 'Ubuntu-26.04'
 $PerfRecordArgs = @('-F', '1000', '-e', 'cycles:u')
-
-# Builds one -Linux arm on ext4 and copies the exe out; the tree is deleted on exit. Written with
-# LF endings next to the arm's outputs, so bash never sees a CR.
-$WslBuildScript = @'
-#!/usr/bin/env bash
-# Usage: build.sh <source.tar> <bin dir> <work dir> <FetchContent deps dir>
-set -euo pipefail
-tar_path=$1; bin_dir=$2; work=$3; deps=$4
-rm -rf "$work"
-mkdir -p "$work/src" "$bin_dir"
-trap 'rm -rf "$work"' EXIT
-tar -xf "$tar_path" -C "$work/src"
-cmake -S "$work/src" -B "$work/build" -G Ninja --log-level=WARNING -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_CXX_FLAGS=-g "-DFETCHCONTENT_BASE_DIR=$deps"
-cmake --build "$work/build" --target StratChessEvolved --parallel
-cp "$work/build/StratChessEvolved" "$bin_dir/"
-grep -E '^CMAKE_(CXX_COMPILER|CXX_FLAGS|BUILD_TYPE):' "$work/build/CMakeCache.txt"
-"$(grep -E '^CMAKE_CXX_COMPILER:' "$work/build/CMakeCache.txt" | cut -d= -f2)" --version | head -1
-'@ -replace "`r`n", "`n"
 
 function Get-SymbolName {
     <#
@@ -421,7 +399,6 @@ if ($SelfTest) {
         [math]::Abs($perfShare.Area['Move ordering'] - 10) -lt 1e-9 -and [math]::Abs($perfShare.Sort - 10) -lt 1e-9 -and
         [math]::Abs($perfShare.Area['Other'] - 5) -lt 1e-9) `
         "got $($perfShare.Area['Search bodies'])/$($perfShare.Area['TT probe/store'])/$($perfShare.Area['Move ordering'])/$($perfShare.Sort)"
-    Assert-Case 'FALSIFY: the WSL build script carries no CR' (-not $WslBuildScript.Contains("`r"))
 
     $now = [datetime]'2026-10-06 10:00:20'
     $bannerCases = @(
@@ -478,24 +455,6 @@ function Get-SharedDepsCache {
     if ($LASTEXITCODE -ne 0 -or -not $commonDir) { return $null }
     $mainCheckout = $commonDir -replace '[\\/]\.git[\\/]?$', ''
     return (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessDeps') -replace '\\', '/'
-}
-
-function Resolve-ProfileRef {
-    <# A worktree path, built in place, or a commit of this repository, built from a temporary checkout. #>
-    param([Parameter(Mandatory)][string]$Ref, [Parameter(Mandatory)][string]$Arm)
-
-    if (Test-Path -LiteralPath $Ref -PathType Container) {
-        $root = (Resolve-Path -LiteralPath $Ref).Path
-        if (-not (Test-Path -LiteralPath (Join-Path $root 'CMakePresets.json'))) { throw "-$Arm '$Ref' is a directory but not a StratChess checkout." }
-        $commit = (& git -C $root rev-parse HEAD)
-        if ($LASTEXITCODE -ne 0) { throw "-$Arm '$Ref' is not a git worktree." }
-        # Untracked files count: CMake globs sources, so a new .cpp is built.
-        $dirty = @(& git -C $root status --porcelain).Count -gt 0
-        return [pscustomobject]@{ Arm = $Arm; Ref = $Ref; Tree = $root; Commit = [string]$commit; Dirty = $dirty }
-    }
-    $commit = (& git -C $RepoRoot rev-parse --verify --quiet "$Ref^{commit}")
-    if ($LASTEXITCODE -ne 0 -or -not $commit) { throw "-$Arm '$Ref' is neither a directory nor a commit of $RepoRoot." }
-    return [pscustomobject]@{ Arm = $Arm; Ref = $Ref; Tree = $null; Commit = [string]$commit; Dirty = $false }
 }
 
 function Build-ProfileVariant {
@@ -558,67 +517,15 @@ function Build-ProfileVariant {
     }
 }
 
-function Invoke-Wsl {
-    <# A command in the profiling distro. --exec passes arguments verbatim, with no shell to mangle them. #>
-    param([Parameter(Mandatory)][string[]]$Argument)
-    & wsl.exe -d $WslDistro --exec @Argument
-}
-
-function ConvertTo-WslPath {
-    param([Parameter(Mandatory)][string]$Path)
-    $wslPath = Invoke-Wsl -Argument 'wslpath', '-a', $Path
-    if ($LASTEXITCODE -ne 0 -or -not $wslPath) { throw "wslpath could not translate $Path." }
-    return [string]$wslPath
-}
-
-function Export-RefArchive {
-    <#
-        The ref's source as a tar. A dirty worktree is snapshotted through a temporary index, so
-        uncommitted and untracked (not ignored) files are built, as the Windows arm builds them.
-    #>
-    param([Parameter(Mandatory)][object]$Ref, [Parameter(Mandatory)][string]$Tar)
-
-    $repo = if ($Ref.Tree) { $Ref.Tree } else { $RepoRoot }
-    $treeish = $Ref.Commit
-    if ($Ref.Dirty) {
-        $callerIndex = $env:GIT_INDEX_FILE
-        $env:GIT_INDEX_FILE = "$Tar.index"
-        try {
-            & git -C $repo read-tree HEAD | Out-Host
-            & git -C $repo add -A | Out-Host
-            $treeish = & git -C $repo write-tree
-            if ($LASTEXITCODE -ne 0) { throw "Could not snapshot $repo." }
-        }
-        finally {
-            $env:GIT_INDEX_FILE = $callerIndex
-            Remove-Item -LiteralPath "$Tar.index" -ErrorAction SilentlyContinue
-        }
-    }
-    & git -C $repo archive --format=tar -o $Tar $treeish | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "git archive failed for $treeish." }
-}
-
 function Build-LinuxProfileVariant {
     <# Builds the GCC -g variant in WSL and copies its exe to $ArmDir\bin. #>
     param([Parameter(Mandatory)][object]$Ref, [Parameter(Mandatory)][string]$ArmDir, [Parameter(Mandatory)][string]$WorkDir)
 
     $bin = Join-Path $ArmDir 'bin'
     New-Item -ItemType Directory -Force -Path $bin | Out-Null
-    $tar = Join-Path $ArmDir 'source.tar'
-    $buildScript = Join-Path $ArmDir 'build.sh'
-    $log = Join-Path $ArmDir 'build.log'
-    [System.IO.File]::WriteAllText($buildScript, $WslBuildScript)
-    Export-RefArchive -Ref $Ref -Tar $tar
-    try {
-        Invoke-Wsl -Argument 'bash', (ConvertTo-WslPath $buildScript), (ConvertTo-WslPath $tar), (ConvertTo-WslPath $bin), $WorkDir, "$script:WslRoot/deps" *>> $log
-        if ($LASTEXITCODE -ne 0) { Get-Content -LiteralPath $log -Tail 20 | Out-Host; throw "WSL build failed; full log: $log" }
-    }
-    finally { Remove-Item -LiteralPath $tar -ErrorAction SilentlyContinue }
-
-    if (-not (Select-String -LiteralPath $log -Pattern '^CMAKE_CXX_FLAGS:\w+=-g$' -Quiet)) { throw "The WSL build was not configured with -g; see $log" }
-    $exe = Join-Path $bin 'StratChessEvolved'
-    if (-not (Test-Path -LiteralPath $exe)) { throw "The WSL build wrote no $exe." }
-    return $exe
+    $null = Build-WslVariant -Ref $Ref -Repo $RepoRoot -StageDir $ArmDir -WslBinDir (ConvertTo-WslPath $bin) `
+        -WslWorkDir $WorkDir -WslDepsDir (Get-WslDepsDir) -CxxFlags '-g'
+    return Join-Path $bin 'StratChessEvolved'
 }
 
 function Read-EngineLine {
@@ -855,7 +762,7 @@ if ($Reanalyse) {
     if ($linuxArm) { $script:WslWork = "$script:WslRoot/$(Split-Path $outPath -Leaf)" }
     $positionList = @(Resolve-Positions -Path $Positions)
     $positionCount = $positionList.Count
-    $refs = [ordered]@{ before = (Resolve-ProfileRef -Ref $Before -Arm 'Before'); after = (Resolve-ProfileRef -Ref $After -Arm 'After') }
+    $refs = [ordered]@{ before = (Resolve-BuildRef -Ref $Before -Arm 'Before' -Repo $RepoRoot); after = (Resolve-BuildRef -Ref $After -Arm 'After' -Repo $RepoRoot) }
     @{
         before = @{ ref = $Before; commit = $refs['before'].Commit; dirty = $refs['before'].Dirty }
         after  = @{ ref = $After; commit = $refs['after'].Commit; dirty = $refs['after'].Dirty }

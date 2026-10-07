@@ -202,6 +202,10 @@ $script:SelfTestCoverers = @{
     # The quiet-machine plan and banners, dot-sourced by measuring scripts.
     # Measure-CpuProfile.ps1 -SelfTest asserts their formatting and ETA arithmetic.
     'Scripts/QuietWindow.ps1'    = 'Scripts/Measure-CpuProfile.ps1'
+
+    # The WSL GCC build, dot-sourced by Measure-CpuProfile.ps1 and Compare-BenchLinux.ps1.
+    # Compare-BenchLinux.ps1 -SelfTest asserts its build script and flags check.
+    'Scripts/WslBuild.ps1'       = 'Scripts/Compare-BenchLinux.ps1'
 }
 
 # Pure: takes the facts, returns the violations. The walk that produces the facts is
