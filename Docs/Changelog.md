@@ -21,6 +21,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - `Scripts/Compare-BenchLinux.ps1`: builds two refs with GCC Release in WSL Ubuntu-26.04 (the
   strength lab's toolchain) and runs `Compare-Bench.ps1 -Control` on them inside WSL under `pwsh`,
   with binaries and outputs on ext4. Reported as a trend: there is no GCC ordered pair.
+- `Compare-Bench.ps1` reports each arm's median aggregate nps, and `-TrendOnly` replaces the
+  verdict with the interval.
 - `Scripts/WslBuild.ps1`: the WSL build library, moved out of `Measure-CpuProfile.ps1` and shared
   with it; compile flags are a parameter (`-g` for profiling, none for the bench).
 

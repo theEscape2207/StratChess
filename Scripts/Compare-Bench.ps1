@@ -41,6 +41,9 @@
     Any other positive delta is unconfirmed: timing noise and placement are not ruled out.
     No verdict is an Elo claim.
 
+    -TrendOnly replaces the verdict with the interval alone, for builds whose code placement
+    cannot be controlled (GCC, which has no ordered pair): every number is still reported.
+
     Build both executables the same way (measure-strength regression-check). Run on a quiet
     machine: finish builds and reviews first, because spare cores do not mean the machine is
     idle. A run is (Rounds + 1) suite passes per arm.
@@ -76,6 +79,9 @@
 
 .PARAMETER CandidateCommit
     Optional commit the candidate was built from, recorded likewise.
+
+.PARAMETER TrendOnly
+    Report the verdict comparison's interval as a trend instead of a verdict.
 
 .PARAMETER OutDir
     Where to keep the CSVs, metadata.json and report.txt. Defaults to a new directory under the
@@ -117,6 +123,8 @@ param(
     [string]$CandidateCommit = '',
 
     [string]$OutDir = '',
+
+    [switch]$TrendOnly,
 
     [switch]$SelfTest
 )
@@ -275,6 +283,13 @@ function Get-Comparison {
         $slots["slot $($group.Name)"] = & $pct $slotMean $overall
     }
 
+    # Each arm's absolute speed: the median of its per-round aggregate nps.
+    $armNps = [ordered]@{}
+    foreach ($arm in @('baseline', 'candidate', 'control')) {
+        $values = @(foreach ($r in $byRound.Values) { if ($r.ContainsKey($arm)) { Get-AggregateNps $r[$arm].Rows } })
+        if ($values.Count -gt 0) { $armNps[$arm] = (Get-Interval -Values $values).Median }
+    }
+
     $verdictInterval = $comparisons[$verdictName]
     $aaInterval = if ($hasControl) { $comparisons['control vs baseline (A/A)'] } else { $null }
     return [pscustomobject]@{
@@ -285,11 +300,12 @@ function Get-Comparison {
         Verdict      = Get-Verdict -Interval $verdictInterval -TolerancePct $TolerancePct -AaInterval $aaInterval
         PerPosition  = $perPosition
         Slots        = $slots
+        ArmNps       = $armNps
     }
 }
 
 function Format-Report {
-    param([Parameter(Mandatory)][object]$Result, [Parameter(Mandatory)][double]$TolerancePct)
+    param([Parameter(Mandatory)][object]$Result, [Parameter(Mandatory)][double]$TolerancePct, [switch]$TrendOnly)
 
     $line = '{0,-38} {1,8:+0.00;-0.00;0.00}% {2,6:0.00} [{3,7:+0.00;-0.00;0.00}%, {4,7:+0.00;-0.00;0.00}%] {5,8:+0.00;-0.00;0.00}%  {6,7:+0.00;-0.00;0.00}% .. {7:+0.00;-0.00;0.00}%'
     # Invariant culture: the report is pasted into PRs, whatever the machine's decimal separator.
@@ -315,7 +331,14 @@ function Format-Report {
     $out.Add('')
     $out.Add('Run-order effect, aggregate nps by slot vs the overall mean: ' +
              (($Result.Slots.Keys | ForEach-Object { & $fmt '{0} {1:+0.00;-0.00;0.00}%' $_ $Result.Slots[$_] }) -join ', '))
+    $out.Add('Aggregate nps per arm, median over kept rounds: ' +
+             (($Result.ArmNps.Keys | ForEach-Object { & $fmt '{0} {1:N0}' $_ $Result.ArmNps[$_] }) -join ', '))
     $out.Add('')
+    if ($TrendOnly) {
+        $c = $Result.Comparisons[$Result.VerdictBasis]
+        $out.Add((& $fmt "TREND: {0:+0.00;-0.00;0.00}% [{1:+0.00;-0.00;0.00}%, {2:+0.00;-0.00;0.00}%] ('$($Result.VerdictBasis)'); no verdict without placement control. Not Elo." $c.Mean $c.Low $c.High))
+        return $out
+    }
     $out.Add("VERDICT: $($Result.Verdict)  (from '$($Result.VerdictBasis)'; tolerance -$TolerancePct%)")
     switch ($Result.Verdict) {
         'Speedup'     { $out.Add('PENDING: relink both builds with New-OrderedBuildPair.ps1 and rerun with -Control; claim it only if Speedup holds there too. Not Elo.') }
@@ -478,7 +501,15 @@ if ($SelfTest) {
     $runs = New-Series -Arms @('baseline', 'candidate', 'control') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.0; control = 1.0 } -Jitter $jitter
     $res = Get-Comparison -Runs $runs -TolerancePct 0.5
     Assert-Case 'the report renders every section' `
-        (@(Format-Report -Result $res -TolerancePct 0.5 | Where-Object { $_ -match 'VERDICT: No slowdown|Per position|Per-round deltas|slot 2' }).Count -eq 4)
+        (@(Format-Report -Result $res -TolerancePct 0.5 | Where-Object { $_ -match 'VERDICT: No slowdown|Per position|Per-round deltas|slot 2|per arm.*control' }).Count -eq 5)
+    $runs = New-Series -Arms @('baseline', 'candidate', 'control') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.03; control = 1.0 } -Jitter $jitter
+    $res = Get-Comparison -Runs $runs -TolerancePct 0.5
+    $ratio = $res.ArmNps['candidate'] / $res.ArmNps['baseline']
+    Assert-Case 'per-arm nps: the 3% faster candidate is 3% above the baseline' ([math]::Abs($ratio - 1.03) -lt 0.005) "got ratio $ratio"
+    $trend = @(Format-Report -Result $res -TolerancePct 0.5 -TrendOnly)
+    Assert-Case 'FALSIFY: -TrendOnly turns a Speedup into a trend, with no verdict or relink advice' `
+        ($res.Verdict -eq 'Speedup' -and @($trend | Where-Object { $_ -match '^TREND: \+3\.' }).Count -eq 1 -and
+         @($trend | Where-Object { $_ -cmatch 'VERDICT|PENDING|New-OrderedBuildPair' }).Count -eq 0) ($trend[-1])
 
     # The refusals. Each one would otherwise average an invalid run into the verdict.
     $good = @(New-Series -Arms @('baseline', 'candidate') -RoundCount 2 -Speed @{ baseline = 1.0; candidate = 1.0 })
@@ -547,6 +578,7 @@ $metadata = [ordered]@{
     Affinity    = $Affinity
     MinTimeMs   = $MinTimeMs
     Tolerance   = $SlowdownTolerancePct
+    TrendOnly   = [bool]$TrendOnly
 }
 $metadata | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $outPath 'metadata.json')
 
@@ -575,7 +607,7 @@ try {
 }
 
 $result = Get-Comparison -Runs $runs -TolerancePct $SlowdownTolerancePct
-$report = @(Format-Report -Result $result -TolerancePct $SlowdownTolerancePct)
+$report = @(Format-Report -Result $result -TolerancePct $SlowdownTolerancePct -TrendOnly:$TrendOnly)
 if ($BaselineCommit -or $CandidateCommit) { $report = @("Baseline $BaselineCommit  candidate $CandidateCommit") + $report }
 $report | Set-Content -Path (Join-Path $outPath 'report.txt')
 Write-Host ''

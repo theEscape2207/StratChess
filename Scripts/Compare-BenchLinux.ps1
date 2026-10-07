@@ -5,16 +5,16 @@
 
 .DESCRIPTION
     The lab plays GCC builds on Linux, while Compare-Bench.ps1 measures the shipping clang-cl build
-    on Windows. A speed change can cost very different shares on the two (removing the TT locks
-    gave +3.3% on clang-cl against about +10% on GCC), so read this next to a lab result.
+    on Windows. A speed change can cost a very different share of the time on the two, so read
+    this next to a lab result.
 
     Each ref is built as strength.yml builds it (Release, no extra flags) on WSL's ext4, see
-    WslBuild.ps1. Compare-Bench.ps1 then runs inside WSL under pwsh with -Control, with every
-    binary and output on ext4, so the control copy sits where the arms do. The results are
-    copied to -OutDir and the WSL tree is deleted.
+    WslBuild.ps1. Compare-Bench.ps1 then runs inside WSL under pwsh with -Control and
+    -TrendOnly, with every binary and output on ext4, so the control copy sits where the arms do.
+    The results are copied to -OutDir and the WSL tree is deleted.
 
-    The result is a trend: there is no GCC equivalent of New-OrderedBuildPair.ps1, so a Speedup
-    stays unconfirmed. The interval, the A/A control and per-arm nps are all reported.
+    The result is a trend, not a verdict: there is no GCC equivalent of New-OrderedBuildPair.ps1.
+    The interval, the A/A control and per-arm nps are all reported.
 
     Needs pwsh, cmake, ninja, g++ and tar in WSL Ubuntu-26.04. Run on a quiet machine.
 
@@ -83,7 +83,7 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
-# Estimates used until the run has measured its own.
+# Phase estimates; the first build's measured time replaces the build estimate.
 $RoughBuildSeconds = 90
 $RoughSuiteSeconds = 20
 
@@ -107,7 +107,7 @@ function Get-CompareBenchArgument {
     if ($Mask -ne 0) { $argList.AddRange([string[]]@('taskset', ('0x{0:x}' -f $Mask))) }
     $argList.AddRange([string[]]@(
         'pwsh', '-NoProfile', '-File', $Script,
-        '-Baseline', $BaselineExe, '-Candidate', $CandidateExe, '-Control',
+        '-Baseline', $BaselineExe, '-Candidate', $CandidateExe, '-Control', '-TrendOnly',
         '-Rounds', [string]$RoundCount, '-Depth', [string]$SearchDepth, '-MinTimeMs', [string]$FloorMs,
         '-BaselineCommit', $BaselineLabel, '-CandidateCommit', $CandidateLabel, '-OutDir', $Out))
     if ($PositionFile) { $argList.AddRange([string[]]@('-Positions', $PositionFile)) }
@@ -148,7 +148,7 @@ if ($SelfTest) {
     $common = @{ Script = '/s/Compare-Bench.ps1'; BaselineExe = '/b/x'; CandidateExe = '/c/x'; Out = '/o'; RoundCount = 12; SearchDepth = 13
                  FloorMs = 200; BaselineLabel = 'aaa'; CandidateLabel = 'bbb' }
     $plain = @(Get-CompareBenchArgument @common -PositionFile '' -Mask 0)
-    Assert-Case 'command: pwsh first, A/A control always on' ($plain[0] -eq 'pwsh' -and $plain -contains '-Control') ($plain -join ' ')
+    Assert-Case 'command: pwsh first, A/A control and trend-only always on' ($plain[0] -eq 'pwsh' -and $plain -contains '-Control' -and $plain -contains '-TrendOnly') ($plain -join ' ')
     Assert-Case 'command: no -Positions without a file' ($plain -notcontains '-Positions') ($plain -join ' ')
     Assert-Case 'command: FALSIFY: -Affinity never reaches Compare-Bench' ($plain -notcontains '-Affinity') ($plain -join ' ')
     $pinned = @(Get-CompareBenchArgument @common -PositionFile '/p.fen' -Mask 12)
@@ -184,9 +184,9 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $outPath = (Resolve-Path -LiteralPath $OutDir).Path
 if (@(Get-ChildItem -LiteralPath $outPath -Force).Count -gt 0) { throw "$outPath is not empty; use a fresh -OutDir." }
 
-# Binaries, CSVs and the control copy all live under one ext4 directory, deleted at the end. The
-# FetchContent cache beside it is kept, so later runs skip the download.
+# Binaries, CSVs and the control copy all live under one ext4 directory, deleted at the end.
 $wslRoot = "$(Invoke-Wsl -Argument 'printenv', 'HOME')/strat-compare-bench"
+$depsDir = Get-WslDepsDir
 $wslRun = "$wslRoot/$(Split-Path $outPath -Leaf)"
 
 $suites = ($Rounds + 1) * 3
@@ -206,16 +206,16 @@ try {
         Write-PhaseBanner -Name "build $arm ($($ref.Ref) @ $(Get-RefLabel -Ref $ref))" -Quiet $false -Seconds $estimate -Rough ($null -eq $buildSeconds)
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         $exes[$arm] = Build-WslVariant -Ref $ref -Repo $RepoRoot -StageDir (Join-Path $outPath $arm) -WslBinDir "$wslRun/$arm" `
-            -WslWorkDir "$wslRun/$arm-build" -WslDepsDir "$wslRoot/deps" -CxxFlags ''
+            -WslWorkDir "$wslRun/$arm-build" -WslDepsDir $depsDir -CxxFlags ''
         if ($null -eq $buildSeconds) { $buildSeconds = $timer.Elapsed.TotalSeconds }
         Write-Host ("  built in {0:N0} s" -f $timer.Elapsed.TotalSeconds) -ForegroundColor DarkGray
     }
 
     Write-PhaseBanner -Name "Compare-Bench ($suites suite runs)" -Quiet $true -Seconds ($RoughSuiteSeconds * $suites) -Rough $true
-    $command = Get-CompareBenchArgument -Script (ConvertTo-WslPath (Join-Path $PSScriptRoot 'Compare-Bench.ps1')) `
+    $command = @(Get-CompareBenchArgument -Script (ConvertTo-WslPath (Join-Path $PSScriptRoot 'Compare-Bench.ps1')) `
         -BaselineExe $exes.baseline -CandidateExe $exes.candidate -Out "$wslRun/compare" -RoundCount $Rounds -SearchDepth $Depth `
         -FloorMs $MinTimeMs -PositionFile $positionFile -Mask $Affinity `
-        -BaselineLabel (Get-RefLabel -Ref $refs.baseline) -CandidateLabel (Get-RefLabel -Ref $refs.candidate)
+        -BaselineLabel (Get-RefLabel -Ref $refs.baseline) -CandidateLabel (Get-RefLabel -Ref $refs.candidate))
     Invoke-Wsl -Argument $command | Out-Host
     $compareExit = $LASTEXITCODE
     Write-PhaseBanner -Name 'copy results' -Quiet $false -Seconds 5 -Rough $true
@@ -231,9 +231,9 @@ finally {
 }
 
 $compiler = (Get-Content -LiteralPath (Join-Path $outPath 'baseline\build.log') -Tail 1).Trim()
-$note = "GCC Release in WSL $WslDistro ($compiler): trend only. No ordered pair exists for GCC, so a Speedup is unconfirmed."
+$note = "GCC Release in WSL $WslDistro ($compiler)."
 $reportPath = Join-Path $outPath 'compare\report.txt'
 @($note) + @(Get-Content -LiteralPath $reportPath) | Set-Content -LiteralPath $reportPath
 Write-Host ''
-Write-Host $note -ForegroundColor Yellow
+Write-Host $note
 Write-Host "Build logs, CSVs, metadata.json and report.txt: $outPath"

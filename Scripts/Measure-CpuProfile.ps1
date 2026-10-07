@@ -36,10 +36,7 @@
     Linux (-Linux). The strength lab's toolchain: GCC Release plus -g in WSL Ubuntu-26.04,
     sampled with `perf record -F 1000 -e cycles:u` and read with `perf report --no-children
     --sort sym`. -g leaves GCC's code unchanged, so it is the lab's binary with symbols. Each ref
-    is exported as a tar (git archive; a dirty worktree through a temporary index) and built on
-    WSL's ext4 under ~/strat-cpu-profile, then deleted: FetchContent fails over /mnt/c, and a
-    worktree's .git file holds a Windows path WSL cannot follow. WSL is driven through a generated
-    .sh with `wsl --exec`, never shell text, whose quoting mangles backslashes. perf cannot write
+    is built on WSL's ext4 under ~/strat-cpu-profile by WslBuild.ps1, then deleted. perf cannot write
     its data to /mnt/c ("Bad address"), so it records on ext4 and the file is copied out. The
     engine runs from the output directory's bin\, which perf.data names, so keep the two together.
     Shares differ from Windows in more than codegen (clang-cl inlines the TT probe into the
@@ -527,7 +524,7 @@ function Build-LinuxProfileVariant {
     $bin = Join-Path $ArmDir 'bin'
     New-Item -ItemType Directory -Force -Path $bin | Out-Null
     $null = Build-WslVariant -Ref $Ref -Repo $RepoRoot -StageDir $ArmDir -WslBinDir (ConvertTo-WslPath $bin) `
-        -WslWorkDir $WorkDir -WslDepsDir "$script:WslRoot/deps" -CxxFlags '-g'
+        -WslWorkDir $WorkDir -WslDepsDir (Get-WslDepsDir) -CxxFlags '-g'
     return Join-Path $bin 'StratChessEvolved'
 }
 

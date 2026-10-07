@@ -51,6 +51,11 @@ function ConvertTo-WslPath {
     return [string]$wslPath
 }
 
+function Get-WslDepsDir {
+    <# The FetchContent cache on ext4, shared by every WSL build so dependencies download once. #>
+    return "$(Invoke-Wsl -Argument 'printenv', 'HOME')/strat-wsl-deps"
+}
+
 function Resolve-BuildRef {
     <# A worktree path, built with its uncommitted changes, or a commit of $Repo. #>
     param([Parameter(Mandatory)][string]$Ref, [Parameter(Mandatory)][string]$Arm, [Parameter(Mandatory)][string]$Repo)
@@ -132,7 +137,7 @@ function Build-WslVariant {
 
     if (-not (Test-WslBuildFlags -Log @(Get-Content -LiteralPath $log) -Flags $CxxFlags)) { throw "The WSL build was not configured with CMAKE_CXX_FLAGS='$CxxFlags'; see $log" }
     $exe = "$WslBinDir/StratChessEvolved"
-    Invoke-Wsl -Argument 'test', '-x', $exe
+    Invoke-Wsl -Argument 'test', '-x', $exe | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "The WSL build wrote no $exe." }
     return $exe
 }
