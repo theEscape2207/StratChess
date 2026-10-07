@@ -15,7 +15,7 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
-## 2026-10-07: Local caches and test assets move into StratChessSupport
+## 2026-10-08: Local caches and test assets move into StratChessSupport
 
 ### Changed
 - The sibling folders beside the main checkout move under `StratChessSupport\`, dropping the
@@ -25,7 +25,7 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - An existing build tree keeps its configured `FETCHCONTENT_BASE_DIR`; reconfigure it with
   `-D FETCHCONTENT_BASE_DIR=<repos>/StratChessSupport/Deps` or delete it. A `-BaselineRef` older than this change builds with its own `build.ps1`,
   which still uses the old `StratChessDeps` and `StratChessCcache` paths.
-## 2026-10-07: Cross-agent review files live in StratChessSupport\Reviews
+## 2026-10-08: Cross-agent review files live in StratChessSupport\Reviews
 
 ### Changed
 - Skill `cross-agent-review`: a design doc, plan or PR review is a file in `StratChessSupport\Reviews\`
