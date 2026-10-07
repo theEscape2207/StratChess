@@ -59,6 +59,33 @@ for it when the lab is unavailable. Its point estimate is not a measurement — 
 +8 is how false confidence accumulates. Below ~5% nps difference, nothing resolves it at any
 affordable game count.
 
+## Before a local measurement: quiet window
+
+For `Run-Bench.ps1`, `Compare-Bench.ps1`, `Run-EloMatch.ps1`, `Measure-UciLatency.ps1` and
+`Measure-CpuProfile.ps1`, do this before each launch:
+
+1. **Estimate before launch** from script help, guidance or comparable past runs, adjusted for
+   settings. Include benchmark warm-up and all arms/rounds; for matches use the effective game
+   budget, or restored remaining work on resume. For SPRT estimate through the game cap and say
+   it may stop earlier. Give an honest rough range for unusual settings; no calibration run is needed.
+2. **Wait for the owner's explicit go before a long quiet period**, such as SPRT or an extended
+   match, after stating the estimate. Routine seconds-to-few-minutes runs proceed without a new
+   permission step. If existing diagnostics show a short run was noisy or unstable and a retry
+   needs deliberate quiet, explain that and wait for go before the retry.
+3. **Immediately before launching, give one short chat heads-up** with the quiet duration and
+   approximate end time in the owner's timezone: `Starting the benchmark: quiet for ~5 min,
+   until ~14:30.` Relay it even when console output is hidden. After a long-run go, repeat the
+   heads-up with the end time calculated from the actual launch time.
+
+In a multi-step plan, identify the quiet steps: `Build (no quiet needed), collect CPU profile
+(quiet), analyse (no quiet needed).` At a useful transition back, say `Collection finished;
+analysis doesn't need quiet.` A standalone run needs only its launch heads-up; estimates stay
+pre-launch, without live ETA updates or extra banners. This rule communicates the window; it
+adds no load detection, script enforcement, verdict changes or cross-session coordination.
+
+A long-run proposal can say: `SPRT needs roughly 40-60 min through the game cap and may stop
+earlier. I'll wait for your go.` The launch heads-up still gives the approximate local end time.
+
 ## Running one
 
 The lab is `workflow_dispatch` only — it gates nothing and nothing triggers it automatically:
@@ -102,9 +129,8 @@ pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Run-EloMatch.ps1
 20-game run can never reach a decision, so it would always read "inconclusive", which looks like a
 measurement and is not one.
 
-- **Measurement budget is the user's call.** Report what deciding would cost and let them choose;
-  never start a multi-hour match unilaterally. That applies to a local SPRT as much as to a lab run
-  — it is the one that takes their machine away — so it is not a reason to prefer one.
+- **CI measurement budget is the user's call.** Report what deciding would cost and let them
+  choose before dispatching the lab. Local-run permission follows the quiet-window rule above.
 - **Do not hold the session open across a long match.** Start it, report that it is running, and end
   the turn. Polling keeps a large context alive for hours, the prompt cache expires underneath it,
   and the whole context is re-read at full price on wake.

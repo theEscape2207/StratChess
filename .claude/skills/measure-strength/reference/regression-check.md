@@ -15,8 +15,9 @@ against the **merge base**:
    worktree (`git worktree add --detach <path> <sha>`) and run its own `build.ps1 main`. An exe
    from any other build path is a different binary: the equivalence cache's baseline read 7.7%
    slower than a `build.ps1` build of the same commit.
-2. **Quiet the machine.** Finish builds and the code review first, and tell the owner a timing
-   window is starting. Review subagents running beside a series read one pair −14% (#640).
+2. **Quiet the machine.** Finish builds and the code review first, then follow
+   [the quiet-window rule](../SKILL.md#before-a-local-measurement-quiet-window) at launch.
+   Review subagents running beside a series read one pair −14% (#640).
 3. **Run** `Compare-Bench.ps1 -Baseline <exe> -Candidate <exe> -BaselineCommit <sha>
    -CandidateCommit <sha>`: 12 rounds of alternating order, about 5 min. Fix `-Rounds` before it
    starts. Its `-?` covers the schedule, the rejections and the verdict rule.
