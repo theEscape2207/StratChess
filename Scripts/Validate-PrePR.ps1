@@ -100,6 +100,11 @@ function Test-IsFastFailCheck {
     return $CheckName -eq 'clang-format'
 }
 
+function Test-ShouldCheckCodeAlignment {
+    param([string]$Tier, [bool]$Forced, [bool]$BuildFailed)
+    return ($Forced -or $Tier -in @('Build', 'Engine')) -and -not $BuildFailed
+}
+
 # Pure: which tracked paths are plans still in the transient top level of .claude/plans/.
 # A plan there is right during design review and wrong at merge, and nothing else
 # notices the delete-or-move commit that should follow review -- so this only warns.
@@ -412,6 +417,26 @@ if ($SelfTest) {
         }
     }
 
+    $alignmentCases = @(
+        @{ Name = 'Build checks alignment'; Tier = 'Build'; Forced = $false; BuildFailed = $false; Expect = $true }
+        @{ Name = 'FALSIFY: Engine (including mixed build/source changes) checks alignment'; Tier = 'Engine'; Forced = $false; BuildFailed = $false; Expect = $true }
+        @{ Name = 'Docs skips alignment'; Tier = 'Docs'; Forced = $false; BuildFailed = $false; Expect = $false }
+        @{ Name = 'Tooling skips alignment'; Tier = 'Tooling'; Forced = $false; BuildFailed = $false; Expect = $false }
+        @{ Name = 'Force checks alignment on Docs'; Tier = 'Docs'; Forced = $true; BuildFailed = $false; Expect = $true }
+        @{ Name = 'a failed Engine build skips alignment'; Tier = 'Engine'; Forced = $false; BuildFailed = $true; Expect = $false }
+        @{ Name = 'a failed Build build skips alignment even with Force'; Tier = 'Build'; Forced = $true; BuildFailed = $true; Expect = $false }
+    )
+    foreach ($case in $alignmentCases) {
+        $actual = Test-ShouldCheckCodeAlignment -Tier $case.Tier -Forced $case.Forced -BuildFailed $case.BuildFailed
+        if ($actual -eq $case.Expect) {
+            Write-Host "  PASS  $($case.Name)" -ForegroundColor Green
+        }
+        else {
+            $failed++
+            Write-Host ("  FAIL  {0}: got {1}, expected {2}" -f $case.Name, $actual, $case.Expect) -ForegroundColor Red
+        }
+    }
+
     # The fixture above asserts the rule; this asserts the rule against the real tree,
     # so the switch cannot pass while the repository itself violates it.
     Write-Host ''
@@ -472,7 +497,7 @@ if ($SelfTest) {
         Write-Host "$failed self-test case(s) FAILED." -ForegroundColor Red
         exit 1
     }
-    Write-Host "All $($cases.Count + $resolutions.Count + $fastFailCases.Count + $planCases.Count + 1) self-test cases passed." -ForegroundColor Green
+    Write-Host "All $($cases.Count + $resolutions.Count + $fastFailCases.Count + $planCases.Count + $alignmentCases.Count + 1) self-test cases passed." -ForegroundColor Green
     exit 0
 }
 
@@ -678,14 +703,12 @@ if ($LASTEXITCODE -ne 0) { $buildFailed = $true }
 $checkResults['Full build'] = if ($buildFailed) { 'FAIL' } else { 'PASS' }
 
 # --- Step 1a: hot-code alignment in the shipping image ---
-# Build tier only: -falign-functions=64 can only be lost through the build
-# configuration, and an Engine-tier diff cannot reach it. CI covers the case no diff
-# announces -- a toolchain upgrade that stops honouring the flag -- by running this
-# on every Build- and Engine-tier trigger.
+# Run on Build and Engine tiers, matching CI; mixed build/source changes classify
+# as Engine and must still check the shipping image after a successful build.
 #
 # Reads the linker map CMakeLists.txt emits on every link, so it costs a file read
 # rather than the relink it would take to reconstruct one. Needs the build above.
-if (($Force -or $change.Tier -eq 'Build') -and -not $buildFailed) {
+if (Test-ShouldCheckCodeAlignment -Tier $change.Tier -Forced $Force -BuildFailed $buildFailed) {
     Write-Host "`n==> Hot-code alignment (issue #513)" -ForegroundColor Cyan
     $alignmentScript = Join-Path $PSScriptRoot 'Test-CodeAlignment.ps1'
     $alignmentFailed = $false

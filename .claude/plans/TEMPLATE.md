@@ -14,12 +14,7 @@
 > complete section** — these are prompts to think, not blanks to fill. Delete any that genuinely does
 > not apply rather than writing filler under it.
 >
-> Write this before implementing when **either**:
-> - the change has a decision that could reasonably go more than one way, or
-> - it rests on an assumption you cannot verify from the code in front of you.
->
-> File count is not the trigger. A ten-file mechanical rename needs nothing; a one-line change to
-> `replacementScore()` needs this.
+> Follow `CLAUDE.md` → Design Documents to determine whether this document is required.
 
 ## Goal
 

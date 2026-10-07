@@ -321,7 +321,7 @@ is a green build (#513):
 
 - **Hot-code alignment.** `Test-CodeAlignment.ps1` reads the linker map `CMakeLists.txt` emits on
   every link and requires `pvs` and `quiescence` at `%64 == 0`. It runs in `Validate-PrePR.ps1` on
-  Build tier and on the Windows Release CI leg. `-falign-functions=64` survives only while clang-cl
+  Build and Engine tiers and on the Windows Release CI leg. `-falign-functions=64` survives only while clang-cl
   keeps translating the spelling *and* link-time codegen keeps honouring `align 64`; without it the
   two land at `%64 = 16` and `48`, and the aligned share falls from 92.7% to 22.9%.
 - **Release reproducibility.** `Test-ReleaseReproducibility.ps1` builds repeatedly into one build
