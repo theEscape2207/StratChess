@@ -287,7 +287,7 @@ function(strat_configure_target tgt)
         # of the nps swing that makes two node-identical builds read differently. It
         # survives LTO because it lands in the IR as `align 64` per definition; the
         # loop-alignment spelling leaves no IR trace, so it would be inert here and
-        # live only on the non-LTO targets. Costs ~1.6% image, no measurable nps.
+        # live only on the non-LTO targets.
         target_compile_options(${tgt} PRIVATE
             -mavx2 -mbmi2
             /clang:-Wall /clang:-Wextra /WX /utf-8
@@ -306,22 +306,15 @@ function(strat_configure_target tgt)
         endif()
     endif()
 
-    # Windows only, and it buys a validation gate rather than anything at runtime.
-    # Every COFF object carries a TimeDateStamp and every PE image a header
-    # timestamp, so without this two clean builds of one commit differ -- measured at
-    # 59 of 73 objects, from a single byte at offset 4 of each. That made the
-    # byte-identical cold-vs-warm comparison the Linux ccache jobs use (#92) simply
-    # unavailable on Windows: it would have gone red against an unmodified tree.
-    #
-    # Both halves are load-bearing. The compile flag settles the objects; the link
-    # flag settles the image, which the linker stamps independently of them.
-    #
-    # ELF needs no equivalent -- the GCC builds are already reproducible, which is
-    # what let #375 gate on binary hashes in the first place.
+    # Windows reproducibility needs both flags: COFF objects and PE images each carry
+    # timestamps. The compile flag settles the objects; the link flag settles the image.
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
        OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         target_compile_options(${tgt} PRIVATE /Brepro)
         target_link_options(${tgt} PRIVATE /Brepro)
+        # Recursive search needs headroom for retained frames and compiler-dependent scratch.
+        # Reserve 8 MiB for executable and worker stacks; leave initial commitment unchanged.
+        target_link_options(${tgt} PRIVATE /STACK:8388608)
     endif()
 
     if(STRAT_STDLIB_DEBUG)

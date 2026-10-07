@@ -26,6 +26,20 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - `Scripts/WslBuild.ps1`: the WSL build library, moved out of `Measure-CpuProfile.ps1` and shared
   with it; compile flags are a parameter (`-g` for profiling, none for the bench).
 
+## 2026-10-07: Windows search stack headroom (#737)
+
+### Changed
+
+- Both Windows executables reserve 8 MiB of stack across MSVC and clang-cl configurations,
+  giving recursive search more headroom. Initial stack commitment and Linux link settings stay
+  unchanged; the reserve is a precaution, not a proven worst-case bound.
+- Quiescence ordering comments qualify scratch lifetime by whether the compiler leaves the helper
+  out of line. Nearby historical comments were corrected separately.
+- Validation: both shipping PE headers report an 8 MiB reserve and unchanged 4 KiB commitment;
+  Windows extended tests, tactical stability, self-play and UCI search/stop at Threads=1/4 passed.
+  Linux Debug builds and fast tests passed without the Windows linker option. Release reproducibility
+  compared 110 byte-identical artifacts. No Elo or nps study was required by the triage scope.
+
 ## 2026-10-07: Citation check in PrePR; coding standards leave CLAUDE.md
 
 ### Added
