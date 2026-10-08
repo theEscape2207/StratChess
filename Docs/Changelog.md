@@ -15,6 +15,12 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-09: CpuProfiles support folder (#775, slice 5)
+
+### Changed
+- `Docs/Workflow.md` → Support folders: a `CpuProfiles\` row for kept CPU-profile traces and
+  their binaries, starting with #775's TT-prefetch profile. The spike's result went to #776.
+
 ## 2026-10-08: Support-folder table and Changelog date check
 
 ### Changed

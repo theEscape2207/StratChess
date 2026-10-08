@@ -562,6 +562,7 @@ is backed up.
 | `Reviews\` | Cross-agent review files | skill `cross-agent-review` |
 | `StrengthLabPgn\` | Annotated PGNs of strength-lab runs, one folder per run | kept by hand |
 | `EvalDatasets\` | Position datasets from `measure_eval_error.py` and their analyses | kept by hand |
+| `CpuProfiles\` | CPU-profile traces worth keeping, each with its matching binaries, one `<date>-<issue>\` folder per study | kept by hand from `Measure-CpuProfile.ps1` output |
 
 The scripts name these paths themselves, so moving a folder means changing each script that names
 it. **Moving `Deps\` moves only the `*-src` folders**, then deletes the build trees: an existing tree
