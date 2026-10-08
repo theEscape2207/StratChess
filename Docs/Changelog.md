@@ -15,6 +15,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-08: Support-folder table and Changelog date check
+
+### Changed
+- `Docs/Workflow.md` → Support folders: the `StratChessSupport` table, and how to move `Deps\`
+  without stranding build trees (#768 broke the spdlog clone).
+- `Sync-Master.ps1` warns about a Changelog header added in the last 10 merges whose date
+  differs from its Copenhagen merge day; the cleanup scripts' `-SyncMaster` runs it.
+
 ## 2026-10-08: Absolute nps by toolchain (#753, slice 2)
 
 ### Added

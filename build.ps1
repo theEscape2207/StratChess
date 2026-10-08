@@ -488,6 +488,8 @@ function Import-VsDevEnvironment {
 #
 # Skipped in CI: the workflow caches build/_deps by that exact path, and a
 # runner is discarded after every job so there is nothing to share.
+#
+# Changing this path strands existing build trees: Docs/Workflow.md -> Support folders.
 function Get-SharedDepsCache {
     if ($env:GITHUB_ACTIONS -eq 'true') { return $null }
 
