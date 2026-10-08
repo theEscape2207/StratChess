@@ -46,6 +46,7 @@ comparable with a Linux CI row**: different compiler, different machine, differe
 | 2026-09-03 | candidate-62c12eb (#97 PR 3, Gain leg) | 9cdd52e (merge-base) | 2500 | 10+0.1 | 7.64 +/- 10.03 | inconclusive @ 2500 |
 | 2026-09-16 | candidate-4e02d0a | 4e02d0a | 20 | 10+0.1 | -52.51 +/- 159.22 | smoke |
 | 2026-10-06 | candidate-c82dc6e | 79c3217 | 1400 | 10+0.1 | 8.19 +/- 12.95 | inconclusive @ 1400 |
+| 2026-10-08 | `main` @ c5879027e: MSVC, GCC/WSL (nps, #753) | clang-cl, same commit | n/a (bench) | depth 13 | n/a (MSVC -23.4% nps, GCC -6.9%) | calibration |
 
 ## Row detail
 
@@ -208,3 +209,15 @@ Reference is the merge-base build passed as `-ReferenceExe` with `-ReferenceTag 
 ### 2026-10-06 -- candidate-c82dc6e (1400 games)
 
 **Indicative only: the lock-free transposition table (#747, PR #748) on the shipping clang-cl build**, item 9 of its validation; a fixed batch sized for about +/-16, gating nothing. Candidate is `main` at c82dc6e (the #748 merge), reference the `79c3217` build it forked from, passed as `-ReferenceExe` with `-ReferenceTag 79c3217` (#309). 393W/360L/647D (51.18%), Ptnml(0-2) [39, 167, 270, 170, 54], LOS 89.26%, nElo +11.52 +/- 18.20, wall time 01:59:12 at `-Concurrency 6`; 95% interval [-4.8, +21.1]. `Threads=1`, 192 MB hash, `EngineTesting\openings-large.pgn`. No time losses, illegal moves or disconnects; 280 "PV continues after threefold repetition" compliance warnings, reporting-only. The lab row for the same change (`ci-per-change.md`, +18.31 +/- 3.54) is GCC, where the locks cost about 3.5x the CPU share they do here, so the two are not on one scale.
+
+### 2026-10-08 -- absolute nps by toolchain, `main` @ c5879027e (#753 slice 2)
+
+**Trend only, not Elo and not a speed verdict.** One-off absolute nps for the three toolchains, each an A/A `Compare-Bench.ps1 -Control -TrendOnly -Rounds 6` series (three arms of one binary, warm-up round discarded, 18 kept suite runs). Windows runs drove `build\windows-{clang-cl,msvc}` Release builds; GCC ran via `Compare-BenchLinux.ps1 -Baseline origin/main -Candidate origin/main` (GCC 15.2.0, `strength.yml`'s Release line, WSL `Ubuntu-26.04` on ext4). Built-in position set (sha `e4ccd88f9d24`), depth 13, `-MinTimeMs 200`, unpinned, AMD Ryzen AI 9 HX 370, overnight on a quiet machine, 02:15-02:31.
+
+| Toolchain | Median nps | Mean | SD (runs) | Min - max | vs clang-cl |
+|---|---|---|---|---|---|
+| clang-cl (ships) | 2,648,659 | 2,648,279 | 0.39% | 2,630,867 - 2,663,316 | - |
+| GCC 15 / WSL (lab) | 2,465,103 | 2,464,749 | 0.40% | 2,446,128 - 2,482,909 | -6.9% |
+| MSVC | 2,029,623 | 2,004,813 | 2.69% | 1,919,737 - 2,062,806 | -23.4% |
+
+**Node counts and best moves are identical across all three toolchains** on every position, so nps compares like with like and a wall-time comparison was not needed. Each A/A passed its own node-equivalence check; A/A intervals: clang-cl +0.55% [+0.02, +1.08], GCC +0.25% [-0.13, +0.63], MSVC -1.44% [-2.62, -0.25]. MSVC's spread is one noisy round (-5.1%, kiwipete -16%), so read its median, not its mean. The clang-cl/GCC gap mixes toolchain with OS paging (huge-page TT on Linux, #686; plain pages on Windows, #684) and WSL virtualisation: it says where the toolchains differ, not why (#753 D5). Raw CSVs were not retained.

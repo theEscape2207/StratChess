@@ -15,6 +15,13 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-08: Absolute nps by toolchain (#753, slice 2)
+
+### Added
+- `Measurements/local.md`: one-off absolute nps on `main` @ c5879027e. GCC/WSL is -6.9% and
+  MSVC -23.4% against clang-cl. Node counts are identical across all three toolchains.
+  Trend only.
+
 ## 2026-10-08: Validation and agent guidance
 
 ### Changed
