@@ -203,7 +203,7 @@ function Find-ChangelogDateMismatch {
         $sha, $committed = "$line".Trim() -split ' ', 2
         $mergeDay = [TimeZoneInfo]::ConvertTime(
             [DateTimeOffset]::Parse($committed, [cultureinfo]::InvariantCulture), $zone).ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture)
-        $added = @((Invoke-Git @('diff', '-U0', "$sha^1", $sha, '--', $changelog)).Output |
+        $added = @((Invoke-Git @('diff', '-U0', "$sha^1", $sha, '--', ":/$changelog")).Output |
                    ForEach-Object { "$_" } | Where-Object { $_ -match '^\+## \d' } | ForEach-Object { $_.Substring(1) })
         if ($added.Count -eq 0) { continue }
         $before = @((Invoke-Git @('show', "$sha^1:$changelog")).Output | ForEach-Object { "$_" })
