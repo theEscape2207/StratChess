@@ -25,6 +25,10 @@
     whatever branch was checked out before the script ran, if it had to switch to master
     first -- this always happens, even if the sync itself fails partway through.
 
+    After the fetch it warns about any Changelog header added by the last 10 merges on
+    origin/main whose date differs from its merge day in Copenhagen time. The fix goes in
+    the next PR; the warning never fails the sync.
+
 .WHEN TO USE
     - At the start of a session that will work directly in the main checkout (not a
       worktree), to make sure `master` reflects everything merged into `origin/main`
@@ -33,7 +37,8 @@
     - Safe to run unconditionally / repeatedly -- it's a no-op if already up to date.
 
 .PARAMETER SelfTest
-    Run the stash-restore assertions against a throwaway fixture repository and exit.
+    Run the stash-restore and Changelog-date assertions against a throwaway fixture
+    repository and exit.
     Touches nothing outside the fixture. Exits 1 on any failure.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
@@ -183,22 +188,21 @@ function Restore-AndExit {
 }
 
 # A Changelog header carries the PR's merge date in Copenhagen time, but the PR is written
-# before that date is known, so a merge after midnight leaves it a day early. GitHub cannot
-# check this before the merge, and after it only a new PR can fix main -- so the sync
-# names each wrong header for the next PR to correct. Returns one line per header added by
-# the last $Merges first-parent merges on $Ref whose date still differs from its merge day.
+# before that date is known, so a merge after midnight leaves it a day early. Returns one
+# line per header added by the last 10 first-parent merges on $Ref whose date still
+# differs from its merge day, for the next PR to correct.
 function Find-ChangelogDateMismatch {
-    param([Parameter(Mandatory)][string]$Ref, [int]$Merges = 10)
+    param([Parameter(Mandatory)][string]$Ref)
 
     $changelog = 'Docs/Changelog.md'
     $header    = '^## (\d{4}-\d{2}-\d{2}): (.+?)\s*$'
     $zone      = [TimeZoneInfo]::FindSystemTimeZoneById('Europe/Copenhagen')
     $current   = @((Invoke-Git @('show', "${Ref}:$changelog")).Output | Where-Object { "$_" -match $header })
     $mismatches = @()
-    foreach ($line in @((Invoke-Git @('log', '--first-parent', '--merges', "-n$Merges", '--format=%H %cI', $Ref)).Output)) {
+    foreach ($line in @((Invoke-Git @('log', '--first-parent', '--merges', '-n10','--format=%H %cI', $Ref)).Output)) {
         $sha, $committed = "$line".Trim() -split ' ', 2
         $mergeDay = [TimeZoneInfo]::ConvertTime(
-            [DateTimeOffset]::Parse($committed, [cultureinfo]::InvariantCulture), $zone).ToString('yyyy-MM-dd')
+            [DateTimeOffset]::Parse($committed, [cultureinfo]::InvariantCulture), $zone).ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture)
         $added = @((Invoke-Git @('diff', '-U0', "$sha^1", $sha, '--', $changelog)).Output |
                    ForEach-Object { "$_" } | Where-Object { $_ -match '^\+## \d' } | ForEach-Object { $_.Substring(1) })
         if ($added.Count -eq 0) { continue }
@@ -299,7 +303,6 @@ if ($SelfTest) {
                Actual = ($remaining.Count -eq 1 -and $remaining[0] -like '*another session*') }
             @{ Name = 'missing entry: not applied';    Expect = 'False';     Actual = $missing.Applied }
             @{ Name = 'missing entry: tree untouched'; Expect = 'untouched'; Actual = $mineAfterMiss }
-            @{ Name = 'changelog: one wrong date';     Expect = '1';         Actual = $wrongDates.Count }
             @{ Name = 'changelog: the late merge';     Expect = 'True';
                Actual = ($wrongDates.Count -eq 1 -and $wrongDates[0] -like '## 2026-07-01: After midnight -- merged 2026-07-02 *') }
         )
@@ -390,6 +393,20 @@ if ($fetch.ExitCode -ne 0) {
 }
 Write-Host "PASS: fetched." -ForegroundColor Green
 
+# Advisory only, so a failure here never skips the sync or the restore.
+Write-Host "`n==> Checking Changelog dates of recent merges" -ForegroundColor Cyan
+try {
+    $wrongDates = @(Find-ChangelogDateMismatch -Ref 'origin/main')
+    if ($wrongDates.Count -eq 0) {
+        Write-Host "PASS: every recent Changelog header carries its merge day (Copenhagen)." -ForegroundColor Green
+    } else {
+        Write-Host "WARNING: Changelog headers dated other than their merge day (Copenhagen) -- fix them in the next PR:" -ForegroundColor Yellow
+        $wrongDates | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+    }
+} catch {
+    Write-Host "WARNING: could not check Changelog dates: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
 if ($originalBranch -ne 'master') {
     Write-Host "`n==> Switching to master (was on '$originalBranch')" -ForegroundColor Cyan
     $checkout = Invoke-Git @('checkout', 'master')
@@ -430,15 +447,6 @@ if ($ff.ExitCode -eq 0) {
     }
     $mergeSha = (Invoke-Git @('rev-parse', '--short', 'HEAD')).Output
     Write-Host "PASS: merged origin/main into master (new commit $mergeSha); local-only commits preserved." -ForegroundColor Green
-}
-
-Write-Host "`n==> Checking Changelog dates of recent merges" -ForegroundColor Cyan
-$wrongDates = @(Find-ChangelogDateMismatch -Ref 'origin/main')
-if ($wrongDates.Count -eq 0) {
-    Write-Host "PASS: every recent Changelog header carries its merge day (Copenhagen)." -ForegroundColor Green
-} else {
-    Write-Host "WARNING: Changelog headers dated other than their merge day (Copenhagen) -- fix them in the next PR:" -ForegroundColor Yellow
-    $wrongDates | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
 }
 
 Write-Host "`nSync complete." -ForegroundColor Green

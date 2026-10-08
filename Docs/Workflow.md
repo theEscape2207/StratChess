@@ -578,7 +578,7 @@ paths. Moved whole, they broke once the old path was gone and left spdlog's clon
 
 `build.ps1` overrides that at configure time with `-D FETCHCONTENT_BASE_DIR=<repos>/StratChessSupport/Deps`,
 a single cache beside the main checkout — so only the first worktree on a machine ever clones and the
-rest need no network. It is skipped when `GITHUB_ACTIONS` is set, leaving CI on `build/_deps` where
+rest need no network; moving it: [Support folders](#support-folders). It is skipped when `GITHUB_ACTIONS` is set, leaving CI on `build/_deps` where
 its cache key expects them.
 
 Done via `-D` rather than a preset because `CMakeUserPresets.json` cannot redefine a preset that
