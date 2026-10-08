@@ -21,6 +21,7 @@ what you do; this file holds the background you consult when something is unexpe
 | create, triage or close a GitHub issue | [`agents/issue-tracker.md`](agents/issue-tracker.md), [`agents/triage-labels.md`](agents/triage-labels.md) |
 | know what CI runs, and when | [`CI.md`](CI.md) |
 | set up Visual Studio | [Working in Visual Studio](#working-in-visual-studio) |
+| find a local cache or test asset, or move one | [Support folders](#support-folders) |
 | understand a first-build or network failure | [Dependency cache](#dependency-cache) |
 | bump spdlog, nlohmann/json or Catch2 | [`Dependencies.md`](Dependencies.md) |
 | know why a build reconfigured itself, or make builds faster | [Compiler cache](#compiler-cache) |
@@ -543,6 +544,29 @@ Debugger arguments and working directory live in `.vs/launch.vs.json` (gitignore
 `game_settings.json`, `logs/` and the `Tests/` lookup all resolve against the working directory, and
 `TacticalTestRunner` takes its *parent*, so only that directory satisfies all three. VS defaults to
 the executable's own folder, which satisfies none of them.
+
+---
+
+## Support folders
+
+Local material that stays out of git sits in `StratChessSupport\` beside the main checkout, shared
+by every worktree. Losing a folder costs a re-run or a re-download, not correctness. Nothing there
+is backed up.
+
+| Folder | What | Used by |
+|---|---|---|
+| `Deps\` | FetchContent checkouts of spdlog, nlohmann/json and Catch2 | `build.ps1`, `Measure-CpuProfile.ps1` |
+| `Ccache\` | Compiler cache for clang-cl builds | `build.ps1` |
+| `Equivalence\` | Cached baseline builds | `Compare-SearchEquivalence.ps1 -BaselineRef` |
+| `EngineTesting\` | fastchess, Stockfish, perftcheck, opening books, cached reference builds | `Run-EloMatch.ps1`, `Run-PerftCheck.ps1`, `analyze_external_quality.py` |
+| `Reviews\` | Cross-agent review files | skill `cross-agent-review` |
+| `StrengthLabPgn\` | Annotated PGNs of strength-lab runs, one folder per run | kept by hand |
+| `EvalDatasets\` | Position datasets from `measure_eval_error.py` and their analyses | kept by hand |
+
+The scripts name these paths themselves, so moving a folder means changing each script that names
+it. **Moving `Deps\` moves only the `*-src` folders**, then deletes the build trees: an existing tree
+keeps its old `FETCHCONTENT_BASE_DIR`, and the `*-subbuild`/`*-build` folders record absolute
+paths. Moved whole, they broke once the old path was gone and left spdlog's clone empty (#768).
 
 ---
 
