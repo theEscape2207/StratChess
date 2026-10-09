@@ -36,7 +36,7 @@
 
     The hot functions are LinkerMap.ps1's AIPerplex::pvs and AIPerplex::quiescence, plus
     Board::DoMove and Board::DoNullMove, which run once per node and which a make/unmake change
-    resizes (#776). The extra two are listed here, not in LinkerMap.ps1, whose list
+    resizes. The extra two are listed here, not in LinkerMap.ps1, whose list
     Test-CodeAlignment.ps1's fixtures assume holds two functions.
 
     The tree's shipping exe, map and PDB are never written; the script checks the exe's hash

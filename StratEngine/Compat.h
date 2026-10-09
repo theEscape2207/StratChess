@@ -49,8 +49,8 @@ inline std::optional<std::string> StratGetEnv(const char* name)
 #endif
 
 // Prefetches the cache line holding `address` into every cache level (prefetcht0, read, high
-// locality). clang-cl accepts _mm_prefetch(p, _MM_HINT_T0) but compiles it to prefetcht2 (#776), so
-// clang and GCC take the builtin, and only MSVC the intrinsic. A prefetch never faults.
+// locality). clang-cl accepts _mm_prefetch(p, _MM_HINT_T0) but compiles it to prefetcht2, so clang
+// and GCC take the builtin, and only MSVC the intrinsic. A prefetch never faults.
 #if defined(__clang__) || defined(__GNUC__)
 inline void StratPrefetch(const void* address) noexcept { __builtin_prefetch(address); }
 #else

@@ -217,7 +217,8 @@ class TranspositionTable {
 #endif
 	size_t index_mask{0};
 
-	// The one bucket-index rule: probe(), store() and the prefetch target all use it.
+	// The bucket-index rule probe() and store() use. prefetch_target() hands Board the same rule as a
+	// base and mask.
 	size_t bucket_index(std::uint64_t key) const noexcept { return static_cast<size_t>(key) & index_mask; }
 
 	std::atomic<uint8_t> current_age{0};

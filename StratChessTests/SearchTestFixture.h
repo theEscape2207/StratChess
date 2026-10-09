@@ -649,7 +649,7 @@ class AIPerlexTestFixture {
 		return ai->Search(board_, SearchLimits::fixed_depth(depth), std::move(observer));
 	}
 
-	// --- TT prefetch targets (#776) ---
+	// --- TT prefetch targets ---
 	PrefetchTarget tt_prefetch_target() const { return ai->tt_->prefetch_target(); }
 	// The main board's target, then every allocated helper's.
 	std::vector<PrefetchTarget> search_board_targets() const

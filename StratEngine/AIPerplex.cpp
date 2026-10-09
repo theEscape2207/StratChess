@@ -425,7 +425,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// report a move, only their node counts feed back in).
 	// threads_ == 1 (the default) leaves this block entirely unreached:
 	// `helpers` stays a default-constructed empty vector and helper_tds_ is
-	// never touched.
+	// neither allocated nor seeded.
 	if (threads > 1) {
 		if (helper_tds_.size() < threads - 1) {
 			const size_t old = helper_tds_.size();

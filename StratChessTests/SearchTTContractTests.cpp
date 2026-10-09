@@ -285,7 +285,7 @@ TEST_CASE("Search - a TT bound at or below alpha cuts off", "[search][tt]")
 }
 
 // ============================================================================
-// TT prefetch target lifetime (#776)
+// TT prefetch target lifetime
 // ============================================================================
 // Board::DoMove prefetches the child's bucket through a target the search binds. A stale or wrong
 // target neither faults nor changes a search result, so only assertions on the target itself can

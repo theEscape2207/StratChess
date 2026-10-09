@@ -122,7 +122,7 @@ class Board final {
 	uint64_t get_zobrist_hash() const noexcept { return zobrist_hash_; }
 
 	// The table DoMove and DoNullMove prefetch the child's bucket from. A copy carries it, so the
-	// search binds it after copying its root and resets it after its helpers join (#776).
+	// search binds it after copying its root and resets it after its helpers join.
 	void SetPrefetchTarget(const PrefetchTarget& target) noexcept { prefetch_target_ = target; }
 	const PrefetchTarget& prefetch_target() const noexcept { return prefetch_target_; }
 
