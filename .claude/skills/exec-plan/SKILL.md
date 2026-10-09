@@ -89,7 +89,8 @@ deviation in Harvest.
    assumption.
 3. Complete Harvest before PR work: done when every Harvest row has a landed destination you can grep
    for.
-4. Delete the plan with its `.progress.md`, unless told otherwise or something still
+4. Move the plan and its `.progress.md` to `StratChessSupport\DesignRecords\`, named by
+   `Docs/Workflow.md` → Design records. Copy instead when told to keep it or something still
    cites it (`Docs/Workflow.md` → Plan states).
 5. Report checkpoint outcomes, Validation, deviations, remaining risks, and lifecycle disposition.
 

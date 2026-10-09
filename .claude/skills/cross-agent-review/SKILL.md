@@ -11,10 +11,11 @@ Cross-agent review.
 
 ## The channel
 
-- **A design doc, plan or PR**: the review is a file in `StratChessSupport\Reviews\`, beside the main
-  checkout, so it outlives the worktree and both agents reach one path. Name it after what it
-  reviews: `pr-<n>.review.md` for a PR, `foo.review.md` for `foo.md`. One review covering several
-  files takes the primary file's name.
+- **A design doc, plan or PR**: the review is a file in `StratChessSupport\DesignRecords\`, beside
+  the main checkout, so it outlives the worktree and both agents reach one path. Name it by
+  `Docs/Workflow.md` → Design records; one review covering several files takes the primary file's
+  name. Reviewing a doc, also copy the doc as reviewed beside the review, so the review keeps its
+  target.
 - **An issue**: a comment, through `--body-file`.
 
 Either way, the artifact's author edits the artifact; the reviewer edits only the review.
@@ -64,5 +65,5 @@ left open, execution is next: load skill `exec-plan` before the first edit.
 
 **One round per artifact.** A second round happens only for a disputed or newly found Blocking
 finding, and covers only those. When the artifact lands, carry each rejected finding and its reason
-into the PR body so the exchange stays auditable. The review file stays in `Reviews\` as the local
+into the PR body so the exchange stays auditable. The review file stays in `DesignRecords\` as the local
 record.
