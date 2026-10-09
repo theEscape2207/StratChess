@@ -10,7 +10,9 @@
 #include "defines.h"
 #include <cstdint>
 #include <cstdlib>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 // ============================================================================
 // Terminal-node TT storage
@@ -280,4 +282,69 @@ TEST_CASE("Search - a TT bound at or below alpha cuts off", "[search][tt]")
 
 	CHECK(fix.search_node(/*depth=*/3, /*ply=*/0, /*alpha=*/stored + 100, /*beta=*/5000, /*is_pv_node=*/false) ==
 	      stored);
+}
+
+// ============================================================================
+// TT prefetch target lifetime (#776)
+// ============================================================================
+// Board::DoMove prefetches the child's bucket through a target the search binds. A stale or wrong
+// target neither faults nor changes a search result, so only assertions on the target itself can
+// catch a missing bind or reset.
+
+TEST_CASE("Board - a board no search has bound holds the dummy prefetch target", "[board][tt_prefetch]")
+{
+	const Board empty;
+	const Board start("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	const Board copy = start;
+
+	CHECK(empty.prefetch_target() == PrefetchTarget{});
+	CHECK(start.prefetch_target() == PrefetchTarget{});
+	CHECK(copy.prefetch_target() == PrefetchTarget{});
+	CHECK(PrefetchTarget{}.bucket_for(0xffff'ffff'ffff'ffffULL) == PrefetchTarget::dummy_bucket);
+}
+
+TEST_CASE("Search - binds every search board to its own table and resets it on return", "[search][tt_prefetch][smp]")
+{
+	// Two engines with different tables in one process: each binds only its own.
+	AIPerlexTestFixture first;
+	AIPerlexTestFixture second;
+	REQUIRE(second.ai->SetHash(2).success);
+	first.ai->SetThreads(2);
+	second.ai->SetThreads(2);
+	REQUIRE(first.tt_prefetch_target().base != second.tt_prefetch_target().base);
+
+	for (const AIPerlexTestFixture* fix : {&first, &second}) {
+		std::vector<PrefetchTarget> during;
+		const auto result =
+		    fix->result_to_depth(3, [&](const IterationInfo&) { during = fix->search_board_targets(); });
+
+		CHECK_FALSE(result.best_move.is_null());
+		REQUIRE(during.size() == 2); // the main board and one helper
+		for (const PrefetchTarget& target : during)
+			CHECK(target == fix->tt_prefetch_target());
+		for (const PrefetchTarget& target : fix->search_board_targets())
+			CHECK(target == PrefetchTarget{});
+	}
+}
+
+TEST_CASE("Search - resets the prefetch targets after a stop or a throwing observer", "[search][tt_prefetch][smp]")
+{
+	AIPerlexTestFixture fix;
+	fix.ai->SetThreads(2);
+
+	SECTION("stopped from the observer")
+	{
+		const auto result = fix.result_to_depth(50, [&](const IterationInfo&) { fix.ai->Stop(); });
+		CHECK_FALSE(result.best_move.is_null());
+	}
+	SECTION("observer throws")
+	{
+		REQUIRE_THROWS_AS(fix.result_to_depth(50, [](const IterationInfo&) { throw std::runtime_error("observer"); }),
+		                  std::runtime_error);
+	}
+
+	const auto targets = fix.search_board_targets();
+	REQUIRE(targets.size() == 2);
+	for (const PrefetchTarget& target : targets)
+		CHECK(target == PrefetchTarget{});
 }

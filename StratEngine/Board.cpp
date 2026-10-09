@@ -451,6 +451,11 @@ bool Board::DoMove(const Move& m)
 
 	current_ply_++;
 
+	// Every hash update is applied and only the side flip remains, so this is the child's exact key.
+	// Prefetching it here overlaps the bucket's miss with the legality check and the move ordering
+	// before the child's probe. A move the check rejects wastes one prefetch.
+	StratPrefetch(prefetch_target_.bucket_for(zobrist_hash_ ^ zobrist::side_key));
+
 	// Roll back if the move leaves our own king in check
 	if (InCheck()) {
 		change_player();
@@ -837,6 +842,9 @@ void Board::DoNullMove()
 	}
 
 	current_ply_++;
+
+	// The child's exact key, as in DoMove: the en-passant key is gone and only the side flip remains.
+	StratPrefetch(prefetch_target_.bucket_for(zobrist_hash_ ^ zobrist::side_key));
 
 	change_player();
 	push_position();

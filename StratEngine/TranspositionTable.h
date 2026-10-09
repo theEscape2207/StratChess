@@ -13,6 +13,7 @@
 #include <type_traits>
 #include <cassert>
 #include "Move.h"
+#include "PrefetchTarget.h"
 #include "TTStats.h"
 
 #if defined(__linux__)
@@ -216,6 +217,9 @@ class TranspositionTable {
 #endif
 	size_t index_mask{0};
 
+	// The one bucket-index rule: probe(), store() and the prefetch target all use it.
+	size_t bucket_index(std::uint64_t key) const noexcept { return static_cast<size_t>(key) & index_mask; }
+
 	std::atomic<uint8_t> current_age{0};
 
 	// Read only by a stats build, to classify evictions; set before any thread of the search stores.
@@ -333,7 +337,7 @@ class TranspositionTable {
 	// racing stores, so its best move is only a hint to match against generated moves.
 	std::optional<TTEntry> probe(std::uint64_t key, int current_ply) const
 	{
-		const size_t index = static_cast<size_t>(key) & index_mask;
+		const size_t index = bucket_index(key);
 		const auto& bucket = table[index];
 
 		for (const auto& slot : bucket.slots) {
@@ -356,7 +360,7 @@ class TranspositionTable {
 	TTStoreOutcome store(std::uint64_t key, int16_t value, int16_t depth, int16_t ply, Move best_move, BoundType bound,
 	                     NodeType node_type, SearchPhase phase)
 	{
-		const size_t index = static_cast<size_t>(key) & index_mask;
+		const size_t index = bucket_index(key);
 		auto& bucket = table[index];
 
 		const uint8_t age = current_age.load(std::memory_order_relaxed);
@@ -568,6 +572,14 @@ class TranspositionTable {
 
 	// diagnostics
 	size_t bucket_count() const noexcept { return table.size(); }
+
+	// What Board prefetches a child's bucket from: PrefetchTarget::bucket_for() is bucket_index() in
+	// bytes, which holds while a bucket is one 64-byte line. Valid until this table is destroyed.
+	PrefetchTarget prefetch_target() const noexcept
+	{
+		static_assert(sizeof(Bucket) == PrefetchTarget::BUCKET_BYTES);
+		return {reinterpret_cast<const char*>(table.data()), index_mask};
+	}
 
 	// What the constructor was asked for. Reported separately from what was
 	// allocated because the two differ -- see the constructor comment.
