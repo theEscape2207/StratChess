@@ -493,9 +493,8 @@ probes hit cache; over a game the table fills and probes go to DRAM. #776's buck
 deeper at equal time against +0.02 for an eval change's null run. At an effective branching factor of
 1.8-2.1 that is **+7-10%** effective speed, and the gain grew as games went on. At the 1.7 Elo/1%
 rate above, that predicts +12-17 Elo; the lab measured +16.6 +/- 3.1. So for a TT or memory-latency
-change, read the bench figure as a lower bound and let the lab size it. A lab run's speed can be read
-from its PGNs: each move comment carries `{score/depth time}`, so compare depth per ply across each
-opening's colour-swapped pair.
+change, read the bench figure as a lower bound and let the lab size it.
+`Scripts/compare_lab_depth.py <run dir>` reads a lab run's effective speed from its PGNs.
 
 ### Profiling: where the time goes
 

@@ -15,7 +15,7 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
-## 2026-10-09: TT bucket prefetch in DoMove and DoNullMove (#776)
+## 2026-10-10: TT bucket prefetch in DoMove and DoNullMove (#776)
 
 ### Changed
 - `Board::DoMove` and `DoNullMove` prefetch the child's TT bucket (`prefetcht0`) once every hash
@@ -26,6 +26,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - `Compat.h`'s `StratPrefetch` uses `__builtin_prefetch` on clang and GCC: clang-cl compiles
   `_mm_prefetch(p, _MM_HINT_T0)` to `prefetcht2`.
 - `New-OrderedBuildPair.ps1` also holds `Board::DoMove` and `DoNullMove` at identical addresses.
+- `Scripts/compare_lab_depth.py` reads a lab run's effective speed from the depth its games reached:
+  #776's games searched +0.13 plies deeper, about +8.7% effective speed against the bench's +3.2%.
 - Variant C (the search predicts the key with `Board::KeyAfter` and prefetches before `DoMove`) was
   measured and abandoned: −1.43% [−1.54%, −1.31%] nps on an ordered pair. B, on an ordered pair with
   all four hot functions pinned (`Compare-Bench -Control -Rounds 60 -Affinity 4`), measured
