@@ -37,9 +37,10 @@ branch creation — `Get-ChangeTier.ps1` fails closed to Engine tier. Leave that
 
 They live here because `classify` is the only job with no tier condition. `Validate-PrePR.ps1` runs
 the two workflow guards on Build and Engine tiers and the script guard on every tier, so the answer
-is reachable before pushing. The script guard checks only the scripts a diff changes; it checks
-every script when it changes itself or the diff fails, and nightly's `lint-deep-windows` job runs it
-over the whole tree.
+is reachable before pushing. Each is scoped to the diff by `GuardScope.ps1`: the script guard checks
+only the changed scripts, and a workflow guard checks every workflow only when one changed. A guard
+checks everything when it, `Get-ChangeTier.ps1` or `GuardScope.ps1` changes (self-test first), or
+when the diff fails. Nightly's `lint-deep-windows` job runs all three over the whole tree.
 
 Consequence for the deps cache: `main` now only builds on Build/Engine merges, and `actions/cache`
 is branch-scoped so a PR can only restore a cache saved there. This is safe because the key is static
@@ -311,7 +312,7 @@ flakiness. The `[slow]` Catch2 tier runs in `extended-tests` and `sanitize-exten
 | `tactical-stability` | `tactical stability 100`, against the local run's 10 |
 | `lint-tree` | Failing clang-format and fast Gate over the whole tree, covering what the per-PR job's one-unit-per-header cover does not reach |
 | `lint-deep-linux` | Failing Deep profile over normalized shipping sources with Linux Clang |
-| `lint-deep-windows` | Failing Deep profile over normalized shipping sources with Windows clang-cl, and `Validate-PrePR.ps1 -AllSelfTests` plus `Test-ScriptTraps.ps1` — every script self-test and every script's trap check, against the PR gate's "only the ones the diff touched" |
+| `lint-deep-windows` | Failing Deep profile over normalized shipping sources with Windows clang-cl, and `Validate-PrePR.ps1 -AllSelfTests` plus the script and workflow guards — every script self-test and every guard over the whole tree, against the PR gate's "only the ones the diff touched" |
 | `citations` | `Test-Citations.ps1`: a skill, subagent or Markdown link citing something that no longer resolves, or a code comment citing an issue. PrePR runs it too; this catches what reached `main` around it |
 
 `perft run <depth> [fen]` prints a count but does not verify it, so the workflow does the comparison.

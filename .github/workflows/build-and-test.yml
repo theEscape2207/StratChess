@@ -62,29 +62,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Lives in classify because classify is the one job with no tier condition:
-      # a workflow edit is Build tier today, but a guard that can be skipped is
-      # not a guard. The self-test runs first, so a broken detector fails loudly
-      # instead of passing everything.
+      # Lives in classify because classify is the one job with no tier condition.
+      # Scoped to the diff: it checks nothing unless a workflow changed, runs its
+      # self-test first when the guard itself changed, and checks everything when the
+      # diff fails. Nightly's lint-deep-windows job runs it over every workflow.
       - name: Check workflow job timeouts
         run: |
-          pwsh -NoProfile -File Scripts/Test-WorkflowTimeouts.ps1 -SelfTest
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pwsh -NoProfile -File Scripts/Test-WorkflowTimeouts.ps1
+          pwsh -NoProfile -File Scripts/Test-WorkflowTimeouts.ps1 -BaseRef $env:BASE_REF
           exit $LASTEXITCODE
 
-      # Same placement, same reason: a guard that a tier condition can skip is not a
-      # guard. This one asserts that no workflow or composite action sets either of
-      # ccache's two path-rewriting options -- local-workflow levers whose failure
-      # mode is a stale artifact on a green build, and which CI gains nothing from
-      # because every job already builds at a stable path. The match is textual, so
-      # this comment deliberately does not spell the option names; Docs/CI.md and the
-      # script's own header carry them. See issues #510, #511 and #514.
+      # Same placement and scoping. This one asserts that no workflow or composite
+      # action sets either of ccache's two path-rewriting options -- local-workflow
+      # levers whose failure mode is a stale artifact on a green build, and which CI
+      # gains nothing from because every job already builds at a stable path. The
+      # match is textual, so this comment deliberately does not spell the option
+      # names; Docs/CI.md and the script's own header carry them. See issues #510,
+      # #511 and #514.
       - name: Check ccache path settings in CI configuration
         run: |
-          pwsh -NoProfile -File Scripts/Test-WorkflowCcachePaths.ps1 -SelfTest
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pwsh -NoProfile -File Scripts/Test-WorkflowCcachePaths.ps1
+          pwsh -NoProfile -File Scripts/Test-WorkflowCcachePaths.ps1 -BaseRef $env:BASE_REF
           exit $LASTEXITCODE
 
       - name: Classify changed files

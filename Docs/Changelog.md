@@ -15,6 +15,16 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-09: Workflow guards scoped to CI configuration diffs (#781)
+
+### Changed
+- `Test-WorkflowTimeouts.ps1` and `Test-WorkflowCcachePaths.ps1` take `-BaseRef`: they check
+  nothing unless the diff touches a workflow (timeouts) or a YAML file under `.github/` (ccache
+  paths). CI's `classify` and `Validate-PrePR.ps1` pass it; nightly runs both over everything.
+- The scope decision is one library, `GuardScope.ps1`, shared with `Test-ScriptTraps.ps1`. A
+  change to a guard, `Get-ChangeTier.ps1` or `GuardScope.ps1` runs the guard's self-test and
+  checks everything, as does a failed diff. `Test-ScriptTraps.ps1 -SelfTest` covers its decisions.
+
 ## 2026-10-09: Script trap guard scoped to changed scripts
 
 ### Changed

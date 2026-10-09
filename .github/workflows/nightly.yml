@@ -278,6 +278,18 @@ jobs:
           pwsh -NoProfile -File Scripts/Test-ScriptTraps.ps1
           exit $LASTEXITCODE
 
+      - name: Workflow guards over every workflow
+        # PRs run these only when they touch CI configuration, so a guard made
+        # stricter in one PR can miss a workflow another PR added.
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File Scripts/Test-WorkflowTimeouts.ps1
+          $timeoutExit = $LASTEXITCODE
+          pwsh -NoProfile -File Scripts/Test-WorkflowCcachePaths.ps1
+          if ($timeoutExit -ne 0) { exit $timeoutExit }
+          exit $LASTEXITCODE
+
       - name: Set up Python
         uses: actions/setup-python@v7
         with:

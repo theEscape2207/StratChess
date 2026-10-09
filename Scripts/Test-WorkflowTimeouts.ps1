@@ -22,12 +22,18 @@
     Directory of workflow files to check. Defaults to the repository's
     .github/workflows, resolved from this script's own location.
 
+.PARAMETER BaseRef
+    Check every workflow only when the diff since this ref touches one; otherwise check
+    nothing. A change to this script, Get-ChangeTier.ps1 or GuardScope.ps1 runs the
+    self-test and then the check; a diff that cannot be computed runs the check.
+
 .PARAMETER SelfTest
     Run synthetic parser tests and exit. Verifies that the detector actually detects,
     which a green run over already-compliant files does not.
 
 .HOW TO INVOKE
     pwsh -File Scripts/Test-WorkflowTimeouts.ps1
+    pwsh -File Scripts/Test-WorkflowTimeouts.ps1 -BaseRef origin/main
     pwsh -File Scripts/Test-WorkflowTimeouts.ps1 -SelfTest
 #>
 
@@ -35,6 +41,9 @@
 param(
     [Parameter(ParameterSetName = 'Run')]
     [string]$WorkflowDirectory,
+
+    [Parameter(Mandatory, ParameterSetName = 'Changed')]
+    [string]$BaseRef,
 
     [Parameter(Mandatory, ParameterSetName = 'SelfTest')]
     [switch]$SelfTest
@@ -272,6 +281,21 @@ jobs:
 if ($SelfTest) {
     if (Invoke-SelfTest) { exit 0 }
     exit 1
+}
+
+if ($PSCmdlet.ParameterSetName -eq 'Changed') {
+    . (Join-Path $PSScriptRoot 'GuardScope.ps1')
+    $scope = Get-GuardScope -BaseRef $BaseRef -Detector 'Scripts/Test-WorkflowTimeouts.ps1' -Watch '.github/workflows/*.yml'
+    if ($scope.Mode -eq 'DiffFailed') {
+        Write-Host "  Diff against $BaseRef unavailable -- checking every workflow." -ForegroundColor Yellow
+    }
+    elseif ($scope.Mode -eq 'DetectorChanged') {
+        if (-not (Invoke-SelfTest)) { exit 1 }
+    }
+    elseif ($scope.Files.Count -eq 0) {
+        Write-Host "==> Job timeouts: no workflow changed since $BaseRef -- nothing to check." -ForegroundColor DarkGray
+        exit 0
+    }
 }
 
 if (-not $WorkflowDirectory) {

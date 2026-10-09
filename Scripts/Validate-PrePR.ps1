@@ -9,7 +9,8 @@
        Tests/tactical_test_cases.json, 90% threshold per run + no pass/fail flips).
     4. Runs a headless AIPerplex vs AIPerplex self-play game (60s timeout).
     Preceded by cheap text-only gates: clang-format, blame-ignore coverage, workflow
-    job timeouts, ccache path settings, and the -SelfTest of any changed
+    job timeouts and ccache path settings (when the diff touches CI configuration),
+    and the -SelfTest of any changed
     script that carries one -- or of the script that covers it, for a dot-sourced
     library or a fixture that cannot carry one.
     On every tier, including the Docs and Tooling fast paths, it also checks that every
@@ -212,6 +213,10 @@ $script:SelfTestCoverers = @{
     # The WSL GCC build, dot-sourced by Measure-CpuProfile.ps1 and Compare-BenchLinux.ps1.
     # Compare-BenchLinux.ps1 -SelfTest asserts its build script and flags check.
     'Scripts/WslBuild.ps1'       = 'Scripts/Compare-BenchLinux.ps1'
+
+    # The diff scope of the script and workflow guards, dot-sourced by each.
+    # Test-ScriptTraps.ps1 -SelfTest asserts its decision table and its -BaseRef wiring.
+    'Scripts/GuardScope.ps1'     = 'Scripts/Test-ScriptTraps.ps1'
 }
 
 # Pure: takes the facts, returns the violations. The walk that produces the facts is
@@ -656,11 +661,12 @@ $checkResults['Blame-ignore'] = if ($blameFailed) { 'FAIL' } else { 'PASS' }
 # --- Step 0d: workflow job timeouts ---
 # The classify job enforces this, so without it here a workflow edit that forgets
 # timeout-minutes is only discoverable after a push -- the same asymmetry the
-# clang-format step above exists to remove. Pure text, so it costs nothing.
+# clang-format step above exists to remove. Both workflow guards check nothing unless
+# the diff touches what they read; nightly runs them over everything.
 Write-Host "`n==> Workflow job timeouts" -ForegroundColor Cyan
 $timeoutScript = Join-Path $PSScriptRoot 'Test-WorkflowTimeouts.ps1'
 $timeoutFailed = $false
-try   { & $timeoutScript }
+try   { & $timeoutScript -BaseRef $BaseRef }
 catch { $timeoutFailed = $true; Write-Host "Timeout guard threw: $_" -ForegroundColor DarkGray }
 if ($LASTEXITCODE -ne 0) { $timeoutFailed = $true }
 $checkResults['Workflow timeouts'] = if ($timeoutFailed) { 'FAIL' } else { 'PASS' }
@@ -672,7 +678,7 @@ $checkResults['Workflow timeouts'] = if ($timeoutFailed) { 'FAIL' } else { 'PASS
 Write-Host "`n==> ccache path settings in CI configuration" -ForegroundColor Cyan
 $ccachePathScript = Join-Path $PSScriptRoot 'Test-WorkflowCcachePaths.ps1'
 $ccachePathFailed = $false
-try   { & $ccachePathScript }
+try   { & $ccachePathScript -BaseRef $BaseRef }
 catch { $ccachePathFailed = $true; Write-Host "ccache path guard threw: $_" -ForegroundColor DarkGray }
 if ($LASTEXITCODE -ne 0) { $ccachePathFailed = $true }
 $checkResults['ccache path settings'] = if ($ccachePathFailed) { 'FAIL' } else { 'PASS' }
