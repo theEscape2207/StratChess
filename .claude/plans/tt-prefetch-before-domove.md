@@ -14,9 +14,9 @@ Stockfish's `key_after()` pattern). The search is unchanged, so any gain is pure
 
 ## Review focus
 
-- **D5, the measurement plan.** C resizes both `pvs()` and `quiescence()`, which
-  `New-OrderedBuildPair.ps1` cannot align. D5 pre-declares a two-stage chain of ordered pairs and a
-  rule for combining them. Is the combined interval a valid stand-in for one controlled comparison?
+- **D5, the measurement plan.** C may push both `pvs()` and `quiescence()` across a 64-byte
+  boundary, and `New-OrderedBuildPair.ps1` cannot align two resized functions. D5 tries C, then an
+  out-of-line shape C′, and stops if neither pair passes.
 - **D2, exact rather than approximate prediction.** Exactness costs a few branches per move on
   every node, and that cost is what decides whether C reaches B's gain (Assumption A1).
 
@@ -92,7 +92,9 @@ instructions cheaper, but:
 
 - it mispredicts **every** child of a node whose position has an en-passant square, i.e. every
   node after a double push;
-- it mispredicts every king or rook move while castling rights remain;
+- it mispredicts every child whose castling rights actually change (a king move while its side
+  still has rights, a rook leaving a corner, any move onto a corner), and every promotion, en
+  passant and castling move;
 - its contract would need a list of exceptions, and a test could not catch the cases drifting. An
   exact contract is one sentence and an exhaustive walk enforces it.
 
@@ -127,49 +129,45 @@ spike's `__builtin_prefetch` with an MSVC `#else`, which was two code paths for 
 A prefetch has no C++-observable effect and never faults. Under Lazy SMP it is therefore not a data
 race, and it cannot be one even when another thread is storing to the same bucket.
 
-### D5: Measurement — try the direct ordered pair, else a pre-declared two-stage chain
+### D5: Measurement — one ordered pair, merge base against the final form
 
 Every measurement uses same-toolchain Release clang-cl builds, and every one follows skill
-`measure-strength`, including the quiet-window rule.
+`measure-strength`, including the quiet-window rule. Exactly one long benchmark runs: on the first
+shape below whose ordered pair passes. Pairs are relinks and take minutes, so they all happen before
+any quiet window.
 
-1. **Direct.** Build the final form and the merge base, then run `New-OrderedBuildPair.ps1`. If it
-   passes, run one `Compare-Bench.ps1 -Control -Rounds 60 -Affinity 4` (about 40 min quiet). That
-   result is the verdict.
-2. **Chain**, only if the direct pair fails. The PR is committed in two steps, so that each step
-   resizes only one hot function:
-   - commit **S1**: `KeyAfter`, `KeyAfterNullMove`, `TranspositionTable::prefetch`, the test, and
-     the two `pvs()` sites;
-   - commit **S2**: the `quiescence()` site.
+Every function starts on a 64-byte boundary (`-falign-functions=64`, `CMakeLists.txt:295`), and the
+tool's size covers the tail padding. A hot function therefore counts as resized only if its growth
+crosses a 64-byte boundary.
 
-   Stage 1 is an ordered pair base → S1, and stage 2 is an ordered pair S1 → S2. Each stage gets
-   its own `Compare-Bench -Control -Rounds 60 -Affinity 4` run (2 × 40 min quiet). Each stage must
-   pass its own ordered pair and A/A check, or the chain is invalid.
+1. **Shape C (inline).** The D1 call sites, with `KeyAfter` and `prefetch` free to inline. Build it
+   and the merge base, then run `New-OrderedBuildPair.ps1`. If the pair passes, run one
+   `Compare-Bench.ps1 -Control -Rounds 60 -Affinity 4` (about 40 min quiet). That result is the
+   verdict.
+2. **Shape C′ (out-of-line)**, only if C's pair fails. Prediction and prefetch move into two
+   `STRAT_NOINLINE` free functions in `AIPerplex.cpp`: `prefetch_child(tt, board, move)` and
+   `prefetch_null_child(tt, board)`. Each site's growth shrinks to argument setup plus one call. This
+   does not guarantee a pass, so re-run the pair. If it passes, run the same single benchmark on C′.
+   C′ is the form that then ships, and its extra call per node is inside what is measured.
+3. **Neither pair passes.** Stop before any quiet window and report the two maps' hot-function sizes.
+   The owner then chooses between a bounded `New-OrderedBuildPair.ps1` issue and parking. This
+   outcome resolves nothing and does not trigger B.
 
-   **Combining.** Compare-Bench reports a mean per-round percentage delta with a two-sided 95%
-   Student-t half-width. The combined estimate is `(1+m1)(1+m2) − 1`. Its half-width is
-   `sqrt(h1² + h2²)`, which is valid because the stages are independent runs with the same round
-   count and so nearly the same t critical value. The lower bound is the estimate minus that
-   half-width. S2 is the final form, so the chain measures the shipped code end to end.
-
-   If a stage's pair still fails (S1 also adds the new functions), stop and report. Do not fall back
-   to an uncontrolled comparison, and do not take it as a trigger for B.
-
-Rejected: **an out-of-line `DoMove` wrapper** to keep both call sites the same size. It needs a TT
-argument, so the call-site argument setup changes anyway, and keeping the sizes equal would be luck.
-It would also put an extra call on every node of the shipped code, only to suit a tool. Rejected:
-**extending `New-OrderedBuildPair.ps1`** to align two resized functions, which the triage puts out
-of scope. Rejected: **an uncontrolled comparison.** Placement alone moved a node-identical build by
-3.9% (#555).
+Rejected: **a chain of two ordered pairs** (base → pvs sites, then → quiescence site). Each pair
+orders the intermediate build differently, so the intermediate image differs between the two
+comparisons, and the product of the two ratios carries an unmeasured layout ratio between them.
+Rejected: **an uncontrolled comparison.** Placement alone moved a node-identical build by 3.9%
+(#555).
 
 An optional GCC trend (`Compare-BenchLinux.ps1 -Rounds 24 -Affinity 4`, about 20 min) is reported
 as a trend only and decides nothing.
 
 ### D6: Acceptance and park rule
 
-- **Accept C** if the valid result (direct, or chain-combined) has a 95% lower bound of
-  **≥ +3.5%** and the whole A/A interval of every run used lies inside ±0.5%. +3.5% is a practical
+- **Accept C** (or C′) if its single valid run has a 95% lower bound of **≥ +3.5%** and its whole
+  A/A interval lies inside ±0.5%. +3.5% is a practical
   floor that the owner chose next to B's +3.95% lower bound. It is not a claim of equivalence to B.
-- **A valid miss** (A/A clean, pairs passed, lower bound < +3.5%) ends C. B (D7) becomes a separate
+- **A valid miss** (A/A clean, pair passed, lower bound < +3.5%) ends C. B (D7) becomes a separate
   slice, with its own approval and the same measurement. If B also misses, park the issue. The
   spike's historical number is never shipped.
 - **An invalid run** (A/A outside the band, a pair failure, a time loss or crash) resolves nothing.
@@ -182,14 +180,18 @@ as a trend only and decides nothing.
 The hook is instance-owned. Each `Board` has a `{const void* base; uint64_t mask}` pair, defaulting
 to a static 64-byte-aligned dummy bucket with mask 0, so `DoMove` stays branch-free. `AIPerplex`
 sets the pair on the boards it owns (`td_.board` in `init_search`, and each helper's `htd.board`
-after its copy from `root`) and resets them to the dummy when the search ends, through a scope guard
-in `Search()` beside the existing `stop_guard`. The rest follows from that:
+after its copy from `root`) and resets them to the dummy when the search ends. On every exit,
+exceptional ones included, the order is: stop, join the helpers, reset the hooks, finish the launch.
+In `Search()`'s RAII order (`launch_guard`, helper vector, `stop_guard`, `AIPerplex.cpp:335–340`)
+the reset guard is declared after `launch_guard` and before the helper vector, so reverse
+destruction runs it after the joins; it skips helpers that were never created. The rest follows from
+that:
 
 - **Board copies.** A copy carries the hook with it. A copy taken from the caller's root board
   carries the dummy, and the search's own boards are set after they are copied.
 - **The TT's lifetime.** `SetHash` replaces the TT only while no search runs
-  (`AIPerplex.cpp:223`), and the hook is reset at the end of the search. A stale address could only
-  ever be prefetched, and a prefetch never faults.
+  (`AIPerplex.cpp:223`), and the hook is reset at the end of the search, so a hook never names a
+  table that is not live.
 - **Non-search callers** (game loop, UCI replay, perft) keep the dummy and pay one prefetch per
   move to the same cached 64 bytes.
 
@@ -201,13 +203,10 @@ honour, and a rule about which boards own a hook. C adds none of that. B is a fa
 - **A1: C's gain is at least B's minus `KeyAfter`'s cost, and that cost is small.** C's lead time is
   at least B's, but `KeyAfter` reloads the moving and captured pieces and branches on the move type.
   Not verified. D5's measurement settles it, and D6 handles a miss.
-- **A2: the direct ordered pair will probably fail**, since both hot functions grow. Size padding
-  could absorb the growth. Not verified; building the pair settles it in minutes, before any quiet
-  window.
-- **A3: combining the chain is sound.** The two stages are independent runs on the same machine and
-  bench, and placement is controlled within each stage. An interaction between the stages' placement
-  is not modelled. Verified only by argument.
-- **A4: `_mm_prefetch(_MM_HINT_T0)` emits `prefetcht0` on clang-cl, MSVC and GCC**, the instruction
+- **A2: C's or C′'s ordered pair passes**, which needs at most one hot function's growth to cross a
+  64-byte boundary. Not verified. Building the pairs settles it in minutes, before any quiet window,
+  and D5 step 3 covers a double failure.
+- **A3: `_mm_prefetch(_MM_HINT_T0)` emits `prefetcht0` on clang-cl, MSVC and GCC**, the instruction
   the spike's `__builtin_prefetch` produced. This is documented compiler behaviour. Not checked here;
   a disassembly of the bench binary would settle it.
 
@@ -233,7 +232,9 @@ owner's call afterwards.
   and the board's hash. If `DoMove(m)` succeeds, require the new hash to equal the prediction, then
   undo and require the hash to equal the one recorded before. Do the same for `KeyAfterNullMove()`
   around `DoNullMove()` at every node that is not in check, so a position with an en-passant square
-  is covered. Falsify the test: remove the old-ep term and the castling-rights term in turn, and
+  is covered. The test also requires that each special class (en passant, each castle, quiet and
+  capture promotion, a rights change, a null move with an en-passant square) was checked at least
+  once, so a corpus change cannot silently drop one. Falsify the test: remove the old-ep term and the castling-rights term in turn, and
   watch it fail.
 - **Equivalence.** `Compare-SearchEquivalence.ps1 -After .\build\windows-clang-cl\StratChessEvolved.exe
   -BaselineRef <merge base>` reports IDENTICAL. Fixed-depth equivalence says nothing about lifetimes or aborts, and C adds no
@@ -247,10 +248,10 @@ owner's call afterwards.
   `AIPerplex.cpp` and a test file, plus the changelog. Exactness is about 30 of those lines.
 - **Blast radius:** Engine tier. No gate, skill or doc changes beyond the changelog.
 - **Review:** one code review (170–270k tokens, 3–5 min).
-- **Quiet machine time (owner approval needed):** about 40 min if the direct pair passes, or about
-  80 min for the chain. Builds and pair relinks are extra, but they are not quiet time.
+- **Quiet machine time (owner approval needed):** about 40 min, once. Builds and pair relinks for C
+  and possibly C′ are extra, but they are not quiet time.
 - **Optional:** the GCC trend, about 20 min quiet. It covers the lab toolchain's direction only. A B
-  slice, if D6 triggers it, is another 40–80 min.
+  slice, if D6 triggers it, is another 40 min.
 
 ## Harvest
 
@@ -258,6 +259,6 @@ owner's call afterwards.
 |---|---|
 | D1, prediction is a hint only; D2/D3 exact contract and why not approximate | source comment on `KeyAfter` / `KeyAfterNullMove` in `Board.h` |
 | D4 shared bucket index; prefetch is not a data race | source comment on `TranspositionTable::prefetch` |
-| D5 chain method and combining rule, if used | PR body + `Docs/Changelog.md` entry (one line) |
+| D5 shape shipped (C or C′) and why C′'s out-of-line call exists, if used | source comment on `prefetch_child`; PR body |
 | Measured result, per-position, all variants tried | PR body, `Docs/Changelog.md`, `StratChessSupport/` |
 | D7 B contract, if C misses | the B slice's issue |
