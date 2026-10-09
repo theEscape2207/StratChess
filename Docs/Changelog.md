@@ -27,9 +27,11 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   `_mm_prefetch(p, _MM_HINT_T0)` to `prefetcht2`.
 - `New-OrderedBuildPair.ps1` also holds `Board::DoMove` and `DoNullMove` at identical addresses.
 - Variant C (the search predicts the key with `Board::KeyAfter` and prefetches before `DoMove`) was
-  measured and abandoned: −1.43% [−1.54%, −1.31%] nps on an ordered pair. B on an ordered pair with
-  all four hot functions pinned: candidate vs mean(baseline, control) +4.83% [+4.61%, +5.06%], but
-  the A/A read −3.13%, so the run is not a valid Speedup verdict. Lab Elo pending.
+  measured and abandoned: −1.43% [−1.54%, −1.31%] nps on an ordered pair. B, on an ordered pair with
+  all four hot functions pinned (`Compare-Bench -Control -Rounds 60 -Affinity 4`), measured
+  **+3.19% [+3.03%, +3.35%]** against the baseline. The run's A/A failed (−3.13%) because the
+  control arm alone ran slow, and two reruns showed no standing offset, so the owner accepted the
+  baseline comparison. Lab Elo pending.
 
 ## 2026-10-09: Ordered build pair aligns a second resized hot function (#784)
 

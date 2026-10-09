@@ -145,6 +145,12 @@ C's bar for matching B, not a gate on B. The spike's +3.95% lower bound sets the
 the gate. An invalid run (A/A out of band, a pair failure, a time loss) resolves nothing. A valid
 non-Speedup parks #776, and the spike's number is never shipped.
 
+**Owner override (2026-10-09).** The D5 run's A/A read −3.13% [−3.47%, −2.79%], so its verdict was
+not Speedup. Absolute nps showed the control arm was the slow one: the baseline median was 2,687k,
+the control's 2,593k. Two 12-round reruns found no standing offset: the same control file ran
+−0.04% against the same baseline, and an ASLR-off A/A read −0.01%. The owner accepted candidate vs
+baseline, **+3.19% [+3.03%, +3.35%]**, as B's speed result, with the lab run as the Elo evidence.
+
 ## Assumptions I cannot verify from the code
 
 - **A1: the instance hook keeps the spike's gain.** The spike read a static base and mask; the hook
