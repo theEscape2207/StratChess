@@ -270,7 +270,9 @@ jobs:
 
       - name: PowerShell traps over every script
         # PRs check only the scripts they change. Two PRs can each pass that and
-        # still clash once both merge, so the whole tree runs here.
+        # still clash once both merge, so the whole tree runs here -- even when an
+        # unrelated self-test above failed.
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           pwsh -NoProfile -File Scripts/Test-ScriptTraps.ps1

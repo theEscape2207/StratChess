@@ -311,7 +311,7 @@ flakiness. The `[slow]` Catch2 tier runs in `extended-tests` and `sanitize-exten
 | `tactical-stability` | `tactical stability 100`, against the local run's 10 |
 | `lint-tree` | Failing clang-format and fast Gate over the whole tree, covering what the per-PR job's one-unit-per-header cover does not reach |
 | `lint-deep-linux` | Failing Deep profile over normalized shipping sources with Linux Clang |
-| `lint-deep-windows` | Failing Deep profile over normalized shipping sources with Windows clang-cl, and `Validate-PrePR.ps1 -AllSelfTests` — every script self-test, against the PR gate's "only the ones the diff touched" |
+| `lint-deep-windows` | Failing Deep profile over normalized shipping sources with Windows clang-cl, and `Validate-PrePR.ps1 -AllSelfTests` plus `Test-ScriptTraps.ps1` — every script self-test and every script's trap check, against the PR gate's "only the ones the diff touched" |
 | `citations` | `Test-Citations.ps1`: a skill, subagent or Markdown link citing something that no longer resolves, or a code comment citing an issue. PrePR runs it too; this catches what reached `main` around it |
 
 `perft run <depth> [fen]` prints a count but does not verify it, so the workflow does the comparison.
