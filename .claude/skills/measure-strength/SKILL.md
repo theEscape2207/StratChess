@@ -162,8 +162,9 @@ Compare **nps**, never node counts at fixed depth. Node count is a property of t
 machine code — which is exactly what makes it the right *equivalence* check
 (`Compare-SearchEquivalence.ps1`), not a speed check. Anything adding per-node work — evaluation
 terms as much as compiler flags — gets a bench pass, and a measured slowdown needs a stated benefit
-that outweighs it. Effect sizing, repeat runs, and why an eval change needs the per-position column:
-`Docs/Workflow.md` → Speed and nps.
+that outweighs it. For a TT or memory-latency change the bench figure is a floor: its table stays
+mostly cold. Effect sizing, repeat runs, why an eval change needs the per-position column, and that
+floor: `Docs/Workflow.md` → Speed and nps.
 
 ## SPRT
 

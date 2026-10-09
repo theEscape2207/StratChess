@@ -39,6 +39,19 @@ class TranspositionTableTestFixture {
 		auto& target = table.table[0].slots[0];
 		(word == 0 ? target.key_xor_data : target.data).store(value, std::memory_order_relaxed);
 	}
+
+	// The bucket a stored key actually landed in, found by scanning rather than by bucket_index().
+	static const char* bucket_holding(const TranspositionTable& table, std::uint64_t key)
+	{
+		for (const auto& bucket : table.table) {
+			for (const auto& slot : bucket.slots) {
+				if (TranspositionTable::load(slot).key == key) {
+					return reinterpret_cast<const char*>(&bucket);
+				}
+			}
+		}
+		return nullptr;
+	}
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -969,6 +982,24 @@ TEST_CASE("TT - the quiescence depth discount is monotone across zero", "[tt]")
 		INFO("budget " << budget);
 		REQUIRE(current >= previous);
 		previous = current;
+	}
+}
+
+TEST_CASE("TT - the prefetch target names the bucket store() writes", "[tt][tt_prefetch]")
+{
+	TranspositionTable tt(1);
+	const std::uint64_t last = tt.bucket_count() - 1;
+	std::vector<std::uint64_t> keys{1, last, last + 1, ~std::uint64_t{0}, std::uint64_t{1} << 63};
+	std::mt19937_64 rng(776);
+	for (int i = 0; i < 8; ++i) {
+		keys.push_back(rng() | 1);
+	}
+
+	const PrefetchTarget target = tt.prefetch_target();
+	for (const std::uint64_t key : keys) {
+		INFO("key " << key);
+		do_store(tt, key, 1);
+		CHECK(target.bucket_for(key) == TranspositionTableTestFixture::bucket_holding(tt, key));
 	}
 }
 
