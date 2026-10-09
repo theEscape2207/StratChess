@@ -17,8 +17,9 @@ Measured behaviour, examples and the bug each rule came from: `reference/traps.m
 1. **Wrap the call site: `$files = @(Get-TargetFiles)`.** `return` unrolls a one-element array to
    its element and an empty one to `$null`, so `.Count` throws under StrictMode. `return , $array`
    is the wrong fix: it breaks the two-element case.
-2. **Name locals apart from every parameter** — `$tracked`, not `$all` beside `-All`. Names are
-   case-insensitive, and a local shadows the parameter for every read in that function.
+2. **Name every new variable apart from each one already in scope, ignoring case** — `$tracked`,
+   not `$all` beside `-All`; `$isMainCheckout`, not `$mainCheckout` beside `$MainCheckout`. Inside
+   a function the clash shadows the outer variable; in the same scope it overwrites it.
 3. **Round explicitly:** `[math]::Truncate()`, `Floor()` or `Ceiling()`. `[int]` rounds
    half-to-even (`[int]2.5` is 2).
 4. **Pipe every unassigned native call inside a function to `Out-Host`.** `git`, `pwsh` or engine

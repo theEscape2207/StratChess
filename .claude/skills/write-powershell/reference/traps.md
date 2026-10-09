@@ -22,10 +22,12 @@ with `[0]` being the inner array. It only looks correct in the one-element case 
 This shipped as #394 — `$files.Count` threw on any change touching exactly one file, so the lint
 gate crashed on precisely the smallest PRs.
 
-## 2. Variable names are case-insensitive, so a local shadows a parameter
+## 2. Variable names are case-insensitive, so a new name shadows or overwrites an old one
 
-`$all` and `$All` are one name. A function-local assignment does not write to the script parameter —
-it creates a local that **shadows it for every read inside that function**:
+`$all` and `$All` are one name. Which way it bites depends on scope.
+
+**Inside a function**, an assignment does not write to the script parameter — it creates a local
+that **shadows it for every read inside that function**:
 
 ```powershell
 param([switch]$All)                 # script scope, stays $false
@@ -40,8 +42,38 @@ The switch itself is never modified (`$script:All` is still `$false` afterwards)
 survives inspection. It shipped as #387: whole-tree lint became unconditional, so changed-file
 scoping never engaged and CI lint became the critical path.
 
-**Name every local so it cannot collide with a parameter of the enclosing script or function** —
-`$tracked`, not `$all`. `Set-StrictMode` does not catch this; nothing does.
+**In the same scope**, the assignment overwrites the variable outright, and every function that
+reads it from script scope sees the new value:
+
+```powershell
+$MainCheckout = Split-Path $commonDir -Parent     # the repo path
+foreach ($e in $entries) {
+    $mainCheckout = $e.Path -eq $MainCheckout     # intended as a flag; now $MainCheckout is a bool
+}
+# every later `git -C $MainCheckout` runs in a directory named 'False'
+```
+
+That shipped in `Get-Worktrees.ps1`: the drift line vanished from every worktree after the first,
+and `-Prune` crashed on any populated directory.
+
+**Name every new variable apart from each one already in scope, ignoring case** — `$tracked`, not
+`$all`. `Set-StrictMode` does not catch either case. To audit a script, group its variables by
+lower-cased name per function and look for groups with more than one spelling:
+
+```powershell
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$null)
+$ast.FindAll({ $args[0] -is [System.Management.Automation.Language.VariableExpressionAst] }, $true) |
+    Group-Object {
+        $p = $_.Parent
+        while ($p -and $p -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) { $p = $p.Parent }
+        "$(if ($p) { $p.Name } else { '<script>' })|$($_.VariablePath.UserPath.ToLowerInvariant())"
+    } |
+    Where-Object { @($_.Group.VariablePath.UserPath | Sort-Object -Unique -CaseSensitive).Count -gt 1 }
+```
+
+A hit can be deliberate (`$book = $Book` resolving a parameter in place), so read each one. This
+catches only clashes spelled differently; a function-local reusing an outer name with the same
+spelling still shadows it.
 
 ## 3. `[int]` rounds half-to-even
 

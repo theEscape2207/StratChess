@@ -151,7 +151,7 @@ function Get-UnignoredFiles {
 # The files whose content is NOT already in the object database. Hashing and
 # lookup are batched: two git processes for the whole directory.
 function Get-UnaccountedFiles {
-    param([Parameter(Mandatory)] [System.Collections.Generic.List[System.IO.FileInfo]] $Files)
+    param([Parameter(Mandatory)] [AllowEmptyCollection()] [System.Collections.Generic.List[System.IO.FileInfo]] $Files)
 
     if ($Files.Count -eq 0) { return @() }
 
@@ -231,9 +231,10 @@ $repoLeaf = Split-Path $MainCheckout -Leaf
 foreach ($e in $entries) {
     $leaf = Split-Path $e.Path -Leaf
     $parent = Split-Path $e.Path -Parent
-    $mainCheckout = ($e.Path -replace '/', '\') -eq $MainCheckout
+    # Keep the `is` prefix: names are case-insensitive, so `$mainCheckout` would overwrite $MainCheckout.
+    $isMainCheckout = ($e.Path -replace '/', '\') -eq $MainCheckout
     $claudeLayout = ($parent -replace '/', '\') -eq $wtRoot
-    $codexLayout = -not $mainCheckout -and -not $claudeLayout -and $leaf -eq $repoLeaf
+    $codexLayout = -not $isMainCheckout -and -not $claudeLayout -and $leaf -eq $repoLeaf
     $label = if ($codexLayout) { Split-Path $parent -Leaf } else { $leaf }
     $name  = if ($e.Detached) { "(detached HEAD)" } else { $e.Branch }
 
