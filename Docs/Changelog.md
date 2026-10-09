@@ -15,6 +15,15 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-09: Design records kept beside their reviews (#788)
+
+### Changed
+- `StratChessSupport\Reviews\` is now `DesignRecords\`. Closing a plan (skill `exec-plan`) copies
+  the plan and its `.progress.md` ledger there before deleting them, and a design review (skill
+  `cross-agent-review`) copies the doc as reviewed beside its review. Files are named
+  `<issue> - <Title>`, and a redesign freezes a `v1` record before the rewrite. The naming and
+  lifecycle rules are in `Docs/Workflow.md` → Design records.
+
 ## 2026-10-09: Ordered build pair aligns a second resized hot function (#784)
 
 ### Changed

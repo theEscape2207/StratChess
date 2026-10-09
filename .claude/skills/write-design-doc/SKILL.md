@@ -10,6 +10,8 @@ description: Use when writing a design document or spec before implementing; CLA
    per subsystem.
 3. **Multi-PR designs:** state what each PR produces that a later one relies on — exact names,
    signatures, data formats. That contract is durable; the ordering is not.
+4. **Redesigning a reviewed doc** (a decision reversed after review or measurement): freeze its
+   record first, `Docs/Workflow.md` → Design records.
 
 ## Self-review before requesting review
 

@@ -200,7 +200,7 @@ path instead of re-deriving why each file survived.
 | Not started | `.claude/plans/not-started/` | Designed, issue open, no matching code yet. It is a spec. |
 | In progress | `.claude/plans/in-progress/` | Implementation has started but has not fully landed. |
 | Retained | `.claude/plans/retained/` | Harvested or finished, but something still cites it. |
-| Deleted | — | Harvest complete and nothing cites it. Git history keeps it resolvable. |
+| Deleted | — | Harvest complete and nothing cites it. Git history and the `DesignRecords\` copy keep it resolvable. |
 
 **Not started** — move a plan here once it is confirmed genuinely unstarted; that does not have to
 wait for a prune pass, and a plan written well ahead of its work can move the moment it is written.
@@ -559,7 +559,7 @@ is backed up.
 | `Ccache\` | Compiler cache for clang-cl builds | `build.ps1` |
 | `Equivalence\` | Cached baseline builds | `Compare-SearchEquivalence.ps1 -BaselineRef` |
 | `EngineTesting\` | fastchess, Stockfish, perftcheck, opening books, cached reference builds | `Run-EloMatch.ps1`, `Run-PerftCheck.ps1`, `analyze_external_quality.py` |
-| `Reviews\` | Cross-agent review files | skill `cross-agent-review` |
+| `DesignRecords\` | Design docs, their cross-agent reviews and `.progress.md` ledgers, kept after the plan is deleted | Design records, below |
 | `StrengthLabPgn\` | Annotated PGNs of strength-lab runs, one folder per run | kept by hand |
 | `EvalDatasets\` | Position datasets from `measure_eval_error.py` and their analyses | kept by hand |
 | `CpuProfiles\` | CPU-profile traces worth keeping, each with its matching binaries, one `<date>-<issue>\` folder per study | kept by hand from `Measure-CpuProfile.ps1` output |
@@ -568,6 +568,31 @@ The scripts name these paths themselves, so moving a folder means changing each 
 it. **Moving `Deps\` moves only the `*-src` folders**, then deletes the build trees: an existing tree
 keeps its old `FETCHCONTENT_BASE_DIR`, and the `*-subbuild`/`*-build` folders record absolute
 paths. Moved whole, they broke once the old path was gone and left spdlog's clone empty (#768).
+
+### Design records
+
+`DesignRecords\` keeps every design doc after its plan leaves the tree. The records are for mining
+past decisions and for retros, so a missed copy is tolerable and nothing is back-filled.
+
+| Artifact | Name |
+|---|---|
+| Design doc | `<issue> - <Title>.md` |
+| Its `.progress.md` ledger | `<issue> - <Title>.progress.md` |
+| Its cross-agent review | `<issue> - <Title>.review.md` |
+| A PR review | `<issue> - <Title> - PR <n>.review.md` |
+
+- `<Title>` is the issue title at the first write, stripped of characters Windows forbids in file
+  names and cut to about 80 characters. A later issue rename leaves the files alone.
+- Without an issue, `<issue> - <Title>` becomes the plan's kebab name, or `PR <n> - <PR title>` for
+  a PR review. Several plans under one issue append ` - <kebab-name>`.
+- **Written** when a doc is reviewed (the review, plus a copy of the doc as reviewed; skill
+  `cross-agent-review`), and when a plan is closed (the final doc and its ledger, overwriting the
+  earlier copy; skill `exec-plan`).
+- **A redesign** (a decision reversed after a review or a measurement, as in #776's variant C
+  becoming B) freezes the record before the rewrite: rename the doc and its review to `... v1.md`
+  and `... v1.review.md`, and the rewrite records as `v2`. Answering review findings is not a
+  redesign. The plan in `.claude/plans/` keeps its one path. v2 opens with one line on what v1
+  decided or measured and why it was superseded.
 
 ---
 
