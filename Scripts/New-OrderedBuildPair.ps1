@@ -24,8 +24,10 @@
          follows an identical prefix, so it still starts at the same address in both. Before
          each later one it lists spacers: cold pinned functions whose sizes add up to the
          previous hot function's size change, in the order file of the image where that
-         function is smaller only. Both images then reach the next hot function at the same
-         address. A spacer leaves both images' prefix, so it is neither pinned nor counted.
+         function is smaller only, so both images should reach the next hot function at the
+         same address. Sizes are gaps in the as-built maps, padding included, so step 5's
+         check, not the arithmetic, decides. A spacer leaves both images' prefix, so it is
+         neither pinned nor counted.
          Every other function goes after these.
       5. relinks with /order and checks the result. Every pinned function, AIPerplex::pvs and
          AIPerplex::quiescence must start at identical addresses in both, or the script fails.
@@ -150,26 +152,29 @@ function Get-UniqueEngineSymbol {
 function Select-SpacerSet {
     <#
       .SYNOPSIS
-        Pool entries whose sizes sum to exactly $Bytes, largest first, or $null when the greedy
-        pass finds no exact sum. Engine functions are 64-byte aligned, so sizes are multiples of
-        64 and the many 64-byte functions close any remainder. Wrap a non-null result in @().
+        Pool entries whose sizes sum to exactly $Bytes, or $null when no subset does. A subset-sum
+        over the reachable totals, which stay few: $Bytes is a hot function's size change, a few
+        cache lines. Larger entries are tried first, so the set tends to be short. Wrap a
+        non-null result in @().
     #>
     param(
         [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Pool,
         [Parameter(Mandatory)][int64]$Bytes
     )
 
-    $remaining = $Bytes
-    $chosen = [System.Collections.Generic.List[object]]::new()
+    # Each reachable total maps to the first set found for it.
+    $reachable = @{}
+    $reachable[[int64]0] = @()
     foreach ($entry in ($Pool | Sort-Object -Property @{ Expression = 'Size'; Descending = $true }, Key)) {
-        if ($remaining -eq 0) { break }
-        if ([int64]$entry.Size -le $remaining) {
-            $chosen.Add($entry)
-            $remaining -= [int64]$entry.Size
+        $entrySize = [int64]$entry.Size
+        if ($entrySize -le 0 -or $entrySize -gt $Bytes) { continue }
+        foreach ($total in @($reachable.Keys)) {
+            $next = [int64]($total + $entrySize)
+            if ($next -le $Bytes -and -not $reachable.ContainsKey($next)) { $reachable[$next] = @($reachable[$total]) + $entry }
         }
+        if ($reachable.ContainsKey($Bytes)) { return $reachable[$Bytes] }
     }
-    if ($remaining -ne 0) { return $null }
-    return $chosen.ToArray()
+    return $null
 }
 
 function Get-OrderEntry {
@@ -215,7 +220,8 @@ function Get-OrderEntry {
     $resizedList = @($resized)
 
     # Spacers between consecutive resized hot functions. The arm whose hot function is smaller lists
-    # them, so both arms reach the next hot function at the same address.
+    # them, so both arms should reach the next hot function at the same address; the placement
+    # check confirms it.
     $spacerKey = @{}
     $spacersAfter = @{}
     for ($i = 0; $i -lt $resizedList.Count - 1; $i++) {
@@ -227,10 +233,9 @@ function Get-OrderEntry {
         $listedIn = if ($sizeChange -gt 0) { 'baseline' } else { 'candidate' }
         $spacersAfter[$i] = @(foreach ($entry in @($spacerSet)) {
                 $spacerKey[$entry.Key] = $true
-                [pscustomobject]@{
-                    Key = $entry.Key; BaselineName = $entry.BaselineName; CandidateName = $entry.CandidateName
-                    Size = $entry.Size; Object = $entry.Object; Resized = $false; Spacer = $listedIn; SizeChange = 0
-                }
+                $spacer = $entry.PSObject.Copy()
+                $spacer.Spacer = $listedIn
+                $spacer
             })
     }
 
@@ -299,7 +304,7 @@ function Test-OrderedPlacement {
     param(
         [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$BaselineSymbol,
         [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$CandidateSymbol,
-        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Pinned
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$OrderEntry
     )
 
     $hotResults = foreach ($hot in $script:MapHotFunction) {
@@ -321,7 +326,7 @@ function Test-OrderedPlacement {
     $candidateAddress = @{}
     foreach ($entry in $CandidateSymbol) { $candidateAddress[$entry.Name] = $entry.Address }
 
-    $equalSize = @($Pinned | Where-Object { -not $_.Resized -and -not $_.Spacer })
+    $equalSize = @($OrderEntry | Where-Object { -not $_.Resized -and -not $_.Spacer })
     $moved = @($equalSize | Where-Object {
             -not ($baselineAddress.ContainsKey($_.BaselineName) -and $candidateAddress.ContainsKey($_.CandidateName) -and
                 $baselineAddress[$_.BaselineName] -eq $candidateAddress[$_.CandidateName])
@@ -405,12 +410,12 @@ function Invoke-SelfTest {
         (New-Symbol '_crt_fn' 0x1600 'msvcrt:file_mode.obj')
         (New-Symbol '_crt_tail' 0x1640 'msvcrt:file_mode.obj')
     )
-    $pinned = @(Get-OrderEntry -BaselinePlaced @(Get-SymbolPlacement -Symbol $baseline) -CandidatePlaced @(Get-SymbolPlacement -Symbol $candidate))
+    $orderEntries = @(Get-OrderEntry -BaselinePlaced @(Get-SymbolPlacement -Symbol $baseline) -CandidatePlaced @(Get-SymbolPlacement -Symbol $candidate))
     # pvs 0x400 both; changed 0x40 vs 0xc0; anon 0x40 both; qs 0x80 vs 0x100. pvs and anon pin; qs trails.
     Assert-Equal 'pins equal-size pairs in baseline order, then resized hot functions; drops the rest' `
-        (($pinned | ForEach-Object { "$($_.BaselineName):$($_.Resized)" }) -join ',') "${pvs}:False,?anon@?A0x11111111@@YAXXZ:False,${qs}:True"
+        (($orderEntries | ForEach-Object { "$($_.BaselineName):$($_.Resized)" }) -join ',') "${pvs}:False,?anon@?A0x11111111@@YAXXZ:False,${qs}:True"
     Assert-Equal "each order file lists the tree's own names" `
-        (($pinned | ForEach-Object { $_.CandidateName }) -join ',') "$pvs,?anon@?A0x22222222@@YAXXZ,$qs"
+        (($orderEntries | ForEach-Object { $_.CandidateName }) -join ',') "$pvs,?anon@?A0x22222222@@YAXXZ,$qs"
 
     # Both hot functions resized: pvs grows by 0x40 in the candidate, so the baseline lists a cold
     # 0x40-byte spacer before quiescence. ?hot is the right size but on the search path.
@@ -433,20 +438,24 @@ function Invoke-SelfTest {
     $shrunk = @(Get-OrderEntry -BaselinePlaced $candPlaced -CandidatePlaced $basePlaced)
     Assert-Equal 'a shrunk first hot function gets its spacer in the candidate order file' (& $describe $shrunk) `
         "?hot@@YAXXZ:False:,?big@@YAXXZ:False:,${pvs}:True:,?small@@YAXXZ:False:candidate,${qs}:True:"
+    Assert-Equal 'there the candidate order file lists the spacer' ((Get-ArmOrder -Entry $shrunk -Arm candidate) -join ',') "?hot@@YAXXZ,?big@@YAXXZ,$pvs,?small@@YAXXZ,$qs"
+    Assert-Equal 'and the baseline order file leaves it out' ((Get-ArmOrder -Entry $shrunk -Arm baseline) -join ',') "?hot@@YAXXZ,?big@@YAXXZ,$pvs,$qs"
 
-    $noFit = @($spacerBaseline | ForEach-Object { if ($_.Name -eq '?small@@YAXXZ') { New-Symbol $_.Name $_.Address } else { $_ } })
-    $noFitCand = @($spacerCandidate | ForEach-Object { if ($_.Name -eq '?small@@YAXXZ') { New-Symbol $_.Name $_.Address } else { $_ } })
-    $unspaced = @(Get-OrderEntry -BaselinePlaced @(Get-SymbolPlacement -Symbol $noFit) -CandidatePlaced @(Get-SymbolPlacement -Symbol $noFitCand))
+    # ?small moved onto the search path: only ?big (0x80) stays cold, and it cannot make 0x40.
+    $toHotPath = { param($symbols) @($symbols | ForEach-Object { if ($_.Name -eq '?small@@YAXXZ') { New-Symbol $_.Name $_.Address } else { $_ } }) }
+    $unspaced = @(Get-OrderEntry -BaselinePlaced @(Get-SymbolPlacement -Symbol (& $toHotPath $spacerBaseline)) `
+            -CandidatePlaced @(Get-SymbolPlacement -Symbol (& $toHotPath $spacerCandidate)))
     Assert-Equal 'FALSIFY: no cold subset matches the growth exactly, so no spacer; hot-path functions never qualify' (& $describe $unspaced) `
         "?hot@@YAXXZ:False:,?big@@YAXXZ:False:,?small@@YAXXZ:False:,${pvs}:True:,${qs}:True:"
 
     $pool = @([pscustomobject]@{ Key = 'a'; Size = 0x40 }, [pscustomobject]@{ Key = 'b'; Size = 0x80 }, [pscustomobject]@{ Key = 'c'; Size = 0x40 })
     Assert-Equal 'spacers are taken largest first to an exact sum' ((@(Select-SpacerSet -Pool $pool -Bytes 0xc0) | ForEach-Object { $_.Key }) -join ',') 'b,a'
     Assert-Equal 'FALSIFY: an unreachable sum yields no spacer set' ($null -eq (Select-SpacerSet -Pool $pool -Bytes 0x20)) $true
+    $trap = @([pscustomobject]@{ Key = 'x'; Size = 0xc0 }, [pscustomobject]@{ Key = 'y'; Size = 0x80 }, [pscustomobject]@{ Key = 'z'; Size = 0x80 })
+    Assert-Equal 'an exact sum is found where largest-first would strand a remainder' ((@(Select-SpacerSet -Pool $trap -Bytes 0x100) | ForEach-Object { $_.Key }) -join ',') 'y,z'
 
-    $spacedBaseline = @((New-Symbol $pvs 0x1000), (New-Symbol '?hot@@YAXXZ' 0x0f00), (New-Symbol '?big@@YAXXZ' 0x0f40), (New-Symbol $qs 0x1480))
-    $spacedCandidate = @((New-Symbol $pvs 0x1000), (New-Symbol '?hot@@YAXXZ' 0x0f00), (New-Symbol '?big@@YAXXZ' 0x0f40), (New-Symbol $qs 0x1480))
-    $spacedVerdict = Test-OrderedPlacement -BaselineSymbol $spacedBaseline -CandidateSymbol $spacedCandidate -Pinned $spaced
+    $spacedMap = @((New-Symbol $pvs 0x1000), (New-Symbol '?hot@@YAXXZ' 0x0f00), (New-Symbol '?big@@YAXXZ' 0x0f40), (New-Symbol $qs 0x1480))
+    $spacedVerdict = Test-OrderedPlacement -BaselineSymbol $spacedMap -CandidateSymbol $spacedMap -OrderEntry $spaced
     Assert-Equal 'a spacer is neither pinned nor counted' "$($spacedVerdict.MatchedCount)/$($spacedVerdict.PinnedCount)" '2/2'
 
     $ninjaLine = 'C:\Windows\system32\cmd.exe /C "cd . && "C:\Program Files\CMake\bin\cmake.exe" -E vs_link_exe --intdir=CMakeFiles\X.dir --manifests  -- C:\LLVM\bin\lld-link.exe /nologo a.obj /out:StratChessEvolved.exe /MAP:C:/b/StratChessEvolved.map kernel32.lib && cd ."'
@@ -464,19 +473,19 @@ function Invoke-SelfTest {
 
     $orderedBaseline = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1400), (New-Symbol '?anon@?A0x11111111@@YAXXZ' 0x1500))
     $orderedCandidate = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1400), (New-Symbol '?anon@?A0x22222222@@YAXXZ' 0x1500))
-    $verdict = Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol $orderedCandidate -Pinned $pinned
+    $verdict = Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol $orderedCandidate -OrderEntry $orderEntries
     Assert-Equal 'identical hot addresses pass, and pinned matches count across own names' "$($verdict.Ok) $($verdict.MatchedCount)/$($verdict.PinnedCount)" 'True 2/2'
 
     $shifted = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1440), (New-Symbol '?anon@?A0x22222222@@YAXXZ' 0x1500))
     Assert-Equal 'FALSIFY: quiescence at a different address fails' `
-        (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol $shifted -Pinned $pinned).Ok $false
+        (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol $shifted -OrderEntry $orderEntries).Ok $false
     $laterShifted = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1400), (New-Symbol '?anon@?A0x22222222@@YAXXZ' 0x1540))
     Assert-Equal 'FALSIFY: a pinned function moved after matched hot functions fails' `
-        (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol $laterShifted -Pinned $pinned).Ok $false
+        (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol $laterShifted -OrderEntry $orderEntries).Ok $false
     Assert-Equal 'FALSIFY: a hot function missing from one map fails' `
-        (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol @((New-Symbol $pvs 0x1000)) -Pinned $pinned).Ok $false
+        (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol @((New-Symbol $pvs 0x1000)) -OrderEntry $orderEntries).Ok $false
     Assert-Equal 'FALSIFY: empty maps fail, never pass vacuously' `
-        (Test-OrderedPlacement -BaselineSymbol @() -CandidateSymbol @() -Pinned @()).Ok $false
+        (Test-OrderedPlacement -BaselineSymbol @() -CandidateSymbol @() -OrderEntry @()).Ok $false
 
     $failures = $script:selfTestFailures
     if ($failures -gt 0) {
@@ -610,14 +619,14 @@ foreach ($arm in $arms.Keys) {
     Write-Host "  $arm  $($tree.Commit.Substring(0, 12))  byte-identical to the shipping exe" -ForegroundColor DarkGray
 }
 
-$pinned = @(Get-OrderEntry -BaselinePlaced $placed['baseline'] -CandidatePlaced $placed['candidate'])
-if ($pinned.Count -eq 0) { throw 'No engine function pairs across the two maps; nothing to pin.' }
+$orderEntries = @(Get-OrderEntry -BaselinePlaced $placed['baseline'] -CandidatePlaced $placed['candidate'])
+if ($orderEntries.Count -eq 0) { throw 'No engine function pairs across the two maps; nothing to pin.' }
 
 $candidateKey = Get-UniqueEngineSymbol -Placed $placed['candidate']
 $pairedCount = @((Get-UniqueEngineSymbol -Placed $placed['baseline']).Keys | Where-Object { $candidateKey.ContainsKey($_) }).Count
-$resizedHot = @($pinned | Where-Object { $_.Resized })
-$spacers = @($pinned | Where-Object { $_.Spacer })
-$pinnedOnlyCount = $pinned.Count - $resizedHot.Count - $spacers.Count
+$resizedHot = @($orderEntries | Where-Object { $_.Resized })
+$spacers = @($orderEntries | Where-Object { $_.Spacer })
+$pinnedOnlyCount = $orderEntries.Count - $resizedHot.Count - $spacers.Count
 $resizedNote = if ($resizedHot.Count -gt 0) { "; resized hot, placed next: $(($resizedHot | ForEach-Object { $_.BaselineName.Split('@')[0..1] -join '@' }) -join ', ')" } else { '' }
 Write-Host "==> Relinking with a shared order ($pinnedOnlyCount of $pairedCount paired functions equal in size and pinned$resizedNote)" -ForegroundColor Cyan
 foreach ($spacer in $spacers) {
@@ -627,7 +636,7 @@ $ordered = @{}
 foreach ($arm in $arms.Keys) {
     $armDir = Join-Path $outPath $arm
     $orderFile = Join-Path $armDir 'order.txt'
-    Set-Content -LiteralPath $orderFile -Encoding ascii -Value @(Get-ArmOrder -Entry $pinned -Arm $arm)
+    Set-Content -LiteralPath $orderFile -Encoding ascii -Value @(Get-ArmOrder -Entry $orderEntries -Arm $arm)
     Invoke-Relink -TreeLink $arms[$arm] -Directory $armDir -OrderFile $orderFile | Out-Null
     $ordered[$arm] = @(Read-MapSymbol -Directory $armDir)
 }
@@ -638,7 +647,7 @@ foreach ($arm in $arms.Keys) {
     }
 }
 
-$verdict = Test-OrderedPlacement -BaselineSymbol $ordered['baseline'] -CandidateSymbol $ordered['candidate'] -Pinned $pinned
+$verdict = Test-OrderedPlacement -BaselineSymbol $ordered['baseline'] -CandidateSymbol $ordered['candidate'] -OrderEntry $orderEntries
 
 Write-Host '==> Hot-function placement' -ForegroundColor Cyan
 foreach ($hot in $verdict.HotFunction) {
