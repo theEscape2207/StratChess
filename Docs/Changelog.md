@@ -31,7 +31,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   all four hot functions pinned (`Compare-Bench -Control -Rounds 60 -Affinity 4`), measured
   **+3.19% [+3.03%, +3.35%]** against the baseline. The run's A/A failed (−3.13%) because the
   control arm alone ran slow, and two reruns showed no standing offset, so the owner accepted the
-  baseline comparison. Lab Elo pending.
+  baseline comparison. CI lab: **+16.58 +/- 3.07 Elo** against the merge base (26,640 games, 18 of 18
+  shards favour it).
 
 ## 2026-10-09: Ordered build pair aligns a second resized hot function (#784)
 

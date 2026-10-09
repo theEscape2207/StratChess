@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-09 | c16e692, TT bucket prefetch in `DoMove` and `DoNullMove` (#776; the lab builds GCC, the shipping build is clang-cl) | f07859d | 26640 | 10+0.1 | **+16.58 +/- 3.07** | gain |
 | 2026-10-09 | 98b2a07, SCREEN arm C: `SingularTtDepthMargin=3`, the null control (#722) | 98b2a07 (at the shipped singular defaults, TT depth margin 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-0.55 +/- 5.29** | calibration |
 | 2026-10-09 | 98b2a07, SCREEN arm B: `SingularTtDepthMargin=4` (#722) | 98b2a07 (at the shipped singular defaults, TT depth margin 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-0.16 +/- 5.30** | inconclusive @ 8880 |
 | 2026-10-09 | 98b2a07, SCREEN arm A: `SingularTtDepthMargin=2` (#722) | 98b2a07 (at the shipped singular defaults, TT depth margin 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-3.09 +/- 5.26** | inconclusive @ 8880 |
@@ -73,6 +74,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-09 -- c16e692, TT bucket prefetch in DoMove and DoNullMove (#776) (26640 games)
+
+**Ships with #776.** [Run `37964064691`](https://github.com/theEscape2207/StratChess/actions/runs/37964064691), 4 h 20 min, 18 shards x 740 pairs, reference `merge-base`. All 21 jobs are green and the aggregate passed its integrity checks. Pooled Ptnml(0-2) [860, 2812, 5078, 3338, 1232], score 52.38%, interval [+13.50, +19.65]; 18 of 18 shards favour the candidate by score. Local clang-cl nps was +3.19% [+3.03%, +3.35%] against the baseline on an ordered pair (the A/A failed, and the owner accepted the baseline comparison; #787). The Elo is larger than a ~3% speedup usually buys; the lab builds GCC, where the prefetch's effect is not measured locally.
 
 ### 2026-10-09 -- singular TT depth margin screen (#722) (8880 games per arm)
 
