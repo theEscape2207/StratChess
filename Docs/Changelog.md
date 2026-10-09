@@ -15,6 +15,22 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-10: Lab run history and measured EBF in compare_lab_depth
+
+### Added
+- `Scripts/compare_lab_depth.py --history <StrengthLabPgn dir> [--runs ...]` prints one row per lab
+  run: time control, game length, draw rate, plies before and after a decisive game's score reaches
+  ±2.00, plies before ±1.00, how games end, and mean depth per engine, then game length on the
+  openings every run played. It replaces the ad hoc scripts behind the Aug-Oct analysis: games grew
+  from 111.6 to 123.6 plies on the same 9,990 openings, mostly in the balanced phase.
+- `--measure-ebf <exe>` measures the effective branching factor from node counts on the run's own
+  openings instead of the default 1.88. The default mode also prints each engine's depth mean,
+  median and p10-p90.
+
+### Fixed
+- The last move's comment, which also carries the end reason (`{+M1/1 0.000s, White mates}`), was
+  skipped. #776's depth delta reads +0.133 with it (was +0.132).
+
 ## 2026-10-10: TT bucket prefetch in DoMove and DoNullMove (#776)
 
 ### Changed
