@@ -248,7 +248,7 @@ function Test-GuardScopeCase {
     )
 
     foreach ($case in $cases) {
-        $change = [pscustomobject]@{ ChangedFiles = $case.Files; DiffFailed = $case.ContainsKey('DiffFailed') }
+        $change = [pscustomobject]@{ ChangedFiles = $case.Files; DiffFailed = [bool]$case['DiffFailed'] }
         $watch = if ($case.ContainsKey('Watch')) { $case.Watch } else { '.github/workflows/*.yml' }
         $scope = Resolve-GuardScope -Change $change -Detector 'Scripts/Guard.ps1' -Watch $watch
         $actual = @($scope.Files)
@@ -366,7 +366,7 @@ if ($PSCmdlet.ParameterSetName -eq 'Changed') {
     }
     elseif ($scope.Mode -eq 'DetectorChanged') {
         # A changed detector proves itself first, then holds the whole tree to its rules.
-        Write-Host "==> Self-test: detectors" -ForegroundColor Cyan
+        Write-Host "==> Self-test: detectors and GuardScope.ps1" -ForegroundColor Cyan
         if (-not ((Test-ParserCase) -and (Test-GuardScopeCase))) { exit 1 }
         Write-Host "  $($scope.DetectorChanged -join ', ') changed -- checking every script." -ForegroundColor DarkGray
     }

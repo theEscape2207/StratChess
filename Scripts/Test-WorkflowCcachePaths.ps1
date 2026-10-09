@@ -82,6 +82,8 @@ $script:BannedPattern = @(
     '(?<![A-Za-z0-9_])base_dir(?![A-Za-z0-9_])'
     '(?<![A-Za-z0-9_])hash_dir(?![A-Za-z0-9_])'
 )
+# What this guard reads, as GuardScope.ps1 -Watch patterns.
+$script:WatchPattern = @('.github/*.yml', '.github/*.yaml')
 
 function Get-CcachePathSetting {
     <#
@@ -173,6 +175,20 @@ jobs:
 
     Assert-Case -Name 'an empty file passes' -Content '' -ExpectedHit @()
 
+    # A -BaseRef run checks nothing unless the diff touches a watched file, so a
+    # pattern that misses an action would wave every future edit to it through.
+    . (Join-Path $PSScriptRoot 'GuardScope.ps1')
+    $ciFiles = @('.github/workflows/ci.yml', '.github/actions/setup/action.yml', '.github/other.yaml')
+    $probe = [pscustomobject]@{ ChangedFiles = $ciFiles + 'Docs/CI.md'; DiffFailed = $false }
+    $watched = @((Resolve-GuardScope -Change $probe -Detector 'none' -Watch $script:WatchPattern).Files)
+    if (($watched -join '|') -eq ($ciFiles -join '|')) {
+        Write-Host "  PASS  -BaseRef watches all CI configuration only" -ForegroundColor Green
+    }
+    else {
+        Write-Host "  FAIL  -BaseRef watches all CI configuration only (got [$($watched -join ', ')])" -ForegroundColor Red
+        $script:selfTestFailures++
+    }
+
     $failures = $script:selfTestFailures
     if ($failures -gt 0) {
         Write-Host "$failures self-test case(s) FAILED." -ForegroundColor Red
@@ -190,7 +206,7 @@ if ($SelfTest) {
 if ($PSCmdlet.ParameterSetName -eq 'Changed') {
     . (Join-Path $PSScriptRoot 'GuardScope.ps1')
     $scope = Get-GuardScope -BaseRef $BaseRef -Detector 'Scripts/Test-WorkflowCcachePaths.ps1' `
-        -Watch '.github/*.yml', '.github/*.yaml'
+        -Watch $script:WatchPattern
     if ($scope.Mode -eq 'DiffFailed') {
         Write-Host "  Diff against $BaseRef unavailable -- scanning all of .github." -ForegroundColor Yellow
     }

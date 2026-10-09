@@ -59,6 +59,8 @@ $script:JobPattern = '^  ([A-Za-z0-9_-]+):\s*$'
 $script:TimeoutPattern = '^    timeout-minutes:\s*\d+\s*$'
 $script:ReusablePattern = '^    uses:\s*\S'
 $script:TopLevelPattern = '^[A-Za-z0-9_-]+:'
+# What this guard reads, as GuardScope.ps1 -Watch patterns.
+$script:WatchPattern = @('.github/workflows/*.yml')
 
 function Get-JobWithoutTimeout {
     <#
@@ -269,6 +271,19 @@ on:
 jobs:
 '@ -ExpectThrow
 
+    # A -BaseRef run checks nothing unless the diff touches a watched file, so a
+    # pattern that misses a workflow would wave every future edit to it through.
+    . (Join-Path $PSScriptRoot 'GuardScope.ps1')
+    $probe = [pscustomobject]@{ ChangedFiles = @('.github/workflows/ci.yml', 'Docs/CI.md'); DiffFailed = $false }
+    $watched = @((Resolve-GuardScope -Change $probe -Detector 'none' -Watch $script:WatchPattern).Files)
+    if (($watched -join '|') -eq '.github/workflows/ci.yml') {
+        Write-Host "  PASS  -BaseRef watches workflows only" -ForegroundColor Green
+    }
+    else {
+        Write-Host "  FAIL  -BaseRef watches workflows only (got [$($watched -join ', ')])" -ForegroundColor Red
+        $script:selfTestFailures++
+    }
+
     $failures = $script:selfTestFailures
     if ($failures -gt 0) {
         Write-Host "$failures self-test case(s) FAILED." -ForegroundColor Red
@@ -285,7 +300,7 @@ if ($SelfTest) {
 
 if ($PSCmdlet.ParameterSetName -eq 'Changed') {
     . (Join-Path $PSScriptRoot 'GuardScope.ps1')
-    $scope = Get-GuardScope -BaseRef $BaseRef -Detector 'Scripts/Test-WorkflowTimeouts.ps1' -Watch '.github/workflows/*.yml'
+    $scope = Get-GuardScope -BaseRef $BaseRef -Detector 'Scripts/Test-WorkflowTimeouts.ps1' -Watch $script:WatchPattern
     if ($scope.Mode -eq 'DiffFailed') {
         Write-Host "  Diff against $BaseRef unavailable -- checking every workflow." -ForegroundColor Yellow
     }

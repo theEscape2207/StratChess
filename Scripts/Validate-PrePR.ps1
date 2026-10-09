@@ -10,8 +10,8 @@
     4. Runs a headless AIPerplex vs AIPerplex self-play game (60s timeout).
     Preceded by cheap text-only gates: clang-format, blame-ignore coverage, workflow
     job timeouts and ccache path settings (when the diff touches CI configuration),
-    and the -SelfTest of any changed
-    script that carries one -- or of the script that covers it, for a dot-sourced
+    and the -SelfTest of any changed script that carries one -- or of the script
+    that covers it, for a dot-sourced
     library or a fixture that cannot carry one.
     On every tier, including the Docs and Tooling fast paths, it also checks that every
     Build-tier script carries a -SelfTest at all, runs Test-Citations.ps1 (doc links and
@@ -215,7 +215,8 @@ $script:SelfTestCoverers = @{
     'Scripts/WslBuild.ps1'       = 'Scripts/Compare-BenchLinux.ps1'
 
     # The diff scope of the script and workflow guards, dot-sourced by each.
-    # Test-ScriptTraps.ps1 -SelfTest asserts its decision table and its -BaseRef wiring.
+    # Test-ScriptTraps.ps1 -SelfTest asserts its decision table; each workflow guard's
+    # -SelfTest asserts its own watch patterns.
     'Scripts/GuardScope.ps1'     = 'Scripts/Test-ScriptTraps.ps1'
 }
 
