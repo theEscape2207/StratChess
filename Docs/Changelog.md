@@ -15,6 +15,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-09: Get-Worktrees -Prune fix
+
+### Fixed
+- `Get-Worktrees.ps1`: a `$mainCheckout` flag overwrote `$MainCheckout`, since variable names are
+  case-insensitive. Every later `git -C` ran against `False`, so drift lines vanished and `-Prune`
+  crashed on any populated directory. It also failed when every file was ignored, because
+  `Mandatory` rejected the empty list (`[AllowEmptyCollection()]`).
+
 ## 2026-10-09: CpuProfiles support folder (#775, slice 5)
 
 ### Changed
