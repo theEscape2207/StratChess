@@ -19,9 +19,11 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
 ### Fixed
 - `Get-Worktrees.ps1`: a `$mainCheckout` flag overwrote `$MainCheckout`, since variable names are
-  case-insensitive. Every later `git -C` ran against `False`, so drift lines vanished and `-Prune`
-  crashed on any populated directory. It also failed when every file was ignored, because
+  case-insensitive. From the second worktree on, `git -C` ran against `False`, so drift lines
+  vanished and `-Prune` crashed on any populated directory. It also failed when every file was ignored, because
   `Mandatory` rejected the empty list (`[AllowEmptyCollection()]`).
+- `write-powershell` rule 2 now covers a same-scope overwrite, not just a function local shadowing
+  a parameter, and `reference/traps.md` §2 carries an AST audit snippet.
 
 ## 2026-10-09: CpuProfiles support folder (#775, slice 5)
 

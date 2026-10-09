@@ -231,7 +231,7 @@ $repoLeaf = Split-Path $MainCheckout -Leaf
 foreach ($e in $entries) {
     $leaf = Split-Path $e.Path -Leaf
     $parent = Split-Path $e.Path -Parent
-    # Not `$mainCheckout`: names are case-insensitive, so that would overwrite $MainCheckout.
+    # Keep the `is` prefix: names are case-insensitive, so `$mainCheckout` would overwrite $MainCheckout.
     $isMainCheckout = ($e.Path -replace '/', '\') -eq $MainCheckout
     $claudeLayout = ($parent -replace '/', '\') -eq $wtRoot
     $codexLayout = -not $isMainCheckout -and -not $claudeLayout -and $leaf -eq $repoLeaf
