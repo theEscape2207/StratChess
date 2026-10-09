@@ -15,6 +15,22 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-09: TT bucket prefetch in DoMove and DoNullMove (#776)
+
+### Changed
+- `Board::DoMove` and `DoNullMove` prefetch the child's TT bucket (`prefetcht0`) once every hash
+  update but the side flip is applied, so the key is exact and nothing is duplicated. `Board` holds
+  an opaque `PrefetchTarget` (`{base, mask}`, default a 64-byte dummy with mask 0, so no branch);
+  `AIPerplex` binds it to its own table after copying each search board and resets it after the
+  helpers join. The search is node-identical (`Compare-SearchEquivalence` IDENTICAL at depth 12).
+- `Compat.h`'s `StratPrefetch` uses `__builtin_prefetch` on clang and GCC: clang-cl compiles
+  `_mm_prefetch(p, _MM_HINT_T0)` to `prefetcht2`.
+- `New-OrderedBuildPair.ps1` also holds `Board::DoMove` and `DoNullMove` at identical addresses.
+- Variant C (the search predicts the key with `Board::KeyAfter` and prefetches before `DoMove`) was
+  measured and abandoned: −1.43% [−1.54%, −1.31%] nps on an ordered pair. B on an ordered pair with
+  all four hot functions pinned: candidate vs mean(baseline, control) +4.83% [+4.61%, +5.06%], but
+  the A/A read −3.13%, so the run is not a valid Speedup verdict. Lab Elo pending.
+
 ## 2026-10-09: Ordered build pair aligns a second resized hot function (#784)
 
 ### Changed
