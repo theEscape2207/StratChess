@@ -9,14 +9,15 @@
        Tests/tactical_test_cases.json, 90% threshold per run + no pass/fail flips).
     4. Runs a headless AIPerplex vs AIPerplex self-play game (60s timeout).
     Preceded by cheap text-only gates: clang-format, blame-ignore coverage, workflow
-    job timeouts, ccache path settings, script binding, and the -SelfTest of any changed
+    job timeouts, ccache path settings, and the -SelfTest of any changed
     script that carries one -- or of the script that covers it, for a dot-sourced
     library or a fixture that cannot carry one.
     On every tier, including the Docs and Tooling fast paths, it also checks that every
     Build-tier script carries a -SelfTest at all, runs Test-Citations.ps1 (doc links and
-    citations resolve, no code comment cites an issue), and warns about any plan left in the
-    transient top level of .claude/plans/.
-    clang-format alone short-circuits: its fix is already known and
+    citations resolve, no code comment cites an issue), runs Test-ScriptTraps.ps1 over the
+    changed scripts, and warns about any plan left in the transient top level of
+    .claude/plans/. A failure in any of these exits immediately.
+    Of the later gates, clang-format alone short-circuits: its fix is already known and
     cannot be changed by anything later, so a failure there exits immediately,
     before blame-ignore, the build, or any other gate runs. Every other check keeps
     aggregating so all remaining failures are visible in one pass.
@@ -458,7 +459,6 @@ if ($SelfTest) {
         @{ Name = 'clang-format is fail-fast'; CheckName = 'clang-format'; Expect = $true }
         @{ Name = 'FALSIFY: blame-ignore is not fail-fast'; CheckName = 'Blame-ignore'; Expect = $false }
         @{ Name = 'FALSIFY: workflow timeouts is not fail-fast'; CheckName = 'Workflow timeouts'; Expect = $false }
-        @{ Name = 'FALSIFY: script binding is not fail-fast'; CheckName = 'Script binding'; Expect = $false }
     )
     foreach ($case in $fastFailCases) {
         $actual = Test-IsFastFailCheck -CheckName $case.CheckName
@@ -550,6 +550,17 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host ''
     Write-Host 'Pre-PR validation FAILED (citations).' -ForegroundColor Red
     Write-Host '      Repoint or remove each link above; reword each comment to describe the code as it stands.' -ForegroundColor Yellow
+    exit 1
+}
+
+# Ahead of the fast paths, because a Tooling-tier diff is the usual way a script changes.
+# Scoped to the changed scripts, so a diff without one costs a git diff; the nightly
+# run covers the whole tree.
+Write-Host ''
+& pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Test-ScriptTraps.ps1') -BaseRef $BaseRef | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ''
+    Write-Host 'Pre-PR validation FAILED (PowerShell traps).' -ForegroundColor Red
     exit 1
 }
 
@@ -665,18 +676,6 @@ try   { & $ccachePathScript }
 catch { $ccachePathFailed = $true; Write-Host "ccache path guard threw: $_" -ForegroundColor DarkGray }
 if ($LASTEXITCODE -ne 0) { $ccachePathFailed = $true }
 $checkResults['ccache path settings'] = if ($ccachePathFailed) { 'FAIL' } else { 'PASS' }
-
-# --- Step 0d2: script parameter binding ---
-# Same reasoning as the timeout guard above, for the same reason it is cheap:
-# pure text. A script that binds loosely discards an argument it does not know
-# and runs its defaults, which for Run-EloMatch.ps1 meant a 500-game match.
-Write-Host "`n==> Script parameter binding" -ForegroundColor Cyan
-$bindingScript = Join-Path $PSScriptRoot 'Test-ScriptBinding.ps1'
-$bindingFailed = $false
-try   { & $bindingScript }
-catch { $bindingFailed = $true; Write-Host "Binding guard threw: $_" -ForegroundColor DarkGray }
-if ($LASTEXITCODE -ne 0) { $bindingFailed = $true }
-$checkResults['Script binding'] = if ($bindingFailed) { 'FAIL' } else { 'PASS' }
 
 # --- Step 0e: self-tests of any changed script ---
 # Also run here, not only on the Tooling fast path: a Build- or Engine-tier diff can

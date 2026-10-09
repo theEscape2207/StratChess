@@ -45,7 +45,8 @@
     Run the assertion table and exit. Exits 1 on any failure.
 
 .OUTPUTS
-    PSCustomObject with Tier, DecidingFile, ChangedFiles, IsFull.
+    PSCustomObject with Tier, DecidingFile, ChangedFiles, IsFull, DiffFailed. DiffFailed is
+    true only when the diff against BaseRef could not be computed; the tier is then Engine.
 
 .HOW TO INVOKE
     pwsh -ExecutionPolicy Bypass -File Scripts\Get-ChangeTier.ps1
@@ -103,8 +104,8 @@ function Get-TierForPath {
     # build that is not one -- a false PASS about the property, which is the same
     # self-concealment. Build rather than Tooling for that reason alone.
     if ($p -like '*Scripts/Test-ReleaseReproducibility.ps1') { return 'Build' }
-    # A guard that CI's classify job and Validate-PrePR.ps1 run on every change.
-    if ($p -like '*Scripts/Test-ScriptBinding.ps1')         { return 'Build' }
+    # A guard on every script change; a bug in it would wave scripts through unchecked.
+    if ($p -like '*Scripts/Test-ScriptTraps.ps1')           { return 'Build' }
     # Decides whether a build artifact counts as stale, and which binary a measurement
     # reads. The hazard is the familiar one and it is why they are Build rather than
     # Tooling: a bug in either lets a validation or a measurement run against the wrong
@@ -168,7 +169,7 @@ function Get-ChangeTier {
         # answer — but note this is reached only when git reports no changes at
         # all, never as a fallback for an unclassifiable path.
         return [PSCustomObject]@{
-            Tier = 'Docs'; DecidingFile = ''; ChangedFiles = @(); IsFull = $false
+            Tier = 'Docs'; DecidingFile = ''; ChangedFiles = @(); IsFull = $false; DiffFailed = $false
         }
     }
 
@@ -188,6 +189,7 @@ function Get-ChangeTier {
         DecidingFile = $deciding
         ChangedFiles = $Files
         IsFull       = ($winner -eq 'Build' -or $winner -eq 'Engine')
+        DiffFailed   = $false
     }
 }
 
@@ -242,7 +244,7 @@ if ($SelfTest) {
         @{ Name = 'Scripts/*.md -> Docs';       Files = @('Scripts/README.md');                Expect = 'Docs' }
         @{ Name = 'FAIL CLOSED: nested script'; Files = @('Scripts/sub/tool.ps1');             Expect = 'Engine' }
         @{ Name = 'FAIL CLOSED: other ext';     Files = @('Scripts/notes.txt');                Expect = 'Engine' }
-        @{ Name = 'binding guard -> Build';     Files = @('Scripts/Test-ScriptBinding.ps1');   Expect = 'Build' }
+        @{ Name = 'script-trap guard -> Build'; Files = @('Scripts/Test-ScriptTraps.ps1');     Expect = 'Build' }
         @{ Name = 'Codex skill meta -> Docs';   Files = @('.agents/skills/grill-me/agents/openai.yaml'); Expect = 'Docs' }
         @{ Name = 'Codex agent -> Docs';        Files = @('.codex/agents/eval-reviewer.toml');  Expect = 'Docs' }
         @{ Name = 'FAIL CLOSED: skill template'; Files = @('.agents/skills/diagnosing-bugs/scripts/hitl-loop.template.sh'); Expect = 'Engine' }
@@ -286,7 +288,7 @@ if (-not $Paths) {
         # Cannot diff (missing ref, shallow clone). Fail closed: assume the most
         # expensive tier rather than skipping validation on a broken lookup.
         Write-Warning "Get-ChangeTier: 'git diff $BaseRef...HEAD' failed -- assuming Engine tier (fail closed)."
-        [PSCustomObject]@{ Tier = 'Engine'; DecidingFile = '<git diff failed>'; ChangedFiles = @(); IsFull = $true }
+        [PSCustomObject]@{ Tier = 'Engine'; DecidingFile = '<git diff failed>'; ChangedFiles = @(); IsFull = $true; DiffFailed = $true }
         return
     }
 

@@ -15,6 +15,19 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-09: Script trap guard scoped to changed scripts
+
+### Changed
+- `Test-ScriptBinding.ps1` is now `Test-ScriptTraps.ps1` and also fails on one variable spelled two
+  ways in one scope (write-powershell rule 2), which shipped in four scripts.
+- With `-BaseRef` it checks only the changed `.ps1` files, untracked ones included, so a diff
+  without one checks nothing. It checks every script when it or `Get-ChangeTier.ps1` changes, or
+  the diff fails (now an explicit `DiffFailed` on `Get-ChangeTier.ps1`'s result). Nightly runs the
+  whole tree. Its `-SelfTest` covers the scoping against a throwaway git repository.
+- `Validate-PrePR.ps1` runs it ahead of the fast paths, so a Tooling-tier script change is now
+  checked locally; it ran on Build and Engine tiers only.
+- `Run-EloMatch.ps1`: `$book` is now `$bookPath`, the one existing hit.
+
 ## 2026-10-09: Get-Worktrees -Prune fix
 
 ### Fixed

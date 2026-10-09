@@ -57,23 +57,9 @@ That shipped in `Get-Worktrees.ps1`: the drift line vanished from every worktree
 and `-Prune` crashed on any populated directory.
 
 **Name every new variable apart from each one already in scope, ignoring case** — `$tracked`, not
-`$all`. `Set-StrictMode` does not catch either case. To audit a script, group its variables by
-lower-cased name per function and look for groups with more than one spelling:
-
-```powershell
-$ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$null)
-$ast.FindAll({ $args[0] -is [System.Management.Automation.Language.VariableExpressionAst] }, $true) |
-    Group-Object {
-        $p = $_.Parent
-        while ($p -and $p -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) { $p = $p.Parent }
-        "$(if ($p) { $p.Name } else { '<script>' })|$($_.VariablePath.UserPath.ToLowerInvariant())"
-    } |
-    Where-Object { @($_.Group.VariablePath.UserPath | Sort-Object -Unique -CaseSensitive).Count -gt 1 }
-```
-
-A hit can be deliberate (`$book = $Book` resolving a parameter in place), so read each one. This
-catches only clashes spelled differently; a function-local reusing an outer name with the same
-spelling still shadows it.
+`$all`. `Set-StrictMode` does not catch either case. `Scripts/Test-ScriptTraps.ps1` fails on one
+variable spelled two ways within one scope, in every changed script, on every PR. It cannot see a
+function local spelled exactly like an outer variable, which still shadows it.
 
 ## 3. `[int]` rounds half-to-even
 

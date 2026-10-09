@@ -382,15 +382,15 @@ $smokeBook     = Join-Path $RepoRoot 'Tests\openings\openings-250.pgn'
 # Explicit -Book wins. Otherwise prefer a large book dropped into StratChessSupport\EngineTesting\
 # (any openings-large.* file), falling back to the committed smoke book.
 if ($Book -ne '') {
-    $book = $Book
+    $bookPath = $Book
 } else {
     $largeBook = Get-ChildItem -Path $EngineTesting -Filter 'openings-large.*' -File `
                      -ErrorAction SilentlyContinue |
                  Sort-Object Name | Select-Object -First 1
-    $book = if ($largeBook) { $largeBook.FullName } else { $smokeBook }
+    $bookPath = if ($largeBook) { $largeBook.FullName } else { $smokeBook }
 }
 
-$bookFormat = if ([System.IO.Path]::GetExtension($book).ToLowerInvariant() -eq '.epd') { 'epd' }
+$bookFormat = if ([System.IO.Path]::GetExtension($bookPath).ToLowerInvariant() -eq '.epd') { 'epd' }
               else { 'pgn' }
 
 # Counts openings so the run can say whether it will exhaust the book. A PGN
@@ -514,11 +514,11 @@ if ($ResumeDir -ne '') {
     $fcExit = $LASTEXITCODE
     Pop-Location
 } else {
-    if (-not (Test-Path $book)) {
-        if ($book -eq $smokeBook) {
-            Write-Host "MISSING: $book (committed opening book — repo checkout incomplete?)" -ForegroundColor Red
+    if (-not (Test-Path $bookPath)) {
+        if ($bookPath -eq $smokeBook) {
+            Write-Host "MISSING: $bookPath (committed opening book — repo checkout incomplete?)" -ForegroundColor Red
         } else {
-            Write-Host "MISSING: $book" -ForegroundColor Red
+            Write-Host "MISSING: $bookPath" -ForegroundColor Red
             Write-Host "Drop a book at $EngineTesting\openings-large.pgn (or .epd), or pass -Book <path>."
         }
         exit 1
@@ -527,14 +527,14 @@ if ($ResumeDir -ne '') {
     # from an isolated per-engine directory ($dirA/$dirB below), so a relative
     # path here would re-resolve under that directory and fail to launch even
     # though the check above just passed against the caller's cwd (#268).
-    $book = (Resolve-Path $book).Path
+    $bookPath = (Resolve-Path $bookPath).Path
 
     # An opening pair is two games, so N openings yield 2N distinct games. Past
     # that fastchess wraps and replays them, which narrows the error bars of a
     # result without adding information to it.
-    $openingCount = Get-OpeningCount $book $bookFormat
+    $openingCount = Get-OpeningCount $bookPath $bookFormat
     $distinctGames = 2 * $openingCount
-    Write-Host ("Opening book : {0} ({1} openings, format={2})" -f $book, $openingCount, $bookFormat)
+    Write-Host ("Opening book : {0} ({1} openings, format={2})" -f $bookPath, $openingCount, $bookFormat)
     if ($openingCount -gt 0 -and $Games -gt $distinctGames) {
         Write-Host ("WARNING: {0} games requested but the book yields only {1} distinct games." -f $Games, $distinctGames) -ForegroundColor Yellow
         Write-Host '         Openings will repeat; the extra games tighten the error bar without adding information.' -ForegroundColor Yellow
@@ -682,7 +682,7 @@ if ($ResumeDir -ne '') {
         -rounds $rounds -repeat -concurrency $Concurrency -recover `
         -autosaveinterval $AutosaveInterval `
         @sprtArgs `
-        -openings "file=$book" format=$bookFormat order=sequential `
+        -openings "file=$bookPath" format=$bookFormat order=sequential `
         -draw movenumber=40 movecount=8 score=10 `
         -resign movecount=4 score=800 `
         -pgnout "file=$pgnOut" notation=san `

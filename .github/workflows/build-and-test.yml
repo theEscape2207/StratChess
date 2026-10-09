@@ -38,6 +38,22 @@ jobs:
     defaults:
       run:
         shell: pwsh
+    env:
+      # A pull request compares against origin/main. A push cannot: on a push
+      # to main, origin/main IS HEAD, so that diff is empty -- and an empty
+      # diff correctly returns the weakest tier, which made every merge
+      # classify as Docs no matter what it contained (issue #185).
+      #
+      # github.event.before is the tip main held before the push. For this
+      # repo's shape -- one merge commit per push -- that is the previous main
+      # tip, and unlike HEAD^ it stays correct if a push ever carries several
+      # commits.
+      #
+      # If the ref is unreachable (force push, or the all-zeros SHA on branch
+      # creation) the diff fails and Get-ChangeTier.ps1 returns Engine tier.
+      # That fail-closed path is deliberate: do not add a fallback that
+      # guesses something cheaper.
+      BASE_REF: ${{ github.event_name == 'push' && github.event.before || 'origin/main' }}
     outputs:
       tier: ${{ steps.tier.outputs.tier }}
       is_full: ${{ steps.tier.outputs.is_full }}
@@ -71,35 +87,8 @@ jobs:
           pwsh -NoProfile -File Scripts/Test-WorkflowCcachePaths.ps1
           exit $LASTEXITCODE
 
-      # Here for the same reason as the timeout guard above: a script that binds
-      # its parameters loosely swallows an argument it does not recognise and
-      # runs its defaults instead of failing, and the scripts with the most
-      # expensive defaults are exactly the ones nobody runs on a PR.
-      - name: Check script parameter binding
-        run: |
-          pwsh -NoProfile -File Scripts/Test-ScriptBinding.ps1 -SelfTest
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pwsh -NoProfile -File Scripts/Test-ScriptBinding.ps1
-          exit $LASTEXITCODE
-
       - name: Classify changed files
         id: tier
-        env:
-          # A pull request compares against origin/main. A push cannot: on a push
-          # to main, origin/main IS HEAD, so that diff is empty -- and an empty
-          # diff correctly returns the weakest tier, which made every merge
-          # classify as Docs no matter what it contained (issue #185).
-          #
-          # github.event.before is the tip main held before the push. For this
-          # repo's shape -- one merge commit per push -- that is the previous main
-          # tip, and unlike HEAD^ it stays correct if a push ever carries several
-          # commits.
-          #
-          # If the ref is unreachable (force push, or the all-zeros SHA on branch
-          # creation) the diff fails and Get-ChangeTier.ps1 returns Engine tier.
-          # That fail-closed path is deliberate: do not add a fallback that
-          # guesses something cheaper.
-          BASE_REF: ${{ github.event_name == 'push' && github.event.before || 'origin/main' }}
         run: |
           $c = & .\Scripts\Get-ChangeTier.ps1 -BaseRef $env:BASE_REF
           Write-Host "Change tier: $($c.Tier) (decided by: $($c.DecidingFile))"
@@ -107,6 +96,17 @@ jobs:
           $c.ChangedFiles | ForEach-Object { Write-Host "  $_" }
           "tier=$($c.Tier)" | Out-File $env:GITHUB_OUTPUT -Append
           "is_full=$($c.IsFull.ToString().ToLower())" | Out-File $env:GITHUB_OUTPUT -Append
+
+      # Here, not behind a tier condition, because a script change is usually Tooling
+      # tier. Scoped to the changed scripts, so a diff without one checks nothing; it
+      # checks every script when the guard itself changed or the diff failed, and the
+      # nightly lint-deep-windows job runs it over the whole tree. A script that binds
+      # loosely runs its defaults on a mistyped flag, and the scripts with the most
+      # expensive defaults are exactly the ones nobody runs on a PR.
+      - name: Check PowerShell traps in changed scripts
+        run: |
+          pwsh -NoProfile -File Scripts/Test-ScriptTraps.ps1 -BaseRef $env:BASE_REF
+          exit $LASTEXITCODE
 
   build-linux:
     needs: classify
