@@ -989,11 +989,19 @@ TEST_CASE("TT - the prefetch target names the bucket store() writes", "[tt][tt_p
 {
 	TranspositionTable tt(1);
 	const std::uint64_t last = tt.bucket_count() - 1;
-	std::vector<std::uint64_t> keys{1, last, last + 1, ~std::uint64_t{0}, std::uint64_t{1} << 63};
-	std::mt19937_64 rng(776);
-	for (int i = 0; i < 8; ++i) {
-		keys.push_back(rng() | 1);
-	}
+	const std::vector<std::uint64_t> keys{1,
+	                                      last,
+	                                      last + 1,
+	                                      ~std::uint64_t{0},
+	                                      std::uint64_t{1} << 63,
+	                                      0x9E37'79B9'7F4A'7C15,
+	                                      0xBF58'476D'1CE4'E5B9,
+	                                      0x94D0'49BB'1331'11EB,
+	                                      0x2545'F491'4F6C'DD1D,
+	                                      0xD6E8'FEB8'6659'FD93,
+	                                      0xA076'1D64'78BD'642F,
+	                                      0xE703'7ED1'A0B4'28DB,
+	                                      0x8EBC'6AF0'9C88'C6E3};
 
 	const PrefetchTarget target = tt.prefetch_target();
 	for (const std::uint64_t key : keys) {
