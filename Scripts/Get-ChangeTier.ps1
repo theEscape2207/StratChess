@@ -103,8 +103,8 @@ function Get-TierForPath {
     # build that is not one -- a false PASS about the property, which is the same
     # self-concealment. Build rather than Tooling for that reason alone.
     if ($p -like '*Scripts/Test-ReleaseReproducibility.ps1') { return 'Build' }
-    # A guard that CI's classify job and Validate-PrePR.ps1 run on every change.
-    if ($p -like '*Scripts/Test-ScriptBinding.ps1')         { return 'Build' }
+    # A guard that CI's classify job and Validate-PrePR.ps1 run on every script change.
+    if ($p -like '*Scripts/Test-ScriptTraps.ps1')           { return 'Build' }
     # Decides whether a build artifact counts as stale, and which binary a measurement
     # reads. The hazard is the familiar one and it is why they are Build rather than
     # Tooling: a bug in either lets a validation or a measurement run against the wrong
@@ -242,7 +242,7 @@ if ($SelfTest) {
         @{ Name = 'Scripts/*.md -> Docs';       Files = @('Scripts/README.md');                Expect = 'Docs' }
         @{ Name = 'FAIL CLOSED: nested script'; Files = @('Scripts/sub/tool.ps1');             Expect = 'Engine' }
         @{ Name = 'FAIL CLOSED: other ext';     Files = @('Scripts/notes.txt');                Expect = 'Engine' }
-        @{ Name = 'binding guard -> Build';     Files = @('Scripts/Test-ScriptBinding.ps1');   Expect = 'Build' }
+        @{ Name = 'script-trap guard -> Build'; Files = @('Scripts/Test-ScriptTraps.ps1');     Expect = 'Build' }
         @{ Name = 'Codex skill meta -> Docs';   Files = @('.agents/skills/grill-me/agents/openai.yaml'); Expect = 'Docs' }
         @{ Name = 'Codex agent -> Docs';        Files = @('.codex/agents/eval-reviewer.toml');  Expect = 'Docs' }
         @{ Name = 'FAIL CLOSED: skill template'; Files = @('.agents/skills/diagnosing-bugs/scripts/hitl-loop.template.sh'); Expect = 'Engine' }

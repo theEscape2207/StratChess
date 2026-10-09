@@ -553,6 +553,17 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# Ahead of the fast paths, because a Tooling-tier diff is the usual way a script changes.
+# Scoped to the changed scripts, so a diff without one costs a git diff; the nightly
+# run covers the whole tree.
+Write-Host ''
+& pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Test-ScriptTraps.ps1') -BaseRef $BaseRef | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ''
+    Write-Host 'Pre-PR validation FAILED (PowerShell traps).' -ForegroundColor Red
+    exit 1
+}
+
 # Whole-tree and warn-only, ahead of the fast paths: a plan-only diff is Docs tier.
 Write-Host "`n==> Top-level design documents" -ForegroundColor Cyan
 $topLevelPlans = @(Get-TopLevelPlan -TrackedPath @(& git -C $RepoRoot ls-tree --name-only HEAD .claude/plans/))
@@ -665,18 +676,6 @@ try   { & $ccachePathScript }
 catch { $ccachePathFailed = $true; Write-Host "ccache path guard threw: $_" -ForegroundColor DarkGray }
 if ($LASTEXITCODE -ne 0) { $ccachePathFailed = $true }
 $checkResults['ccache path settings'] = if ($ccachePathFailed) { 'FAIL' } else { 'PASS' }
-
-# --- Step 0d2: script parameter binding ---
-# Same reasoning as the timeout guard above, for the same reason it is cheap:
-# pure text. A script that binds loosely discards an argument it does not know
-# and runs its defaults, which for Run-EloMatch.ps1 meant a 500-game match.
-Write-Host "`n==> Script parameter binding" -ForegroundColor Cyan
-$bindingScript = Join-Path $PSScriptRoot 'Test-ScriptBinding.ps1'
-$bindingFailed = $false
-try   { & $bindingScript }
-catch { $bindingFailed = $true; Write-Host "Binding guard threw: $_" -ForegroundColor DarkGray }
-if ($LASTEXITCODE -ne 0) { $bindingFailed = $true }
-$checkResults['Script binding'] = if ($bindingFailed) { 'FAIL' } else { 'PASS' }
 
 # --- Step 0e: self-tests of any changed script ---
 # Also run here, not only on the Tooling fast path: a Build- or Engine-tier diff can
