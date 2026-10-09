@@ -15,22 +15,24 @@ change ships B with an instance-owned hook. The search is unchanged, so any gain
 C kept `Board` free of the TT. The search predicted the child's key with an exact
 `Board::KeyAfter(move)` and prefetched before `DoMove`. On an ordered pair (spacers, #785),
 `Compare-Bench -Control -Rounds 60 -Affinity 4` measured **−1.43% [−1.54%, −1.31%]**, A/A 0.00%
-[−0.24%, +0.25%], with all 8 positions negative. The disassembly showed two causes:
+[−0.24%, +0.25%], with all 8 positions negative. The disassembly of that binary shows two facts,
+both plausible explanations rather than measured causes:
 
-1. Under clang-cl, `_mm_prefetch(p, _MM_HINT_T0)` emits **`prefetcht2`**, not `prefetcht0`. The
-   spike's `__builtin_prefetch` emits `prefetcht0`.
-2. `KeyAfter` was not inlined. Each move paid a call into 176 instructions with 7 register pushes,
-   about 60–80 instructions executed. B's prefetch costs about 5. C's estimated per-move budget for
-   reaching B was under about 15 cycles, which only an approximate key could meet.
+1. This clang-cl build compiled `_mm_prefetch(p, _MM_HINT_T0)` to **`prefetcht2`**, not
+   `prefetcht0`. The spike's `__builtin_prefetch` emitted `prefetcht0`.
+2. `KeyAfter` was not inlined: an out-of-line call into 176 static instructions with 7 register
+   pushes. Author estimates, not measured: about 60–80 instructions executed per move against B's
+   about 5, and a per-move budget under about 15 cycles to reach B, which only an approximate key
+   could meet.
 
 C's patches and data are in `StratChessSupport\CpuProfiles\2026-10-09-776\`. Each lesson becomes a
 decision below: (1) is D4, (2) is D2's budget, and the measurement gap it exposed is D5.
 
 ## Review focus
 
-- **D7, the hook's lifetime.** A prefetch of a freed table never faults, and ASan does not see it.
-  A lifetime mistake is therefore invisible to every test, and only construction and review can
-  close it.
+- **D7, the hook's lifetime.** A stale prefetch need not fault, and ASan does not see it, so a
+  search's results cannot show a lifetime mistake. Target-state assertions (Validation) catch a
+  missing or wrong binding or reset; the declaration and join order stays a review item.
 - **D5, measuring with `DoMove` held in place.** The spike's pair controlled only `pvs` and
   `quiescence`, so B's resized `DoMove` floated between the two images. Does adding `DoMove` and
   `DoNullMove` to the ordered pair's hot list close that gap?
@@ -64,7 +66,7 @@ struct in its own header. `Board` never includes or names `TranspositionTable`.
 
 Rejected:
 - **C**, measured above. Fixing it needs an approximate key, which gives up the exact-key contract
-  that made C attractive, and was estimated at about a 40% chance of matching B.
+  that made C attractive; the author's unmeasured estimate was about a 40% chance of matching B.
 - **A process-wide static (the spike).** It breaks with two engines in one process, as in the tests.
 - **A pointer to the TT on `Board`.** It couples the types and adds a dependent load on every move.
 
@@ -75,9 +77,8 @@ check. By then `DoMove` has applied the piece, castling-rights and en-passant up
 `zobrist_hash_`. Only `change_player()` remains, so `zobrist_hash_ ^ zobrist::side_key` is exactly
 the child's key. Nothing about the hash update is duplicated, so nothing needs a contract test.
 
-Budget: two loads from `this`, plus xor, and, shift, add and prefetch, all inline. C showed that
-5.6 points of nps go to about 60–80 instructions per move. The hook adds no call, no indirection
-and no branch.
+Budget: two loads from `this`, plus xor, and, shift, add and prefetch, all inline. The hook adds
+no call, no indirection and no branch.
 
 Pseudo-legal moves that `InCheck()` then rejects still prefetch. That wastes a prefetch and nothing
 else, and the spike measured it.
@@ -171,19 +172,17 @@ extended hot list).
 
 - **Unit tests.**
   - A default-constructed and a FEN-constructed `Board` carry the dummy target.
-  - After `Search()` returns, the engine's boards carry the dummy again. Expose a test seam only if
-    no existing accessor can show it, and keep it minimal.
+  - Binding and reset, through a `Board::prefetch_target()` getter and the search fixture: during an
+    iteration observation the main and helper boards hold their engine's own TT target; after a
+    normal return, an early stop and a throwing observer (two threads) they hold the dummy again.
   - Two engines with different `Hash` sizes search in one process without interference. The
     existing search tests cover this once the static is gone.
 - **Disassembly.** `prefetcht0`, and no `prefetcht1`/`prefetcht2`, in `Board::DoMove` and
   `DoNullMove` of the Release clang-cl exe (`llvm-objdump -d`). This runs before the quiet window.
 - **Equivalence.** `Compare-SearchEquivalence.ps1` reports IDENTICAL against the merge base.
 - **Speed.** D5 and D8.
-- **Elo.** Not needed to accept: the tree is identical, so the gain is pure speed. Rough
-  expectation: +4% nps is about +2–4 Elo at the lab's time control (`log2(1.04) × 50–70` Elo per
-  doubling). That is at or below the lab's ±4 Elo resolution for one run, so a lab run would most
-  likely read inconclusive. The lab is GCC, whose spike trend was +3.23% nps. The lab run is the
-  owner's call.
+- **Elo.** Not needed to accept: the tree is identical, so the gain is pure speed. B's Elo stays
+  unmeasured; the lab is GCC, whose spike trend was +3.23% nps. A lab run is the owner's call.
 
 ## Cost
 
