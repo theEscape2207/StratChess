@@ -19,8 +19,8 @@ apart by the `candidate` prefix fastchess gives the candidate's name.
 
 Depth delta becomes effective speed as EBF ** delta. EBF is the effective branching factor at lab
 depths: nodes(d+1) / nodes(d) per iteration, 1.8-2.1 on lab openings at depths 11-16 (#776; mean
-1.88). `--measure-ebf` re-measures it on the run's own openings; do so after a change that
-reshapes the tree.
+1.88). `--measure-ebf` re-measures it on the run's own openings at the engine's default Hash, as
+the lab plays; do so after a change that reshapes the tree.
 
 Read the delta against a null: an eval change with no speed effect read +0.02 plies (run
 36495197163), because a different evaluation searches a different tree. Only a delta well
@@ -28,8 +28,9 @@ above that is a speed signal.
 
 `--history` prints one row per run under a directory of runs: game length, draw rate, where the
 plies go, how games end, and mean depth per engine. `to2` and `after` split a decisive game at the
-first |score| >= 2.00; `pre1` counts every game's plies before |score| first reaches 1.00. Depth across runs measures the search's shape, not its speed:
-pruning raises it and extensions lower it, so only the within-run delta above isolates speed.
+first |score| >= 2.00; `pre1` counts every game's plies before |score| first reaches 1.00. Depth
+across runs measures the search's shape, not its speed: pruning raises it and extensions lower it,
+so only the within-run delta above isolates speed.
 Lengths are compared on the openings every run played, since the book offset can differ; `--runs`
 (folder-name prefixes) leaves out a short or differently configured run that would shrink that set.
 """
@@ -94,13 +95,18 @@ def own_moves(headers: dict[str, str], depths: list[int]) -> dict[str, list[int]
     return {first: depths[0::2], second: depths[1::2]}
 
 
+def sides(game: Game) -> list[tuple[str, str, list[int]]]:
+    """(colour, engine name, own depths) for White, then Black."""
+    moves = own_moves(game.headers, game.depths)
+    return [(colour, game.headers.get(tag, ""), moves[colour]) for colour, tag in (("w", "White"), ("b", "Black"))]
+
+
 def depth_by_engine(games: list[Game]) -> dict[str, list[int]]:
     """Every depth each engine reached, keyed by engine name."""
     by_engine: dict[str, list[int]] = defaultdict(list)
     for game in games:
-        moves = own_moves(game.headers, game.depths)
-        for colour, tag in (("w", "White"), ("b", "Black")):
-            by_engine[game.headers.get(tag, "")].extend(moves[colour])
+        for _, name, depths in sides(game):
+            by_engine[name].extend(depths)
     return by_engine
 
 
@@ -117,9 +123,8 @@ def compare(games: list[Game]) -> tuple[dict[int, list[int]], list[float]]:
             continue
         side = {}
         for game in pair:
-            moves = own_moves(game.headers, game.depths)
-            for colour, tag in (("w", "White"), ("b", "Black")):
-                side[(colour, game.headers.get(tag, "").startswith("candidate"))] = moves[colour]
+            for colour, name, depths in sides(game):
+                side[(colour, name.startswith("candidate"))] = depths
         deltas = []
         for colour in ("w", "b"):
             cand, ref = side.get((colour, True)), side.get((colour, False))
@@ -148,6 +153,7 @@ class RunSummary(NamedTuple):
     time_control: str
     plies: float
     draw_rate: float
+    # In commented plies, the unit the crossings are found in.
     to_decided: float  # decisive games: plies until |score| first reaches DECIDED
     after_decided: float  # decisive games: plies from there to the end
     level: float  # every game: plies before |score| first reaches LEVEL
@@ -157,7 +163,7 @@ class RunSummary(NamedTuple):
 
 def summarise(games: list[Game]) -> RunSummary:
     decisive = [g for g in games if g.headers.get("Result") in ("1-0", "0-1")]
-    crossings = [(first_reaching(g.scores, DECIDED), plies(g)) for g in decisive]
+    crossings = [(first_reaching(g.scores, DECIDED), len(g.scores)) for g in decisive]
     crossings = [(c, n) for c, n in crossings if c is not None]
     levels = [first_reaching(g.scores, LEVEL) for g in games]
     draws = sum(g.headers.get("Result") == "1/2-1/2" for g in games)
@@ -222,12 +228,12 @@ def history(root: Path, prefixes: list[str] | None = None) -> int:
     return 0
 
 
-def ebf_from_nodes(nodes_per_position: list[dict[int, int]], from_depth: int) -> dict[int, list[float]]:
-    """log(nodes(d) / nodes(d-1)) per position, keyed by d, for every d >= from_depth."""
+def ebf_from_nodes(nodes_per_position: list[dict[int, int]]) -> dict[int, list[float]]:
+    """log(nodes(d) / nodes(d-1)) per position, keyed by d, for every d >= EBF_FROM_DEPTH."""
     ratios: dict[int, list[float]] = defaultdict(list)
     for nodes in nodes_per_position:
         for d in sorted(nodes):
-            if d >= from_depth and nodes.get(d - 1, 0) > 0:
+            if d >= EBF_FROM_DEPTH and nodes.get(d - 1, 0) > 0:
                 ratios[d].append(math.log(nodes[d] / nodes[d - 1]))
     return ratios
 
@@ -281,11 +287,16 @@ def main() -> int:
     parser.add_argument("run", type=Path, help="strength-lab run directory (*/match.pgn), or a directory of runs")
     parser.add_argument("--history", action="store_true", help="one summary row per run under RUN")
     parser.add_argument("--runs", nargs="+", metavar="PREFIX", help="--history: only run folders with these prefixes")
-    parser.add_argument("--ebf", type=float, default=1.88, help="effective branching factor (default 1.88)")
-    parser.add_argument("--measure-ebf", type=Path, metavar="EXE", help="measure EBF with this engine instead")
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--ebf", type=float, default=1.88, help="effective branching factor (default 1.88)")
+    source.add_argument("--measure-ebf", type=Path, metavar="EXE", help="measure EBF with this engine instead")
     parser.add_argument("--ebf-positions", type=int, default=40, help="openings searched by --measure-ebf")
     parser.add_argument("--ebf-depth", type=int, default=16, help="depth searched by --measure-ebf")
     args = parser.parse_args()
+    if args.runs and not args.history:
+        parser.error("--runs needs --history")
+    if args.history and args.measure_ebf:
+        parser.error("--measure-ebf reads one run, not --history")
 
     if args.history:
         return history(args.run, args.runs)
@@ -298,8 +309,13 @@ def main() -> int:
 
     print(f"{args.run.name}: {len(games)} games, {len(pair_means)} opening pairs")
     for engine, depths in sorted(depth_by_engine(games).items()):
+        if len(depths) < 2:
+            continue
         q = statistics.quantiles(depths, n=10)
-        print(f"  {engine}: depth mean {statistics.fmean(depths):.2f}, median {statistics.median(depths):g}, p10-p90 {q[0]:g}-{q[-1]:g}")
+        print(
+            f"  {engine}: depth mean {statistics.fmean(depths):.2f}, median {statistics.median(depths):g},"
+            f" p10-p90 {q[0]:g}-{q[-1]:g}"
+        )
     for b in sorted(buckets):
         lo = b * BUCKET_MOVES
         label = f"{lo}+" if b == LAST_BUCKET else f"{lo}-{lo + BUCKET_MOVES - 1}"
@@ -307,7 +323,7 @@ def main() -> int:
 
     ebf = args.ebf
     if args.measure_ebf:
-        ratios = ebf_from_nodes(measure_ebf(args.measure_ebf, opening_fens(games, args.ebf_positions), args.ebf_depth), EBF_FROM_DEPTH)
+        ratios = ebf_from_nodes(measure_ebf(args.measure_ebf, opening_fens(games, args.ebf_positions), args.ebf_depth))
         for d in sorted(ratios):
             print(f"  EBF at depth {d:>2}: {math.exp(statistics.fmean(ratios[d])):.3f} (n={len(ratios[d])})")
         pooled = [r for rs in ratios.values() for r in rs]

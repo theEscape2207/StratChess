@@ -88,7 +88,7 @@ class CompareLabDepthTest(unittest.TestCase):
 
 class EbfTest(unittest.TestCase):
     def test_ratio_per_iteration_from_the_first_lab_depth(self) -> None:
-        ratios = cld.ebf_from_nodes([{10: 100, 11: 200, 12: 400}, {11: 50, 13: 150}], from_depth=11)
+        ratios = cld.ebf_from_nodes([{10: 100, 11: 200, 12: 400}, {11: 50, 13: 150}])
         self.assertEqual(sorted(ratios), [11, 12])
         self.assertTrue(all(math.isclose(r, math.log(2)) for r in ratios[11] + ratios[12]))
 
