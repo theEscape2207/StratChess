@@ -487,6 +487,15 @@ One caveat worth carrying: the +40.28 Elo result implies ~133 Elo per doubling a
 engine is often one iteration short. The 1.7 Elo/1% figure is therefore an upper bound tied to how
 strength is measured here, not a universal constant.
 
+**Bench understates a change to TT memory latency.** A bench search barely fills the table, so most
+probes hit cache; over a game the table fills and probes go to DRAM. #776's bucket prefetch read
+**+3.2%** on `Compare-Bench` (clang-cl) and +3.2% on GCC, but the lab games searched **+0.13 plies**
+deeper at equal time against +0.02 for an eval change's null run. At an effective branching factor of
+1.8-2.1 that is **+7-10%** effective speed, and the gain grew as games went on. At the 1.7 Elo/1%
+rate above, that predicts +12-17 Elo; the lab measured +16.6 +/- 3.1. So for a TT or memory-latency
+change, read the bench figure as a lower bound and let the lab size it.
+`Scripts/compare_lab_depth.py <run dir>` reads a lab run's effective speed from its PGNs.
+
 ### Profiling: where the time goes
 
 `Run-Bench` says *that* time changed. A sampling profiler says *where* it goes, and that sets the

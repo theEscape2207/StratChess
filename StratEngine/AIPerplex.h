@@ -165,6 +165,7 @@ class AIPerplex final {
 	// per-thread state it carries, while the TranspositionTable stays a separate
 	// explicit parameter because it is shared across threads under Lazy SMP.
 	void init_search(const Board& root);
+	void reset_prefetch_targets() noexcept;
 	SearchResult iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt, uint8_t search_start_age,
 	                                 const IterationObserver& observer = {});
 	int search_with_aspiration(ThreadData& td, int depth, int seed_score, TranspositionTable& tt);

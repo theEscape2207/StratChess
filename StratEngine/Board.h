@@ -5,6 +5,7 @@
 #include "Move.h"
 #include "GameState.h"
 #include "PieceHelper.h"
+#include "PrefetchTarget.h"
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -119,6 +120,11 @@ class Board final {
 	Move last_move() const noexcept { return state_.last_move; }
 
 	uint64_t get_zobrist_hash() const noexcept { return zobrist_hash_; }
+
+	// The table DoMove and DoNullMove prefetch the child's bucket from. A copy carries it, so the
+	// search binds it after copying its root and resets it after its helpers join.
+	void SetPrefetchTarget(const PrefetchTarget& target) noexcept { prefetch_target_ = target; }
+	const PrefetchTarget& prefetch_target() const noexcept { return prefetch_target_; }
 
 	std::span<const BITBOARD> GetBitBoards() const noexcept;
 
@@ -265,6 +271,7 @@ class Board final {
 	void restore_state() noexcept { state_ = state_history_[current_ply_]; }
 
 	uint64_t zobrist_hash_{0};
+	PrefetchTarget prefetch_target_;
 };
 
 std::ostream& operator<<(std::ostream&, const Board&);

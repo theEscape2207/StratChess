@@ -29,10 +29,15 @@
          check, not the arithmetic, decides. A spacer leaves both images' prefix, so it is
          neither pinned nor counted.
          Every other function goes after these.
-      5. relinks with /order and checks the result. Every pinned function, AIPerplex::pvs and
-         AIPerplex::quiescence must start at identical addresses in both, or the script fails.
-         A change that resized both hot functions fails when no cold subset matches the size
+      5. relinks with /order and checks the result. Every pinned function and every hot
+         function must start at identical addresses in both, or the script fails. A change that
+         resized two hot functions fails when no cold subset matches the earlier one's size
          change exactly.
+
+    The hot functions are LinkerMap.ps1's AIPerplex::pvs and AIPerplex::quiescence, plus
+    Board::DoMove and Board::DoNullMove, which run once per node and which a make/unmake change
+    resizes. The extra two are listed here, not in LinkerMap.ps1, whose list
+    Test-CodeAlignment.ps1's fixtures assume holds two functions.
 
     The tree's shipping exe, map and PDB are never written; the script checks the exe's hash
     afterwards. The ordered exes are for comparison only, never a shipped layout.
@@ -90,6 +95,12 @@ $script:EngineObjectMarker = '.lto.'
 # Translation units off the search path. A spacer sits at different addresses in the two images,
 # so it must be code the bench does not run per node.
 $script:SpacerObjectPattern = '\.lto\.(ArgParse|Config|FENParser|Game|HumanPlayer|Logger|MoveFormatter|Perft|PlayerFactory|SearchTuningSchema|TacticalTestRunner|UCIHandler)\.cpp\.obj$'
+
+# The functions whose placement the pair controls, in order-file order after the pinned prefix.
+$script:OrderedHotFunction = @($script:MapHotFunction) + @(
+    [pscustomobject]@{ Label = 'Board::DoMove'; MangledPrefix = '?DoMove@Board@@' }
+    [pscustomobject]@{ Label = 'Board::DoNullMove'; MangledPrefix = '?DoNullMove@Board@@' }
+)
 
 function Get-NormalizedSymbolName {
     <# The name with anonymous-namespace hashes removed, so the same function pairs across trees. #>
@@ -207,7 +218,7 @@ function Get-OrderEntry {
     $pinnedKey = @{}
     foreach ($entry in $pinned) { $pinnedKey[$entry.Key] = $true }
 
-    $resized = foreach ($hot in $script:MapHotFunction) {
+    $resized = foreach ($hot in $script:OrderedHotFunction) {
         $inBaseline = Find-MapHotSymbol -Symbol @($baselineByKey.Values) -MangledPrefix $hot.MangledPrefix
         $inCandidate = Find-MapHotSymbol -Symbol @($candidateByKey.Values) -MangledPrefix $hot.MangledPrefix
         if ($null -eq $inBaseline -or $null -eq $inCandidate -or $pinnedKey.ContainsKey($inBaseline.Key)) { continue }
@@ -307,7 +318,7 @@ function Test-OrderedPlacement {
         [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$OrderEntry
     )
 
-    $hotResults = foreach ($hot in $script:MapHotFunction) {
+    $hotResults = foreach ($hot in $script:OrderedHotFunction) {
         $inBaseline = Find-MapHotSymbol -Symbol $BaselineSymbol -MangledPrefix $hot.MangledPrefix
         $inCandidate = Find-MapHotSymbol -Symbol $CandidateSymbol -MangledPrefix $hot.MangledPrefix
         $found = ($null -ne $inBaseline) -and ($null -ne $inCandidate)
@@ -368,6 +379,9 @@ function Invoke-SelfTest {
 
     $pvs = '?pvs@AIPerplex@@AEAAHAEAUThreadData@@HHHH_NAEAVTranspositionTable@@@Z'
     $qs = '?quiescence@AIPerplex@@AEAAHAEAUThreadData@@HHHHAEAVTranspositionTable@@@Z'
+    $doMove = '?DoMove@Board@@QEAA_NAEBVMove@@@Z'
+    $doNullMove = '?DoNullMove@Board@@QEAAXXZ'
+    $boardObject = 'StratChessEvolved.exe.lto.Board.cpp.obj'
 
     Assert-Equal 'anonymous-namespace hashes normalise to one key' `
         (Get-NormalizedSymbolName '?f@?A0x12248362@@YAHXZ') (Get-NormalizedSymbolName '?f@?A0x8417fefe@@YAHXZ')
@@ -448,13 +462,26 @@ function Invoke-SelfTest {
     Assert-Equal 'FALSIFY: no cold subset matches the growth exactly, so no spacer; hot-path functions never qualify' (& $describe $unspaced) `
         "?hot@@YAXXZ:False:,?big@@YAXXZ:False:,?small@@YAXXZ:False:,${pvs}:True:,${qs}:True:"
 
+    # Three resized hot functions, two gaps: pvs, DoMove and DoNullMove each grow by 0x40, and each
+    # gap takes its own cold spacer. quiescence is absent, so it is skipped, never a gap.
+    $gapBaseline = @(
+        (New-Symbol $pvs 0x1000), (New-Symbol $doMove 0x1400 $boardObject), (New-Symbol $doNullMove 0x1480 $boardObject),
+        (New-Symbol '?a@@YAXXZ' 0x14c0 $cold), (New-Symbol '?b@@YAXXZ' 0x1500 $cold), (New-Symbol '?end@@YAXXZ' 0x1540 $cold))
+    $gapCandidate = @(
+        (New-Symbol $pvs 0x1000), (New-Symbol $doMove 0x1440 $boardObject), (New-Symbol $doNullMove 0x1500 $boardObject),
+        (New-Symbol '?a@@YAXXZ' 0x1580 $cold), (New-Symbol '?b@@YAXXZ' 0x15c0 $cold), (New-Symbol '?end@@YAXXZ' 0x1600 $cold))
+    $gapped = @(Get-OrderEntry -BaselinePlaced @(Get-SymbolPlacement -Symbol $gapBaseline) -CandidatePlaced @(Get-SymbolPlacement -Symbol $gapCandidate))
+    Assert-Equal 'each gap between resized hot functions, Board ones included, gets its own spacer' (& $describe $gapped) `
+        "${pvs}:True:,?a@@YAXXZ:False:baseline,${doMove}:True:,?b@@YAXXZ:False:baseline,${doNullMove}:True:"
+
     $pool = @([pscustomobject]@{ Key = 'a'; Size = 0x40 }, [pscustomobject]@{ Key = 'b'; Size = 0x80 }, [pscustomobject]@{ Key = 'c'; Size = 0x40 })
     Assert-Equal 'spacers are taken largest first to an exact sum' ((@(Select-SpacerSet -Pool $pool -Bytes 0xc0) | ForEach-Object { $_.Key }) -join ',') 'b,a'
     Assert-Equal 'FALSIFY: an unreachable sum yields no spacer set' ($null -eq (Select-SpacerSet -Pool $pool -Bytes 0x20)) $true
     $trap = @([pscustomobject]@{ Key = 'x'; Size = 0xc0 }, [pscustomobject]@{ Key = 'y'; Size = 0x80 }, [pscustomobject]@{ Key = 'z'; Size = 0x80 })
     Assert-Equal 'an exact sum is found where largest-first would strand a remainder' ((@(Select-SpacerSet -Pool $trap -Bytes 0x100) | ForEach-Object { $_.Key }) -join ',') 'y,z'
 
-    $spacedMap = @((New-Symbol $pvs 0x1000), (New-Symbol '?hot@@YAXXZ' 0x0f00), (New-Symbol '?big@@YAXXZ' 0x0f40), (New-Symbol $qs 0x1480))
+    $spacedMap = @((New-Symbol $pvs 0x1000), (New-Symbol '?hot@@YAXXZ' 0x0f00), (New-Symbol '?big@@YAXXZ' 0x0f40), (New-Symbol $qs 0x1480),
+        (New-Symbol $doMove 0x1500 $boardObject), (New-Symbol $doNullMove 0x1580 $boardObject))
     $spacedVerdict = Test-OrderedPlacement -BaselineSymbol $spacedMap -CandidateSymbol $spacedMap -OrderEntry $spaced
     Assert-Equal 'a spacer is neither pinned nor counted' "$($spacedVerdict.MatchedCount)/$($spacedVerdict.PinnedCount)" '2/2'
 
@@ -471,17 +498,24 @@ function Invoke-SelfTest {
         $relink.Substring($link.Length) ' "/out:C:\o\StratChessEvolved.exe" "/implib:C:\o\StratChessEvolved.lib" "/pdb:C:\o\StratChessEvolved.pdb" "/MAP:C:\o\StratChessEvolved.map" "/order:@C:\o\order.txt"'
     Assert-Equal 'no /order without an order file' ((New-RelinkCommand -LinkCommand $link -Directory 'C:\o') -match '/order') $false
 
-    $orderedBaseline = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1400), (New-Symbol '?anon@?A0x11111111@@YAXXZ' 0x1500))
-    $orderedCandidate = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1400), (New-Symbol '?anon@?A0x22222222@@YAXXZ' 0x1500))
+    $boardHot = @((New-Symbol $doMove 0x1600 $boardObject), (New-Symbol $doNullMove 0x1680 $boardObject))
+    $orderedBaseline = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1400), (New-Symbol '?anon@?A0x11111111@@YAXXZ' 0x1500)) + $boardHot
+    $orderedCandidate = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1400), (New-Symbol '?anon@?A0x22222222@@YAXXZ' 0x1500)) + $boardHot
     $verdict = Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol $orderedCandidate -OrderEntry $orderEntries
     Assert-Equal 'identical hot addresses pass, and pinned matches count across own names' "$($verdict.Ok) $($verdict.MatchedCount)/$($verdict.PinnedCount)" 'True 2/2'
 
-    $shifted = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1440), (New-Symbol '?anon@?A0x22222222@@YAXXZ' 0x1500))
+    $shifted = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1440), (New-Symbol '?anon@?A0x22222222@@YAXXZ' 0x1500)) + $boardHot
     Assert-Equal 'FALSIFY: quiescence at a different address fails' `
         (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol $shifted -OrderEntry $orderEntries).Ok $false
-    $laterShifted = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1400), (New-Symbol '?anon@?A0x22222222@@YAXXZ' 0x1540))
+    $laterShifted = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1400), (New-Symbol '?anon@?A0x22222222@@YAXXZ' 0x1540)) + $boardHot
     Assert-Equal 'FALSIFY: a pinned function moved after matched hot functions fails' `
         (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol $laterShifted -OrderEntry $orderEntries).Ok $false
+    $doMoveMoved = @($orderedCandidate | ForEach-Object { if ($_.Name -eq $doMove) { New-Symbol $doMove 0x1640 $boardObject } else { $_ } })
+    Assert-Equal 'FALSIFY: DoMove at a different address fails' `
+        (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol $doMoveMoved -OrderEntry $orderEntries).Ok $false
+    $noDoNullMove = @($orderedCandidate | Where-Object { $_.Name -ne $doNullMove })
+    Assert-Equal 'FALSIFY: DoNullMove missing from one map fails' `
+        (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol $noDoNullMove -OrderEntry $orderEntries).Ok $false
     Assert-Equal 'FALSIFY: a hot function missing from one map fails' `
         (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol @((New-Symbol $pvs 0x1000)) -OrderEntry $orderEntries).Ok $false
     Assert-Equal 'FALSIFY: empty maps fail, never pass vacuously' `

@@ -18,6 +18,7 @@
 #include "ThreadData.h"
 #include "TranspositionTable.h"
 #include "defines.h"
+#include "PrefetchTarget.h"
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -643,6 +644,21 @@ class AIPerlexTestFixture {
 	// Full fixed-depth search from the fixture's board.
 	Move search_to_depth(int depth) const { return ai->Search(board_, SearchLimits::fixed_depth(depth)).best_move; }
 	SearchResult result_to_depth(int depth) const { return ai->Search(board_, SearchLimits::fixed_depth(depth)); }
+	SearchResult result_to_depth(int depth, IterationObserver observer) const
+	{
+		return ai->Search(board_, SearchLimits::fixed_depth(depth), std::move(observer));
+	}
+
+	// --- TT prefetch targets ---
+	PrefetchTarget tt_prefetch_target() const { return ai->tt_->prefetch_target(); }
+	// The main board's target, then every allocated helper's.
+	std::vector<PrefetchTarget> search_board_targets() const
+	{
+		std::vector<PrefetchTarget> targets{ai->td_.board.prefetch_target()};
+		for (const auto& htd : ai->helper_tds_)
+			targets.push_back(htd->board.prefetch_target());
+		return targets;
+	}
 
 	// Full search bounded by a node budget instead of a fixed depth. Requires the
 	// fixture to be constructed with a max_depth high enough that the node poll,

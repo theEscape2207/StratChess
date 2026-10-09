@@ -288,12 +288,24 @@ void AIPerplex::StartNewGame()
 void AIPerplex::init_search(const Board& root)
 {
 	td_.board = root; // thread-local copy — the search runs on this
+	// After the copy, which carries root's target. Search() resets it after the helpers join.
+	td_.board.SetPrefetchTarget(tt_->prefetch_target());
 	td_.nodes_searched = 0;
 	td_.qnodes_searched = 0;
 	// Per-call like the node counters: the reported trigger rate belongs to this search.
 	td_.telemetry.reset();
 	td_.pv_table = PVTable{}; // fresh PV for this call
 	td_.root_game_state = GameStates::STILL_PLAYING;
+}
+
+// Every board the search bound goes back to the dummy target. Skips a helper slot a failed
+// allocation left empty.
+void AIPerplex::reset_prefetch_targets() noexcept
+{
+	td_.board.SetPrefetchTarget({});
+	for (const auto& htd : helper_tds_)
+		if (htd)
+			htd->board.SetPrefetchTarget({});
 }
 
 // Lazy SMP helper thread entry point (plain iterative deepening, no quality
@@ -333,9 +345,14 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 		}
 	}
 	// Destruction order is intentional on every exceptional path: stop_guard
-	// latches the shared control first, helper jthreads then join, and only then
-	// launch_guard clears the immediate-stop handshake for the next call.
+	// latches the shared control first, helper jthreads then join, the boards'
+	// prefetch targets are reset, and only then launch_guard clears the
+	// immediate-stop handshake for the next call.
 	const auto launch_guard = ScopeExit([this]() noexcept { finish_search_launch(); });
+	// After the joins, so no board still searching can lose its target, and on every exit, so no
+	// board outlives the search naming its table. A stale prefetch never faults, so nothing else
+	// would notice: SetHash() may free the table once Search() returns.
+	const auto prefetch_guard = ScopeExit([this]() noexcept { reset_prefetch_targets(); });
 	std::vector<std::jthread> helpers;
 	const auto stop_guard = ScopeExit([this]() noexcept { control_.Stop(); });
 
@@ -408,7 +425,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// report a move, only their node counts feed back in).
 	// threads_ == 1 (the default) leaves this block entirely unreached:
 	// `helpers` stays a default-constructed empty vector and helper_tds_ is
-	// never touched.
+	// neither allocated nor seeded.
 	if (threads > 1) {
 		if (helper_tds_.size() < threads - 1) {
 			const size_t old = helper_tds_.size();
@@ -422,6 +439,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 		for (size_t i = 0; i < threads - 1; ++i) {
 			ThreadData& htd = *helper_tds_[i];
 			htd.board = root; // same seed as td_.board
+			htd.board.SetPrefetchTarget(tt_->prefetch_target());
 			htd.nodes_searched = 0;
 			htd.qnodes_searched = 0;
 			htd.telemetry.reset();

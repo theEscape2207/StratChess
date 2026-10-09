@@ -26,6 +26,12 @@ change both together.
   never the game board, and writes nothing back to it: the root verdict leaves via
   `SearchResult::game_state` and no other channel. The TT is a separate shared parameter — Lazy SMP
   helpers each get their own `ThreadData`.
+- **A search board's TT prefetch target names a live table only inside `Search()`.** `Board` prefetches
+  the child's bucket through an opaque `PrefetchTarget` that a copy carries, so the search binds it
+  after copying the root (main and each helper board) and resets it to the dummy after the helpers
+  join, on every exit. A stale prefetch never faults and changes no result, so only the
+  `[tt_prefetch]` tests catch a missing bind or reset; `SetHash` may free the table once `Search()`
+  returns.
 - `SearchResult` carries best move, score, elapsed time, split node counts and the `GameStates` the
   player adjudicated at its own root. It is never `DRAW_50_MOVES`: the fifty-move rule is a fact about
   the committed position, and `Game::Run` adjudicates it. The returned value is the **post-join
