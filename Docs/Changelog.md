@@ -15,6 +15,16 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-09: Ordered build pair aligns a second resized hot function (#784)
+
+### Changed
+- `New-OrderedBuildPair.ps1` places cold spacers (pinned functions from translation units off the
+  search path) before each resized hot function after the first. Their sizes add up exactly to the
+  previous hot function's size change, and they go in the order file of the image whose function
+  is smaller. A change that resizes both `pvs()` and `quiescence()` can now get a
+  placement-controlled pair. The placement check is unchanged and still decides. #776's prefetch
+  failed the pair before this change and passes it with one 64-byte spacer.
+
 ## 2026-10-09: Workflow guards scoped to CI configuration diffs (#781)
 
 ### Changed
