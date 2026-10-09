@@ -11,6 +11,9 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-09 | 98b2a07, SCREEN arm C: `SingularTtDepthMargin=3`, the null control (#722) | 98b2a07 (at the shipped singular defaults, TT depth margin 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-0.55 +/- 5.29** | calibration |
+| 2026-10-09 | 98b2a07, SCREEN arm B: `SingularTtDepthMargin=4` (#722) | 98b2a07 (at the shipped singular defaults, TT depth margin 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-0.16 +/- 5.30** | inconclusive @ 8880 |
+| 2026-10-09 | 98b2a07, SCREEN arm A: `SingularTtDepthMargin=2` (#722) | 98b2a07 (at the shipped singular defaults, TT depth margin 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-3.09 +/- 5.26** | inconclusive @ 8880 |
 | 2026-10-06 | c82dc6e (main after #748, the lock-free transposition table, #747) at `Threads=4` on both sides, concurrency 1 | 79c3217 (at `Threads=4`) | 6624 | 10+0.1 | **+25.06 +/- 6.23** | gain |
 | 2026-10-06 | 994e288, lock-free transposition table (#747; the lab builds GCC, where the locks cost 32.9% of CPU against 9.4% on the shipping clang-cl) | 79c3217 | 19980 | 10+0.1 | **+18.31 +/- 3.54** | gain |
 | 2026-10-06 | 16c938c, CONFIRM `LmrHistoryDivisor=16` (#735; selected by the 32/16/1 screen below, fresh openings 19,981-32,328) | 16c938c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 24696 | 10+0.1 | **+2.98 +/- 3.23** | inconclusive @ 24696 |
@@ -70,6 +73,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-09 -- singular TT depth margin screen (#722) (8880 games per arm)
+
+**Margin 3 stays; no confirmation run.** [Run `37859812206`](https://github.com/theEscape2207/StratChess/actions/runs/37859812206), 4 h 21 min, openings 49,951-63,270. #502's margin screen also used that range; it was an unrelated experiment, and the triage accepted the reuse. Each arm took 6 of 18 shards against main at margin 3. Both sides set `SingularExtensions=true SingularMinDepth=6 SingularMarginFactor=1`, and the run's `strength-37859812206-comparison` artifact shows only `SingularTtDepthMargin` differing. All 18 shards are green, and their logs show 26,640 games with zero time losses, illegal moves or disconnects. Every shard logs PV-compliance warnings (#310); they are reporting-only. Arm Ptnml(0-2): A [350, 1036, 1705, 1041, 308], B [342, 1041, 1655, 1083, 319], C [328, 1058, 1694, 1020, 340]. Shards favouring the candidate by score: A 1 of 6, B 1 of 6, C 4 of 6. The [declaration in #722](https://github.com/theEscape2207/StratChess/issues/722#issuecomment-6071095282) set the rule before dispatch: confirm the A/B leader only if it beats C by at least +3. B led C by +0.4. Before dispatch, a depth-14 preflight on the eight bench FENs found total nodes at 0.84x (margin 2) and 0.91x (margin 4) of margin 3. Per-position ratios ran from 0.45x to 2.03x, so fixed-depth tree size says nothing here. Margins 0-1 and 5+ are unmeasured.
 
 ### 2026-10-06 -- c82dc6e, lock-free transposition table at Threads=4 (#747) (6624 games)
 
