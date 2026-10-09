@@ -22,12 +22,18 @@
     Directory of workflow files to check. Defaults to the repository's
     .github/workflows, resolved from this script's own location.
 
+.PARAMETER BaseRef
+    Check every workflow only when the diff since this ref touches one; otherwise check
+    nothing. A change to this script, Get-ChangeTier.ps1 or GuardScope.ps1 runs the
+    self-test and then the check; a diff that cannot be computed runs the check.
+
 .PARAMETER SelfTest
     Run synthetic parser tests and exit. Verifies that the detector actually detects,
     which a green run over already-compliant files does not.
 
 .HOW TO INVOKE
     pwsh -File Scripts/Test-WorkflowTimeouts.ps1
+    pwsh -File Scripts/Test-WorkflowTimeouts.ps1 -BaseRef origin/main
     pwsh -File Scripts/Test-WorkflowTimeouts.ps1 -SelfTest
 #>
 
@@ -35,6 +41,9 @@
 param(
     [Parameter(ParameterSetName = 'Run')]
     [string]$WorkflowDirectory,
+
+    [Parameter(Mandatory, ParameterSetName = 'Changed')]
+    [string]$BaseRef,
 
     [Parameter(Mandatory, ParameterSetName = 'SelfTest')]
     [switch]$SelfTest
@@ -50,6 +59,8 @@ $script:JobPattern = '^  ([A-Za-z0-9_-]+):\s*$'
 $script:TimeoutPattern = '^    timeout-minutes:\s*\d+\s*$'
 $script:ReusablePattern = '^    uses:\s*\S'
 $script:TopLevelPattern = '^[A-Za-z0-9_-]+:'
+# What this guard reads, as GuardScope.ps1 -Watch patterns.
+$script:WatchPattern = @('.github/workflows/*.yml')
 
 function Get-JobWithoutTimeout {
     <#
@@ -260,6 +271,19 @@ on:
 jobs:
 '@ -ExpectThrow
 
+    # A -BaseRef run checks nothing unless the diff touches a watched file, so a
+    # pattern that misses a workflow would wave every future edit to it through.
+    . (Join-Path $PSScriptRoot 'GuardScope.ps1')
+    $probe = [pscustomobject]@{ ChangedFiles = @('.github/workflows/ci.yml', 'Docs/CI.md'); DiffFailed = $false }
+    $watched = @((Resolve-GuardScope -Change $probe -Detector 'none' -Watch $script:WatchPattern).Files)
+    if (($watched -join '|') -eq '.github/workflows/ci.yml') {
+        Write-Host "  PASS  -BaseRef watches workflows only" -ForegroundColor Green
+    }
+    else {
+        Write-Host "  FAIL  -BaseRef watches workflows only (got [$($watched -join ', ')])" -ForegroundColor Red
+        $script:selfTestFailures++
+    }
+
     $failures = $script:selfTestFailures
     if ($failures -gt 0) {
         Write-Host "$failures self-test case(s) FAILED." -ForegroundColor Red
@@ -272,6 +296,21 @@ jobs:
 if ($SelfTest) {
     if (Invoke-SelfTest) { exit 0 }
     exit 1
+}
+
+if ($PSCmdlet.ParameterSetName -eq 'Changed') {
+    . (Join-Path $PSScriptRoot 'GuardScope.ps1')
+    $scope = Get-GuardScope -BaseRef $BaseRef -Detector 'Scripts/Test-WorkflowTimeouts.ps1' -Watch $script:WatchPattern
+    if ($scope.Mode -eq 'DiffFailed') {
+        Write-Host "  Diff against $BaseRef unavailable -- checking every workflow." -ForegroundColor Yellow
+    }
+    elseif ($scope.Mode -eq 'DetectorChanged') {
+        if (-not (Invoke-SelfTest)) { exit 1 }
+    }
+    elseif ($scope.Files.Count -eq 0) {
+        Write-Host "==> Job timeouts: no workflow changed since $BaseRef -- nothing to check." -ForegroundColor DarkGray
+        exit 0
+    }
 }
 
 if (-not $WorkflowDirectory) {

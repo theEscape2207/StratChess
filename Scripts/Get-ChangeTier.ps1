@@ -106,6 +106,8 @@ function Get-TierForPath {
     if ($p -like '*Scripts/Test-ReleaseReproducibility.ps1') { return 'Build' }
     # A guard on every script change; a bug in it would wave scripts through unchecked.
     if ($p -like '*Scripts/Test-ScriptTraps.ps1')           { return 'Build' }
+    # Decides what those guards check; a bug in it scopes them to nothing.
+    if ($p -like '*Scripts/GuardScope.ps1')                 { return 'Build' }
     # Decides whether a build artifact counts as stale, and which binary a measurement
     # reads. The hazard is the familiar one and it is why they are Build rather than
     # Tooling: a bug in either lets a validation or a measurement run against the wrong
@@ -245,6 +247,7 @@ if ($SelfTest) {
         @{ Name = 'FAIL CLOSED: nested script'; Files = @('Scripts/sub/tool.ps1');             Expect = 'Engine' }
         @{ Name = 'FAIL CLOSED: other ext';     Files = @('Scripts/notes.txt');                Expect = 'Engine' }
         @{ Name = 'script-trap guard -> Build'; Files = @('Scripts/Test-ScriptTraps.ps1');     Expect = 'Build' }
+        @{ Name = 'guard scope -> Build';       Files = @('Scripts/GuardScope.ps1');           Expect = 'Build' }
         @{ Name = 'Codex skill meta -> Docs';   Files = @('.agents/skills/grill-me/agents/openai.yaml'); Expect = 'Docs' }
         @{ Name = 'Codex agent -> Docs';        Files = @('.codex/agents/eval-reviewer.toml');  Expect = 'Docs' }
         @{ Name = 'FAIL CLOSED: skill template'; Files = @('.agents/skills/diagnosing-bugs/scripts/hitl-loop.template.sh'); Expect = 'Engine' }

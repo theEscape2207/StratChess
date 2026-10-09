@@ -31,8 +31,8 @@
 
 .PARAMETER BaseRef
     Check only the `.ps1` files changed since this ref, as Get-ChangeTier.ps1 reports
-    them, untracked ones included. A change to this script or to Get-ChangeTier.ps1
-    runs the parser self-test and checks the whole tree, so a new rule holds
+    them, untracked ones included. A change to this script, Get-ChangeTier.ps1 or
+    GuardScope.ps1 runs the pure self-tests and checks the whole tree, so a new rule holds
     everywhere from the PR that adds it; a diff that cannot be computed checks the
     whole tree too. The nightly whole-tree run catches two PRs that are clean apart
     and clash once merged.
@@ -63,9 +63,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Changing either of these changes what a scoped run would check, so a diff that
-# touches one is checked against the whole tree.
-$DetectorFiles = @('Scripts/Test-ScriptTraps.ps1', 'Scripts/Get-ChangeTier.ps1')
+. (Join-Path $PSScriptRoot 'GuardScope.ps1')
 
 function Read-ScriptAst {
     <#
@@ -225,6 +223,47 @@ function Test-ParserCase {
     return $failures -eq 0
 }
 
+function Test-GuardScopeCase {
+    <#
+      .SYNOPSIS
+        GuardScope.ps1's decision table, pure: a fake Get-ChangeTier result per case.
+        $true when all pass.
+    #>
+    $failures = 0
+    $workflow = '.github/workflows/ci.yml'
+    $action = '.github/actions/x/action.yml'
+    $cases = @(
+        @{ Name = 'an unwatched change is scoped to nothing'; Files = @('Docs/a.md'); Mode = 'Scoped'; Expect = @() }
+        @{ Name = 'FALSIFY: a watched change is scoped to it'; Files = @('Docs/a.md', $workflow); Mode = 'Scoped'
+            Expect = @($workflow) }
+        @{ Name = 'a pattern reaches into subdirectories'; Files = @($action); Watch = '.github/*.yml'; Mode = 'Scoped'
+            Expect = @($action) }
+        @{ Name = 'the guard changing checks everything'; Files = @('Scripts/Guard.ps1'); Mode = 'DetectorChanged'; Expect = @() }
+        @{ Name = 'Get-ChangeTier changing checks everything'; Files = @('Scripts/Get-ChangeTier.ps1')
+            Mode = 'DetectorChanged'; Expect = @() }
+        @{ Name = 'GuardScope changing checks everything'; Files = @('Scripts/GuardScope.ps1'); Mode = 'DetectorChanged'
+            Expect = @() }
+        @{ Name = 'a failed diff checks everything'; Files = @('Scripts/Guard.ps1'); DiffFailed = $true; Mode = 'DiffFailed'
+            Expect = @() }
+    )
+
+    foreach ($case in $cases) {
+        $change = [pscustomobject]@{ ChangedFiles = $case.Files; DiffFailed = [bool]$case['DiffFailed'] }
+        $watch = if ($case.ContainsKey('Watch')) { $case.Watch } else { '.github/workflows/*.yml' }
+        $scope = Resolve-GuardScope -Change $change -Detector 'Scripts/Guard.ps1' -Watch $watch
+        $actual = @($scope.Files)
+        if ($scope.Mode -eq $case.Mode -and ($actual -join '|') -eq ($case.Expect -join '|')) {
+            Write-Host "  PASS  $($case.Name)" -ForegroundColor Green
+        }
+        else {
+            Write-Host ("  FAIL  {0} (expected {1} [{2}], got {3} [{4}])" -f $case.Name, $case.Mode,
+                ($case.Expect -join ', '), $scope.Mode, ($actual -join ', ')) -ForegroundColor Red
+            $failures++
+        }
+    }
+    return $failures -eq 0
+}
+
 function Test-ScopingCase {
     <#
       .SYNOPSIS
@@ -236,7 +275,8 @@ function Test-ScopingCase {
     try {
         $scripts = Join-Path $fixture 'Scripts'
         New-Item -ItemType Directory -Path $scripts, (Join-Path $fixture 'Docs') -Force | Out-Null
-        Copy-Item -LiteralPath $PSCommandPath, (Join-Path $PSScriptRoot 'Get-ChangeTier.ps1') -Destination $scripts
+        Copy-Item -LiteralPath $PSCommandPath, (Join-Path $PSScriptRoot 'Get-ChangeTier.ps1'),
+            (Join-Path $PSScriptRoot 'GuardScope.ps1') -Destination $scripts
         # Legacy.ps1 is committed with a clash: a run that reaches it checked the whole tree.
         Set-Content -LiteralPath (Join-Path $scripts 'Legacy.ps1') -Value "`$Foo = 1`n`$foo = 2"
         Set-Content -LiteralPath (Join-Path $scripts 'Clean.ps1') -Value "`$bar = 1"
@@ -288,9 +328,11 @@ function Test-ScopingCase {
 if ($SelfTest) {
     Write-Host "==> Self-test: detectors" -ForegroundColor Cyan
     $parserPassed = Test-ParserCase
+    Write-Host "==> Self-test: GuardScope.ps1" -ForegroundColor Cyan
+    $guardScopePassed = Test-GuardScopeCase
     Write-Host "==> Self-test: -BaseRef scoping" -ForegroundColor Cyan
     $scopingPassed = Test-ScopingCase
-    if ($parserPassed -and $scopingPassed) {
+    if ($parserPassed -and $guardScopePassed -and $scopingPassed) {
         Write-Host "Self-test PASSED." -ForegroundColor Green
         exit 0
     }
@@ -318,21 +360,19 @@ if ($candidates.Count -eq 0) {
 
 $scripts = $candidates
 if ($PSCmdlet.ParameterSetName -eq 'Changed') {
-    $change = & (Join-Path $PSScriptRoot 'Get-ChangeTier.ps1') -BaseRef $BaseRef
-    $changed = @($change.ChangedFiles)
-    $detectorChanged = @($DetectorFiles | Where-Object { $changed -contains $_ })
-    if ($change.DiffFailed) {
+    $scope = Get-GuardScope -BaseRef $BaseRef -Detector 'Scripts/Test-ScriptTraps.ps1' -Watch '*.ps1'
+    if ($scope.Mode -eq 'DiffFailed') {
         Write-Host "  Diff against $BaseRef unavailable -- checking every script." -ForegroundColor Yellow
     }
-    elseif ($detectorChanged.Count -gt 0) {
+    elseif ($scope.Mode -eq 'DetectorChanged') {
         # A changed detector proves itself first, then holds the whole tree to its rules.
-        Write-Host "==> Self-test: detectors" -ForegroundColor Cyan
-        if (-not (Test-ParserCase)) { exit 1 }
-        Write-Host "  $($detectorChanged -join ', ') changed -- checking every script." -ForegroundColor DarkGray
+        Write-Host "==> Self-test: detectors and GuardScope.ps1" -ForegroundColor Cyan
+        if (-not ((Test-ParserCase) -and (Test-GuardScopeCase))) { exit 1 }
+        Write-Host "  $($scope.DetectorChanged -join ', ') changed -- checking every script." -ForegroundColor DarkGray
     }
     else {
         # A script the diff deletes is no longer a candidate, so it is not checked.
-        $scripts = @($candidates | Where-Object { $changed -contains $_ })
+        $scripts = @($candidates | Where-Object { $scope.Files -contains $_ })
         if ($scripts.Count -eq 0) {
             Write-Host "==> PowerShell traps: no .ps1 changed since $BaseRef -- nothing to check." -ForegroundColor DarkGray
             exit 0
