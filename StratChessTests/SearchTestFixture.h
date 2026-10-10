@@ -150,6 +150,12 @@ class AIPerlexTestFixture {
 	{
 		return ai->singular_multicut_eligible(verify_value, singular_beta, beta, is_pv_node);
 	}
+	void set_singular_negative_extension(int plies) const { ai->tuning_.singular_negative_extension_plies = plies; }
+	bool singular_negative_extension_eligible(int verify_value, int singular_beta, int tt_value, int beta,
+	                                          bool is_pv_node) const
+	{
+		return ai->singular_negative_extension_eligible(verify_value, singular_beta, tt_value, beta, is_pv_node);
+	}
 
 	// --- Reverse futility pokes ---
 	// The feature ships enabled. Its tests still set the flag explicitly, so each one names the
@@ -303,6 +309,7 @@ class AIPerlexTestFixture {
 	int64_t singular_verifications() const { return ai->td_.telemetry.singular.verifications; }
 	int64_t singular_extensions() const { return ai->td_.telemetry.singular.extensions; }
 	int64_t singular_multicuts() const { return ai->td_.telemetry.singular.multicuts; }
+	int64_t singular_negative_extensions() const { return ai->td_.telemetry.singular.negative_extensions; }
 	// Main + quiescence edges spent inside verification searches, on the same scale as
 	// mainnodes() + qnodes(), so it can be subtracted from them.
 	int64_t singular_verification_nodes() const { return ai->td_.telemetry.singular.verification_nodes; }
@@ -554,6 +561,15 @@ class AIPerlexTestFixture {
 	std::optional<TTEntry> probe_tt(int ply) const { return ai->tt_->probe(board_.get_zobrist_hash(), ply); }
 
 	std::optional<TTEntry> probe_tt(uint64_t key, int ply) const { return ai->tt_->probe(key, ply); }
+
+	// The entry for the position one move on from the fixture's board, so a test can read the
+	// depth a child was actually searched at.
+	std::optional<TTEntry> probe_tt_after(std::string_view uci, int ply) const
+	{
+		Board board = board_;
+		REQUIRE(board.DoMove(MoveFormatter::FromUCI(uci, board)));
+		return ai->tt_->probe(board.get_zobrist_hash(), ply);
+	}
 
 	// Runs one quiescence() node on the fixture's board. The timer is armed because
 	// quiescence polls the wall clock every 1024 nodes and a default-constructed

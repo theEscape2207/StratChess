@@ -871,7 +871,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// the hash move to be sorted first (ScoreMovesBestFirst guarantees that whenever one exists) and
 	// the loop re-checks that it was also the first LEGAL one before applying the extension.
 	// A hash move that fails legality wastes one verification and grants nothing.
-	int singular_extension = 0;
+	// Plies added to the hash move's child depth: +1 singular, negative when reduced, else 0.
+	int hash_move_depth_adjust = 0;
 	// !is_exclusion_frame is defence in depth, not the thing that stops a nested
 	// verification: an exclusion frame skipped the TT probe, so it has no hash move and no
 	// usable entry and fails the gate on those terms first. Kept so the intent survives a
@@ -916,7 +917,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 		// Strict fail-low: no alternative reached the margin, so the hash move stands alone.
 		if (verify_value < singular_beta) {
-			singular_extension = 1;
+			hash_move_depth_adjust = 1;
 			td.telemetry.singular.extensions++;
 		}
 
@@ -927,6 +928,16 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		if (singular_multicut_eligible(verify_value, singular_beta, beta, is_pv_node)) {
 			td.telemetry.singular.multicuts++;
 			return beta;
+		}
+
+		// Negative extension. No re-search: a reduced fail-high stands and the node stores a LOWER
+		// bound at this depth. That is a stronger speculation than LMR's, which re-searches any
+		// reduced result above alpha; re-searching here would undo the saving exactly where the TT
+		// bound expects the cut.
+		if (singular_negative_extension_eligible(verify_value, singular_beta, tt_value_for_singular, beta,
+		                                         is_pv_node)) {
+			hash_move_depth_adjust = -tuning_.singular_negative_extension_plies;
+			td.telemetry.singular.negative_extensions++;
 		}
 	}
 
@@ -1029,7 +1040,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// The hash-move re-check is the other half of the eligibility test: the
 				// verification above only established that this move sorted first, and
 				// this is where it is confirmed to be the first move that was also legal.
-				const int child_depth = (singular_extension != 0 && move == hash_move) ? depth : depth - 1;
+				// Signed: a child depth of 0 or below is quiescence, which is right for that horizon.
+				const int child_depth = depth - 1 + (move == hash_move ? hash_move_depth_adjust : 0);
 
 				// Full window search for first move
 				value = -pvs(td, child_depth, -beta, -alpha, ply + 1, is_pv_node, tt);
@@ -1857,6 +1869,21 @@ bool AIPerplex::singular_multicut_eligible(int verify_value, int singular_beta, 
 	if (std::abs(beta) >= GameValues::Mate_Threshold)
 		return false;
 	return verify_value >= singular_beta && singular_beta >= beta;
+}
+
+bool AIPerplex::singular_negative_extension_eligible(int verify_value, int singular_beta, int tt_value, int beta,
+                                                     bool is_pv_node) const
+{
+	if (tuning_.singular_negative_extension_plies == 0)
+		return false;
+	// A PV node's first move defines the PV.
+	if (is_pv_node)
+		return false;
+	// A reduced fail-high stores a LOWER bound at full depth; at a mate-range beta that would claim a
+	// mate distance on reduced-depth evidence. It also keeps the band exact: multi-cut has the same guard.
+	if (std::abs(beta) >= GameValues::Mate_Threshold)
+		return false;
+	return verify_value >= singular_beta && tt_value >= beta;
 }
 
 bool AIPerplex::reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame,

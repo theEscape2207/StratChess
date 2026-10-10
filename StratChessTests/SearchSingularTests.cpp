@@ -311,6 +311,84 @@ TEST_CASE("Singular multi-cut: a non-PV node returns beta and stores nothing", "
 }
 
 // ============================================================================
+// Negative extension
+// ============================================================================
+
+TEST_CASE("Singular negative extension: eligibility boundaries", "[search][singular]")
+{
+	AIPerlexTestFixture fix(kBaselineFen);
+	fix.set_singular_negative_extension(1);
+	constexpr int kSingularBeta = 30;
+	constexpr int kTtValue = 50;
+	constexpr int kBeta = 40;
+
+	// A verification that exactly reaches singular_beta failed high; one below it failed low.
+	CHECK(fix.singular_negative_extension_eligible(kSingularBeta, kSingularBeta, kTtValue, kBeta, false));
+	CHECK_FALSE(fix.singular_negative_extension_eligible(kSingularBeta - 1, kSingularBeta, kTtValue, kBeta, false));
+	// tt_value must reach beta.
+	CHECK(fix.singular_negative_extension_eligible(kSingularBeta, kSingularBeta, kBeta, kBeta, false));
+	CHECK_FALSE(fix.singular_negative_extension_eligible(kSingularBeta, kSingularBeta, kBeta - 1, kBeta, false));
+	CHECK_FALSE(fix.singular_negative_extension_eligible(kSingularBeta, kSingularBeta, kTtValue, kBeta,
+	                                                     /*is_pv_node=*/true));
+	// The reachable mate case: a negative mate-range beta, with everything else passing.
+	constexpr int kMatedBeta = -GameValues::Mate_Threshold;
+	CHECK_FALSE(fix.singular_negative_extension_eligible(kSingularBeta, kSingularBeta, kTtValue, kMatedBeta, false));
+	CHECK(fix.singular_negative_extension_eligible(kSingularBeta, kSingularBeta, kTtValue, kMatedBeta + 1, false));
+
+	fix.set_singular_negative_extension(0);
+	CHECK_FALSE(fix.singular_negative_extension_eligible(kSingularBeta, kSingularBeta, kTtValue, kBeta, false));
+}
+
+TEST_CASE("Singular negative extension: the hash move's child is searched shallower", "[search][singular]")
+{
+	// The multi-cut setup with beta raised to tt_value: above singular_beta, so multi-cut does not
+	// fire, and at tt_value, the boundary that must reduce.
+	constexpr int16_t kShallowDepth = kDepth - 1;
+	constexpr int16_t kLowValue = -500;
+	constexpr int kBeta = kLowValue;
+
+	const auto run = [&](int plies) {
+		auto fix = std::make_unique<AIPerlexTestFixture>(kBaselineFen);
+		arm(*fix);
+		// Null move and RFP would cut first this far above beta. LMP and frontier futility can end the
+		// reduced child without a store, and the child's store is what this test reads.
+		fix->set_null_move_enabled(false);
+		fix->set_reverse_futility(false);
+		fix->set_late_move_pruning(false);
+		fix->set_frontier_futility(false);
+		fix->set_singular_negative_extension(plies);
+		fix->set_singular_margin_factor(1);
+		const std::string hash_move = fix->first_sorted_move_uci();
+		fix->store_main_entry_with_move(kLowValue, kShallowDepth, /*ply=*/1, BoundType::LOWER, hash_move);
+		REQUIRE_FALSE(fix->probe_tt_after(hash_move, /*ply=*/2).has_value());
+		fix->clear_singular_telemetry();
+		const int score = fix->search_node(kDepth, /*ply=*/1, kBeta - 1, kBeta, /*is_pv_node=*/false);
+		REQUIRE(fix->singular_verifications() == 1);
+		CHECK(fix->singular_multicuts() == 0);
+		return std::tuple{std::move(fix), score, hash_move};
+	};
+
+	for (const int plies : {0, 1, 2}) {
+		CAPTURE(plies);
+		const auto [fix, score, hash_move] = run(plies);
+		CHECK(fix->singular_negative_extensions() == (plies > 0 ? 1 : 0));
+
+		const auto child = fix->probe_tt_after(hash_move, /*ply=*/2);
+		REQUIRE(child.has_value());
+		CHECK(child->phase == SearchPhase::MAIN);
+		CHECK(child->depth == kDepth - 1 - plies);
+
+		// The reduced fail-high stands (D4): the node cuts and stores a full-depth LOWER bound on it.
+		CHECK(score >= kBeta);
+		const auto node = fix->probe_tt(/*ply=*/1);
+		REQUIRE(node.has_value());
+		CHECK(node->depth == kDepth);
+		CHECK(node->bound == BoundType::LOWER);
+		CHECK(MoveFormatter::ToUCI(node->best_move) == hash_move);
+	}
+}
+
+// ============================================================================
 // Exclusion-search semantics
 // ============================================================================
 

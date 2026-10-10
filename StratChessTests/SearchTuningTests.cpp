@@ -46,6 +46,7 @@ namespace {
 		int singular_tt_depth_margin;
 		int singular_margin_factor;
 		bool singular_multicut_enabled;
+		int singular_negative_extension_plies;
 		bool reverse_futility_enabled;
 		int reverse_futility_max_depth;
 		int reverse_futility_margin;
@@ -80,6 +81,7 @@ namespace {
 	SAME_MEMBER(singular_tt_depth_margin)
 	SAME_MEMBER(singular_margin_factor)
 	SAME_MEMBER(singular_multicut_enabled)
+	SAME_MEMBER(singular_negative_extension_plies)
 	SAME_MEMBER(reverse_futility_enabled)
 	SAME_MEMBER(reverse_futility_max_depth)
 	SAME_MEMBER(reverse_futility_margin)
@@ -135,6 +137,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.singular_tt_depth_margin == 3);
 	CHECK(tuning.singular_margin_factor == 1);
 	CHECK(tuning.singular_multicut_enabled);
+	CHECK(tuning.singular_negative_extension_plies == 0);
 	CHECK(tuning.reverse_futility_enabled);
 	CHECK(tuning.reverse_futility_max_depth == 3);
 	CHECK(tuning.reverse_futility_margin == 100);
@@ -487,6 +490,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name SingularTtDepthMargin type spin default 3 min 0 max 256",
 	    "option name SingularMarginFactor type spin default 1 min 0 max 1000",
 	    "option name SingularMultiCut type check default true",
+	    "option name SingularNegativeExtension type spin default 0 min 0 max 2",
 	    "option name ReverseFutility type check default true",
 	    "option name ReverseFutilityMaxDepth type spin default 3 min 1 max 256",
 	    "option name ReverseFutilityMargin type spin default 100 min 0 max 1000",

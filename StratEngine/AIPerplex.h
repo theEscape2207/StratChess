@@ -245,6 +245,11 @@ class AIPerplex final {
 	// entry itself could not cut: one that deep would have returned at the probe, so a cut always
 	// rests on a shallower entry plus one reduced-depth alternative. Excludes PV nodes and a mate-score beta.
 	bool singular_multicut_eligible(int verify_value, int singular_beta, int beta, bool is_pv_node) const;
+	// Singular negative extension: the verification failed high, so the hash move is not alone, yet
+	// its TT bound still reaches beta. Tested after the multi-cut return, so with multi-cut on it fires
+	// only in the band singular_beta < beta <= tt_value. Non-PV, non-mate beta only.
+	bool singular_negative_extension_eligible(int verify_value, int singular_beta, int tt_value, int beta,
+	                                          bool is_pv_node) const;
 	// The node-level frontier-futility guards. The move-level ones live in the pvs() move loop,
 	// where the move, the live killers and the made move's check status are at hand.
 	bool frontier_futility_eligible(int depth, int alpha, bool is_pv_node, bool in_check,

@@ -119,7 +119,12 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	};
 
 	SearchTelemetry fired;
-	fired.singular = {.eligible = 1, .verifications = 2, .extensions = 3, .verification_nodes = 4, .multicuts = 9};
+	fired.singular = {.eligible = 1,
+	                  .verifications = 2,
+	                  .extensions = 3,
+	                  .verification_nodes = 4,
+	                  .multicuts = 9,
+	                  .negative_extensions = 8};
 	fired.frontier.skips = 5;
 	fired.lmp.skips = 6;
 	fired.aspiration = {.iterations = 1, .fail_lows = 2, .fail_highs = 3, .full_windows = 4, .fail_nodes = 5};
@@ -162,13 +167,14 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	                                   "latenodes 13 latebands 14/15/16";
 	const std::string fired_nodetypes = "nodetypes pv 1/2/3 cut 4/5/6 all 7/8/9 cutfaillow 10/11/12";
 	CHECK(payloads_of(fired) ==
-	      std::vector<std::string>{
-	          "singular eligible 1 verified 2 extended 3 verifynodes 4", "singular multicut 9", "frontier skips 5",
-	          "lmp skips 6", fired_tt, "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5",
-	          fired_ordering, "lmr reduced 1 reducednodes 2 researched 3 confirmed 4 researchnodes 5",
-	          "lmrhistory capped 6 less 7 more 8 killer 9", fired_nodetypes,
-	          "nullmove tried 1 cutoffs 2 failed 3 failnodes 4", "pruning rfp 1/2/3/4/5/6 floorbinds 7",
-	          "qsearch roots 1 delta 2 see 3 maxdepth 4"});
+	      std::vector<std::string>{"singular eligible 1 verified 2 extended 3 verifynodes 4", "singular multicut 9",
+	                               "singular negext 8", "frontier skips 5", "lmp skips 6", fired_tt,
+	                               "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5",
+	                               fired_ordering,
+	                               "lmr reduced 1 reducednodes 2 researched 3 confirmed 4 researchnodes 5",
+	                               "lmrhistory capped 6 less 7 more 8 killer 9", fired_nodetypes,
+	                               "nullmove tried 1 cutoffs 2 failed 3 failnodes 4",
+	                               "pruning rfp 1/2/3/4/5/6 floorbinds 7", "qsearch roots 1 delta 2 see 3 maxdepth 4"});
 
 	// Singular, frontier and lmp stay silent when they did not fire; ttstats prints whenever compiled.
 	const std::string zero_tt = "ttstats mainprobes 0 mainhits 0 maincutoffs 0 qsprobes 0 qshits 0 qscutoffs 0 "
@@ -195,6 +201,9 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	SearchTelemetry singular_multicut_only;
 	singular_multicut_only.singular.multicuts = 3;
 	CHECK(payloads_of(singular_multicut_only) == std::vector<std::string>{"singular multicut 3", zero_tt});
+	SearchTelemetry singular_negext_only;
+	singular_negext_only.singular.negative_extensions = 4;
+	CHECK(payloads_of(singular_negext_only) == std::vector<std::string>{"singular negext 4", zero_tt});
 
 	// Aspiration prints on an aspirated iteration, even one that never failed its window.
 	SearchTelemetry aspiration_only;
@@ -276,13 +285,24 @@ TEST_CASE("SearchTelemetry - quiescence maxdepth combines by max", "[search][tel
 
 TEST_CASE("SearchTelemetry - singular counters sum across threads", "[search][telemetry]")
 {
-	SingularStats total{.eligible = 1, .verifications = 2, .extensions = 3, .verification_nodes = 4, .multicuts = 5};
-	total.add({.eligible = 10, .verifications = 20, .extensions = 30, .verification_nodes = 40, .multicuts = 50});
+	SingularStats total{.eligible = 1,
+	                    .verifications = 2,
+	                    .extensions = 3,
+	                    .verification_nodes = 4,
+	                    .multicuts = 5,
+	                    .negative_extensions = 6};
+	total.add({.eligible = 10,
+	           .verifications = 20,
+	           .extensions = 30,
+	           .verification_nodes = 40,
+	           .multicuts = 50,
+	           .negative_extensions = 60});
 	CHECK(total.eligible == 11);
 	CHECK(total.verifications == 22);
 	CHECK(total.extensions == 33);
 	CHECK(total.verification_nodes == 44);
 	CHECK(total.multicuts == 55);
+	CHECK(total.negative_extensions == 66);
 }
 
 // The profile counters' bookkeeping identities, on a search large enough to fill every bin.
