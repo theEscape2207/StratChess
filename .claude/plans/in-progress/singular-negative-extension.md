@@ -35,8 +35,7 @@ tell.
   default; 1 or 2), and a pure eligibility helper;
 - replace the Boolean `singular_extension` with a signed hash-move depth adjustment;
 - count granted reductions on a new `info string` line (D6);
-- run one CI lab measurement at 1 ply, then either set the default to 1 or keep it at 0 behind a
-  follow-up issue that measures 2 plies (D7).
+- run one CI lab measurement at 1 ply, which decides only whether the default becomes 1 (D7).
 
 **This change will not:**
 
@@ -144,25 +143,25 @@ can still fail legality or the child can abort. `add()` sums it, and `append_inf
 own payload, `singular negext <n>`, only when non-zero. An option-off run's output stays
 byte-identical, and the `singular eligible …` wording does not change.
 
-### D7: Ship rule and the size-2 follow-up
+### D7: Ship rule
 
-The first lab run measures 1 ply, the conservative size.
+The lab run measures 1 ply, the conservative size, and decides only whether it is enabled on main.
 
 - **Lower bound above 0:** the default becomes 1.
-- **Otherwise:** the default stays 0, and a follow-up issue measures 2 plies with the same
-  protocol. If that run also fails, the feature is deleted.
+- **Otherwise:** the default stays 0.
 
-Default-off is an intermediate state, owned by that follow-up issue, not an end state. The end state
-is on by default or deleted. 1 ply goes first because Stockfish's larger reductions were tuned on a
-far deeper search with different pruning. A failed 1 ply does not show that 2 plies will fail,
-because a reduction too timid to pay for the lost accuracy is a plausible failure mode.
+2 plies is a separate issue (#803), filed whatever this run shows and measured against main as it
+stands when picked up. It owns the default-off state, which is not an end state: it ends on by
+default or deleted. 1 ply goes first because Stockfish's larger reductions were tuned on a far
+deeper search with different pruning. A failed 1 ply does not show that 2 plies will fail, because
+a reduction too timid to pay for the lost accuracy is a plausible failure mode.
 
 
 ## Assumptions I cannot verify from the code
 
 - **The option reaches the engine in the lab.** It is set on the candidate only. Verified before the
   run by a short local UCI session with `setoption name SingularNegativeExtension value 1`,
-  showing a non-zero `singular negext` line. Not done yet. The lab run pins `reference_ref` to the
+  showing a non-zero `singular negext` line. Done: 6,946 of 26,768 verifications. The lab run pins `reference_ref` to the
   candidate SHA and keeps the resolved-options artifact for both sides.
 - **The spike's 26% carries to game play.** That figure is the 40.6% minus 14.4% on one corpus at
   depth 12, Threads=1. The ordering change from multi-cut may also shift it. A UCI run over the
@@ -209,7 +208,7 @@ Search tier, with search-reviewer review.
 - **Elo:** CI strength lab, one binary (the branch SHA on both sides),
   `candidate_uci_options: SingularNegativeExtension=1`, multi-cut on both sides (its default),
   Threads=1, 10+0.1, **one 19,980-game run**. **Default 1 if and only if the interval's lower bound
-  is above 0; otherwise default 0 and file the size-2 follow-up (D7).** That rule is fixed before
+  is above 0; otherwise default 0 (D7).** That rule is fixed before
   the run, with no confirmation or pooling afterwards. Record the run in
   `Measurements/ci-per-change.md`. #721 closes once negative extension ships or is deleted.
 
@@ -219,8 +218,8 @@ Search tier, with search-reviewer review.
   test fixture and `SearchSingularTests.cpp`. On a pass, a follow-up commit sets the default to 1.
 - **Blast radius:** search tier. The UCI option table gains one entry.
 - **Review:** one search-reviewer pass plus the code review (170–270k tokens, 3–5 min).
-- **Lab:** one 19,980-game run at Threads=1, about 3–3.5 h. On a fail, the size-2 follow-up costs
-  one more run of the same size and no code.
+- **Lab:** one 19,980-game run at Threads=1, about 3–3.5 h. The size-2 issue costs one more run of
+  the same size and no code.
 
 ## Harvest
 
@@ -229,5 +228,13 @@ Search tier, with search-reviewer review.
 | D1 trigger, its dependence on multi-cut's placement; D2 mate guard | comment on `singular_negative_extension_eligible()` |
 | D3 signed adjustment, no clamp; D4 no re-search | comment at the adjustment site in `pvs()` |
 | D6 separate telemetry line | `SingularStats` member comment |
-| Lab result and ship/keep-off decision, D7 follow-up if filed | `Measurements/ci-per-change.md`, `Docs/Changelog.md`, the PR body |
+| Lab result and keep-off decision | `Measurements/ci-per-change.md`, `Docs/Changelog.md`, the PR body |
+| D7 size-2 follow-up | #803 |
 | Option semantics | `SearchTuning.def` comment |
+
+**Outcome:** lab -1.46 +/- 3.54 at 1 ply (run 38079265803, interval [-5.00, +2.08]); the default
+stays 0.
+
+**Decision changed during implementation:** D7. The owner split the 2-ply measurement from this
+run: #803 is filed whatever the 1-ply result, and measured against main at pickup, so this run
+decides only enable or stay off. Deletion moved to #803.
