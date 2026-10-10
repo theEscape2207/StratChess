@@ -78,8 +78,12 @@ supports.
 ### D3: No TT store, no killer or history write
 
 The node returns before its move loop, so it reaches no store site. None is added. Storing a LOWER
-bound at `depth` would let a reduced-depth result answer later full-depth probes. The entry that
-made the node eligible stays in the table unchanged.
+bound at `depth` would let a reduced-depth result answer later full-depth probes directly. The entry
+that made the node eligible stays in the table unchanged.
+
+This applies to this frame only. The null-window parent sees its alpha, may fail low, and may store
+an UPPER bound at full depth that rests on the cut. RFP has the same transitive speculation, and
+accepts it.
 
 ### D4: Never at a PV node
 
@@ -89,8 +93,10 @@ exclusion costs nothing.
 
 ### D5: Never with a mate-score `beta`
 
-Same reasoning as RFP's guard: a cutoff fabricated in mate range claims a mate no search found.
-`tt_value` is already non-mate by the eligibility gate.
+Only a negative mate-range `beta` can reach the cut. A positive one is excluded by construction:
+`beta <= singular_beta < tt_value < Mate_Threshold`, because the eligibility gate makes `tt_value`
+non-mate. With `beta <= -Mate_Threshold`, returning `beta` would claim "not mated within this
+distance" on reduced-depth evidence. The guard keeps mate-distance claims backed by a full search.
 
 ### D6: Runtime option, not a compile gate
 
@@ -120,7 +126,8 @@ an option-off run's output stays byte-identical.
 - With the option off, search is node-identical to `origin/main` at Threads=1.
 - A cut happens only after the verification completed. An aborted verification still returns
   `best_value` from the existing guard, before the cut test.
-- A cut writes nothing persistent: no TT entry, killer, history or PV row.
+- The cutting frame writes nothing persistent: no TT entry, killer, history or PV row. Its parent
+  may still store a bound that rests on the cut (D3).
 - No cut at a PV node, at a mate-score `beta`, after a verification fail-low, or when
   `singular_beta < beta`.
 
@@ -130,24 +137,28 @@ Search tier, with search-reviewer review.
 
 - **Unit tests** in `SearchSingularTests.cpp`:
   - helper boundaries, covering `verify_value == singular_beta` (cuts), `singular_beta - 1` (does
-    not), `singular_beta == beta` (cuts), `beta - 1` (does not), PV, mate-range `beta`, and the
-    option off;
-  - a search-level case: a LOWER entry on the first sorted move, below the node's depth, with
-    `tt_value` set so `singular_beta >= beta` and the alternatives clear it at a low null window,
-    called as a non-PV node (`search_node`'s `is_pv_node` defaults to true).
-    It checks `search_node` returns exactly `beta`, `multicuts == 1`, and no TT entry was written
-    for the key beyond the seeded one. With the option off the same node returns otherwise, which
-    makes the case falsifiable.
+    not), `singular_beta == beta` (cuts), `beta - 1` (does not), PV, a negative mate-range `beta`
+    (the reachable case, D5), and the option off;
+  - a search-level case: a LOWER entry on the first sorted move, seeded at depth `kDepth - 1`.
+    The file's `kTtDepth = kDepth` cannot be reused, because it TT-cuts before singular runs. Its
+    `tt_value` is set so `singular_beta >= beta` and the alternatives clear it at a low null window.
+    The node is called as non-PV (`search_node`'s `is_pv_node` defaults to true). With the option
+    on, it returns exactly `beta`, `multicuts == 1`, and the key's entry keeps the seeded depth.
+    With the option off, `multicuts == 0` and the node's own store overwrites the entry at
+    `kDepth`. The TT depth is what discriminates the two runs; the return value alone might
+    coincide.
 - **Equivalence:** `Compare-SearchEquivalence.ps1 -Before <origin/main exe> -After <branch exe>
   -Positions Tests/profile-screen.fen -Depth 12` must report IDENTICAL, with the option off.
 - **Bench:** `Run-Bench.ps1` takes no UCI options, so bench a local build with the default flipped
   to on (not committed) against the branch build. Record the node and nps deltas in the PR. Fewer
   nodes is expected; a slower nps per node is not.
 - **Elo:** CI strength lab, one binary (the branch SHA on both sides), `candidate_uci_options:
-  SingularMultiCut=true`, Threads=1, 10+0.1, 8,880 games. Ship it on by default only if the interval
-  excludes zero on the positive side. If the result is positive but its interval spans zero, run a
-  19,980-game confirmation on held-out openings, as in #702. Otherwise delete the feature. Record
-  every run in `Measurements/ci-per-change.md`.
+  SingularMultiCut=true`, Threads=1, 10+0.1, **one 19,980-game run** (about ±3.5 Elo, as in #747).
+  There is no screen, because 8,880 games (±5.3) cannot resolve the few-Elo effect multi-cut
+  plausibly has. **Ship on by default if and only if the interval's lower bound is above 0;
+  otherwise delete the feature.** That rule is fixed before the run, with no confirmation or
+  pooling afterwards. An effect smaller than the interval's width therefore gets deleted, and that
+  outcome is accepted. Record the run in `Measurements/ci-per-change.md`.
 
 ## Cost
 
@@ -156,8 +167,8 @@ Search tier, with search-reviewer review.
   feature.
 - **Blast radius:** search tier. The UCI option table gains one entry.
 - **Review:** one search-reviewer pass plus the code review (170–270k tokens, 3–5 min).
-- **Lab:** about 3–4.5 h for 8,880 games; a confirmation run, if needed, is about twice that.
-  Funded by the owner on #721.
+- **Lab:** one 19,980-game run, about 7–10 h (8,880 games take 3–4.5 h). This is more than #795
+  first stated, but less than a screen followed by a confirmation.
 
 ## Harvest
 
