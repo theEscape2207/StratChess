@@ -61,15 +61,16 @@ tools box is a collection of consumers: perft does not invoke evaluation or the 
 
 | Module | Responsibility and interface | Important dependencies / constraints |
 |---|---|---|
-| `Board` | Position, make/unmake, position metadata, hash and history | Owns the state that legality, repetition and evaluation inspect. Search uses a copy. |
+| `Board` | Position, make/unmake, position metadata, hash and history | Search uses a copy. An opaque `PrefetchTarget` lets make/null-move prefetch the child's TT bucket without Board owning the table. |
 | `Move` / `MoveFormatter` | Encoded move value / context-dependent presentation and parsing | [Move contracts](EngineContracts.md#moves). |
 | `MoveGenerator` | Candidate moves and attack geometry | [Generation contract](../StratEngine/MoveGenerator.h). |
 | `MoveSorter` / `See` | Ordering and static exchange judgement | Consume board and ordering state; ordering interacts with selective search. |
 | `AIPerplex` | Root search, async lifecycle, iterative deepening, recursive search, result assembly | Owns TT, evaluator, search control, tuning and worker state. One controlling thread owns lifecycle/configuration calls. |
 | `IterationPolicy` | Main-thread iteration acceptance, retained-result updates and continuation | Two pure value transitions; no Board, TT, clock or callback access. The driver supplies observations and owns side effects. |
 | `ThreadData` | Per-worker position, PV, counters, history and recursion scratch | Includes several lifetimes: per-node, per-search and state retained between moves. Not a purely temporary search record. |
-| `SearchControl` | Resolve/apply limits, stop latch, time and node checks | Shared stop condition; main worker polls limits. |
-| `TranspositionTable` | Cache searched scores/bounds and ordering hints | Shared lock-free probes/stores; table-wide clearing is a separate lifecycle operation. Receives keys, not Boards. |
+| `SearchLimits` / `Engine::resolve_limits` | Express per-search constraints and resolve them against configured defaults | Declared in `SearchLimits.h`, implemented in `SearchLimits.cpp`; returns depth, soft/hard time budgets and node limit. |
+| `SearchControl` | Apply resolved limits, manage the stop latch and expose time/node checks | Soft time is checked at iteration boundaries; hard time and node limits can abort search. [Polling flow](#limit-observations). |
+| `TranspositionTable` | Cache searched scores/bounds and ordering hints | Lock-free probes/stores; clearing is a lifecycle operation. Exposes an opaque `PrefetchTarget` for Board; receives keys, not Boards. |
 | `Evaluator` | Static score and explanatory breakdown | Pure per-position term calculations plus a draw-score pair configured before search workers start. |
 | `SearchTuningSchema` | Validate and bind configuration | `SearchTuning.def` is the catalogue; JSON and UCI exposure are deliberately not identical. |
 | `UciHandler` / `UciWriter` | Protocol parsing, lifecycle coordination and serialized output | Owns a Board, concrete search instance and a separate unconfigured evaluator for `eval`. |
@@ -106,7 +107,7 @@ history and ply-indexed undo state. Sliding attacks use compile-time tables inde
 | Search tuning catalogue | [SearchTuning.def](../StratEngine/SearchTuning.def) defines fields and bindings; [SearchTuningSchema](../StratEngine/SearchTuningSchema.h) validates values for the search service. |
 | Game configuration | [Config.cpp](../StratEngine/Config.cpp) reads JSON; [PlayerFactory](../StratEngine/PlayerFactory.cpp) constructs each configured player. |
 | UCI options | [UciHandler](../StratEngine/UCIHandler.cpp) translates `setoption` into search-service configuration calls. |
-| Per-search limits | UCI `go` and Game supply [SearchLimits](../StratEngine/SearchLimits.h); [SearchControl](../StratEngine/SearchControl.h) resolves and applies them. |
+| Per-search limits | UCI `go` and Game supply [SearchLimits](../StratEngine/SearchLimits.h); `Engine::resolve_limits` resolves defaults/budgets and [SearchControl](../StratEngine/SearchControl.h) applies them. |
 | Positions | [FENParser](../StratEngine/Utils/FENParser.h) and `Board::SetupFromFEN` construct positions supplied through CLI, UCI or game configuration. |
 
 [EngineGuide](EngineGuide.md#configure-a-run) explains how to use these inputs;
@@ -133,9 +134,20 @@ the implementation and [search contracts](EngineContracts.md#search-internals).
 | Singular extension | `pvs` verification search | `singular_*`; TT evidence and excluded move |
 | Frontier futility | `frontier_futility_eligible`, `pvs` | `frontier_futility_*` |
 | Late move pruning | `late_move_pruning_eligible`, `pvs` | `late_move_pruning_enabled`; thresholds in [AIPerplex.h](../StratEngine/AIPerplex.h) |
-| Late move reduction | `pvs` reduced search and re-search | `lmr_*`; move classification and ordering |
+| Late move reduction | `pvs` reduced search and re-search; `lmr_reduction` in [AIPerplex.h](../StratEngine/AIPerplex.h) | `lmr_*`, including history adjustment through `lmr_history_divisor`; move classification and ordering |
 | Quiescence delta / SEE pruning | `quiescence` | `delta_pruning_margin`, `see_pruning_enabled`, `see_pruning_margin`; material and check guards |
-| Move ordering and history | [MoveSorter::ScoreMoves](../StratEngine/Sort.h), `order_quiescence_moves`, [ThreadData](../StratEngine/ThreadData.h) | Hash move, SEE tiers, killers, history; `continuation_history_plies` |
+| Move ordering and history | [MoveSorter](../StratEngine/Sort.h): `ScoreMovesBestFirst` / `OrderRemaining` in `pvs`; `ScoreMoves` for in-check quiescence; `order_quiescence_moves` | Lazy main-search ordering; hash move, SEE tiers, killers, history and `continuation_history_plies`. [Ordering contract](EngineContracts.md#search-internals). |
+
+### Limit observations
+
+`SearchControl::ApplyLimits` calls `Engine::resolve_limits`, then arms the time budgets and node
+limit. The main worker samples `ShouldStopIteration()` after an iteration for the soft-time
+continuation decision. In the recursive per-node polling path, only thread 0 checks the hard clock
+and node limit, every 1024 calls; the node limit uses that worker's combined main/quiescence count.
+Helpers also call `StopRequested()` at aspiration retry boundaries and the LMR re-search guard,
+so they can observe hard-clock expiry directly. All workers use `IsAborted()` to read the shared
+stop latch without a clock call. See [SearchControl.cpp](../StratEngine/SearchControl.cpp) and
+`poll_search_limits` in [AIPerplex.cpp](../StratEngine/AIPerplex.cpp).
 
 ## 3. State ownership and lifetimes
 
@@ -145,6 +157,7 @@ the implementation and [search contracts](EngineContracts.md#search-internals).
 | TT allocation, tuning, evaluator, helper-state allocations | AIPerplex | Persist across searches. Tuning changes clear TT contents; new-game reset clears accumulated game state. |
 | Root colour and evaluator draw scores | AIPerplex / its evaluator | Established before helper creation; read-only during search. Nonzero contempt also affects TT validity. |
 | Board, PV, node counters, telemetry | One `ThreadData` per worker | Board copied from root; counters reset for each search. Mutable only by that worker while searching. |
+| Board's opaque `PrefetchTarget` | Stored on each worker Board; refers to AIPerplex's TT | Bound after copying the root at search start; reset to the dummy target after helper joins on every exit. [Lifetime contract](EngineContracts.md#the-search-service). |
 | History and continuation history | Same worker state | Retained and aged within a game, reset for a new game. Ordinary and continuation history have different ageing schedules. |
 | Excluded move, continuation keys, null-move flags | Worker recursion state | Ply-indexed scratch. Singular verification re-enters at the same ply and must restore the surrounding frame's state. |
 | TT entries | Shared table | Lock-free probes/stores during search; mutex-serialized clearing at lifecycle boundaries. [Concurrency obligations](EngineContracts.md#search-internals). |
@@ -237,6 +250,9 @@ supported; the test executable does not. Tests define `STRAT_ENABLE_TEST_ACCESS`
 `STRAT_SEARCH_PROFILE` and `STRAT_TT_STATS`. The production target makes those two counter families
 optional. [CMakeLists.txt](../CMakeLists.txt) owns the definitions; these observations explain why
 the test binary and the production binary are distinct validation surfaces.
+
+Windows targets reserve an 8 MiB stack (`/STACK:8388608`) for executable and worker stacks;
+initial commitment is unchanged. This build setting supports the recursive search's stack use.
 
 Search workers collect telemetry locally; after joining helpers, `AIPerplex` aggregates it into
 the returned result. `SearchTelemetry` formats the payloads and `UciHandler` serializes their
