@@ -270,7 +270,7 @@ TEST_CASE("Singular multi-cut: a non-PV node returns beta and stores nothing", "
 	constexpr int16_t kLowValue = -500;
 	constexpr int kBeta = kLowValue - kDepth; // singular_beta at a margin factor of 1
 
-	const auto run = [&](bool multicut, int beta = kBeta) {
+	const auto run = [&](bool multicut, int beta) {
 		auto fix = std::make_unique<AIPerlexTestFixture>(kBaselineFen);
 		arm(*fix);
 		// Either would cut first at a null-window node standing this far above beta.
@@ -285,7 +285,7 @@ TEST_CASE("Singular multi-cut: a non-PV node returns beta and stores nothing", "
 		return std::pair{std::move(fix), score};
 	};
 
-	const auto [cut, cut_score] = run(true);
+	const auto [cut, cut_score] = run(true, kBeta);
 	REQUIRE(cut->singular_verifications() == 1);
 	CHECK(cut_score == kBeta);
 	CHECK(cut->singular_multicuts() == 1);
@@ -295,7 +295,7 @@ TEST_CASE("Singular multi-cut: a non-PV node returns beta and stores nothing", "
 	REQUIRE(cut_entry.has_value());
 	CHECK(cut_entry->depth == kShallowDepth);
 
-	const auto [full, full_score] = run(false);
+	const auto [full, full_score] = run(false, kBeta);
 	REQUIRE(full->singular_verifications() == 1);
 	CHECK(full->singular_multicuts() == 0);
 	CHECK(full_score >= kBeta);
