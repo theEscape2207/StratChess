@@ -1,8 +1,12 @@
 # Engine Contracts
 
-Non-obvious API contracts in `StratEngine/`: what neither the signature nor the header comment tells
-you. Read the relevant section before editing that area. `CLAUDE.md` repeats the aborted-frame rule;
-change both together.
+**Purpose:** Record non-obvious obligations that engine changes must preserve, including interactions
+and failure modes that signatures alone cannot explain. Read the relevant section before editing.
+
+[Architecture](Architecture.md) owns responsibilities, state lifetimes and execution flows;
+[EngineGuide](EngineGuide.md) owns usage examples and output definitions. Keep exact guarantees and
+their exceptions here, with links to the relevant interface or tests. `CLAUDE.md` deliberately
+repeats the aborted-frame tripwire; change both together.
 
 | Editing… | Read |
 |---|---|
@@ -10,6 +14,7 @@ change both together.
 | `AIPerplex`, `SearchPlayer`, UCI, time management | [The search service](#the-search-service) |
 | `pvs()`, `quiescence()`, `Sort.cpp`, pruning, contempt | [Search internals](#search-internals) |
 | `game_settings.json`, `SearchTuning` or its consumers | [Configuration](#configuration) |
+| telemetry producers, UCI output or diagnostic parsers | [Telemetry and output](#telemetry-and-output) |
 
 ---
 
@@ -89,6 +94,9 @@ change both together.
   two words racing Lazy SMP stores mixed. Its `best_move` is only a hint, matched against moves the
   engine generated. A change that searches the hash move before generating (a staged move generator)
   must check it is pseudo-legal in this position first.
+- **TT clearing is a lifecycle operation.** `TranspositionTable::clear()` takes a table-wide mutex
+  to serialize clears. Probes and stores are lock-free and do not take that mutex; callers must
+  exclude concurrent stores. See [TranspositionTable.h](../StratEngine/TranspositionTable.h).
 - **`ScoreMoves` applies one capture-tier policy to both its callers** — main `pvs()` and in-check
   quiescence. `See::see_ge(board, mv, 0)` splits captures into SEE >= 0 (above the killers, with all
   promotions) and SEE < 0 (below the killers, still above every quiet); `MoveHelper::Value()` scores
@@ -103,10 +111,9 @@ change both together.
 
 ## Configuration
 
-- `game_settings.json` holds per-player `"search_limits"`. It accepts C-style `/* */` comments via
-  nlohmann, but PowerShell's `ConvertFrom-Json` does not.
-- Run the exe from `StratChessEvolved/` — both so `game_settings.json` resolves and so logs land in
-  `StratChessEvolved/logs/`.
+Usage, working-directory requirements and JSON examples live in
+[EngineGuide](EngineGuide.md#configure-a-run).
+
 - **`SearchTuning` is declared once, in `StratEngine/SearchTuning.def`.** Each entry carries the
   field's type, default, accepted domain, JSON binding, UCI name and build availability; the struct,
   `SearchTuningSchema::Validate` and the JSON reader are generated from it, and cross-field
@@ -124,3 +131,26 @@ change both together.
   included; an unknown name stays silent. `ucinewgame` keeps the tuning. Any field without a UCI name
   is still reachable only through `game_settings.json` in `game` mode, or by rebuilding with a new
   default — and `Run-Bench.ps1`, `Compare-SearchEquivalence.ps1` and every match harness drive UCI.
+
+## Telemetry and output
+
+- **Diagnostic output is parsed input for scripts.** Preserve payload names, field order and
+  histogram lengths in `SearchTelemetry::append_info` and `TTStats::append_info`; a deliberate
+  schema change must update consumers and their tests together. Field meanings belong in
+  [EngineGuide](EngineGuide.md#interpret-search-output). `SearchTelemetryTests.cpp` and
+  `Compare-SearchProfile.ps1 -SelfTest` cover the producer/parser boundary.
+- **Observation must not change the tree.** TT statistics and search profiling preserve search
+  decisions with `STRAT_PROFILE_TIEBREAK_SEED` unset or zero. A nonzero seed deliberately changes
+  tied move ordering and is a separate experimental input. Node counters are distinct from
+  telemetry: iteration acceptance reads them. See [CONTEXT](../CONTEXT.md#search-telemetry).
+- **UCI stdout is the protocol channel.** General console logging stays disabled in UCI mode;
+  command tracing uses the dedicated file-only logger, not the default spdlog logger. See
+  [Logger.h](../StratEngine/Utils/Logger.h) and the [logging guide](EngineGuide.md#logging-and-runtime-files).
+
+## Maintaining these contracts
+
+Add an entry when a change introduces a non-obvious obligation or failure mode. State the rule,
+its scope and exceptions, and link to the enforcing code or tests. Put usage examples and output
+field definitions in EngineGuide, and ownership explanations in Architecture. Update the owning
+contract and its linked context in the same PR; the CLAUDE aborted-frame tripwire is an explicit,
+intentional duplicate, not a pattern for adding more copies.

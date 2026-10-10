@@ -39,7 +39,7 @@
         a PV frame, a quiescence hand-off). Their absence means a default build, one older than
         the profile contract, or a terminal position. That is refused, not read as zeros.
       - A malformed line: every present line must match its exact field list and histogram
-        lengths. The wording is a contract (Docs/Engine-Readme.md).
+        lengths. Output definitions: Docs/EngineGuide.md; compatibility: Docs/EngineContracts.md.
       - A search that did not reach -Depth or print bestmove.
     The optional lines aspiration, lmr, nullmove, pruning, frontier skips and lmp skips print only
     when their first field is non-zero ('pruning' on either field), so their absence reads as zero.
