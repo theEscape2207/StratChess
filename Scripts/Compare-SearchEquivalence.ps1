@@ -22,8 +22,8 @@
     difference:
       - 'treenodes', the node split. A build predating it emits none,
         the normal case for an old baseline.
-      - 'ordering', 'lmr', 'nodetypes', 'nullmove', 'pruning' and 'qsearch', the
-        STRAT_SEARCH_PROFILE lines. A profile build then
+      - 'ordering', 'lmr', 'lmrhistory', 'nodetypes', 'nullmove', 'pruning' and
+        'qsearch', the STRAT_SEARCH_PROFILE lines. A profile build then
         compares against a default build of the same commit, which proves node
         identity only; the tests pin those lines' wording.
 
@@ -220,7 +220,18 @@ function ConvertTo-ComparableLines {
 }
 
 # 'info string' keys compared only when both builds emit them; see the help above.
-$OptionalInfoKeys = @('treenodes', 'ordering', 'lmr', 'nodetypes', 'nullmove', 'pruning', 'qsearch')
+$OptionalInfoKeys = @('treenodes', 'ordering', 'lmr', 'lmrhistory', 'nodetypes', 'nullmove', 'pruning', 'qsearch')
+
+# The 'info string' keys a STRAT_SEARCH_PROFILE build adds: the first word of every sink() line in a
+# SearchTelemetry.h struct compiled under kSearchProfileCompiled. Read from the header so a new
+# profile line cannot be missed here.
+function Get-ProfileInfoKeys {
+    param([Parameter(Mandatory)][string]$HeaderText)
+    foreach ($block in ($HeaderText -split '(?m)^struct ')) {
+        if ($block -notmatch 'compiled = kSearchProfileCompiled;') { continue }
+        foreach ($m in [regex]::Matches($block, 'sink\("(\w+) ')) { $m.Groups[1].Value }
+    }
+}
 
 function Test-HasInfoString {
     param(
@@ -376,8 +387,10 @@ if ($SelfTest) {
     Assert-Case 'ordering lines can be dropped' ($noOrdering.Count -eq 8 -and (Test-HasInfoString $noOrdering 'lmr')) "got $($noOrdering.Count)"
     $noLmr = @(Remove-InfoStringLines $profiled 'lmr')
     Assert-Case 'lmr removal keeps other keys' ($noLmr.Count -eq 8 -and (Test-HasInfoString $noLmr 'lmrx')) "got $($noLmr.Count)"
-    $profileKeys = @('ordering', 'lmr', 'nodetypes', 'nullmove', 'pruning', 'qsearch')
-    Assert-Case 'optional keys cover the profile lines' (@(@('treenodes') + $profileKeys | Where-Object { $_ -notin $OptionalInfoKeys }).Count -eq 0)
+    $profileKeys = @(Get-ProfileInfoKeys (Get-Content -Raw (Join-Path (Split-Path $PSScriptRoot -Parent) 'StratEngine/SearchTelemetry.h')))
+    Assert-Case 'profile keys are read from SearchTelemetry.h' ('lmrhistory' -in $profileKeys -and 'qsearch' -in $profileKeys -and 'singular' -notin $profileKeys) "got $($profileKeys -join ', ')"
+    $missingKeys = @(@('treenodes') + $profileKeys | Where-Object { $_ -notin $OptionalInfoKeys })
+    Assert-Case 'optional keys cover the profile lines' ($missingKeys.Count -eq 0) "missing: $($missingKeys -join ', ')"
     Assert-Case 'a default transcript has no profile line' (@($profileKeys | Where-Object { Test-HasInfoString (ConvertTo-ComparableLines $sampleOut) $_ }).Count -eq 0)
 
     Assert-Case 'FEN line becomes a fen spec' ((ConvertTo-PositionSpec '8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1') -eq 'fen 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1')
