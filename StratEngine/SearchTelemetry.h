@@ -43,8 +43,8 @@ struct SingularStats {
 	// verification from the deeper subtrees the extensions themselves produce.
 	int64_t verification_nodes = 0;
 
-	// Completed multi-cuts. Its own payload line, so the `singular eligible` line keeps its wording
-	// and an option-off run prints exactly what it did before.
+	// Completed multi-cuts. Its own payload line, printed only when non-zero, so the
+	// `singular eligible` wording never changes (scripts match it exactly).
 	int64_t multicuts = 0;
 
 	void add(const SingularStats& other) noexcept

@@ -268,7 +268,7 @@ TEST_CASE("Singular multi-cut: a non-PV node returns beta and stores nothing", "
 	// singular_beta, and beta is set to singular_beta: the boundary case that must cut.
 	constexpr int16_t kShallowDepth = kDepth - 1;
 	constexpr int16_t kLowValue = -500;
-	constexpr int kBeta = kLowValue - kDepth; // singular_beta under the default margin factor of 1
+	constexpr int kBeta = kLowValue - kDepth; // singular_beta at a margin factor of 1
 
 	const auto run = [&](bool multicut, int beta = kBeta) {
 		auto fix = std::make_unique<AIPerlexTestFixture>(kBaselineFen);
@@ -277,6 +277,7 @@ TEST_CASE("Singular multi-cut: a non-PV node returns beta and stores nothing", "
 		fix->set_null_move_enabled(false);
 		fix->set_reverse_futility(false);
 		fix->set_singular_multicut(multicut);
+		fix->set_singular_margin_factor(1);
 		fix->store_main_entry_with_move(kLowValue, kShallowDepth, /*ply=*/1, BoundType::LOWER,
 		                                fix->first_sorted_move_uci());
 		fix->clear_singular_telemetry();
@@ -302,8 +303,7 @@ TEST_CASE("Singular multi-cut: a non-PV node returns beta and stores nothing", "
 	REQUIRE(full_entry.has_value());
 	CHECK(full_entry->depth == kDepth);
 
-	// Below singular_beta, so a fail-soft return of singular_beta would differ from the fail-hard
-	// beta (D2).
+	// Below singular_beta, so a fail-soft return of singular_beta would differ from the fail-hard beta.
 	constexpr int kLowerBeta = kBeta - 10;
 	const auto [low, low_score] = run(true, kLowerBeta);
 	CHECK(low->singular_multicuts() == 1);

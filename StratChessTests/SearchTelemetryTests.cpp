@@ -119,7 +119,7 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	};
 
 	SearchTelemetry fired;
-	fired.singular = {.eligible = 1, .verifications = 2, .extensions = 3, .verification_nodes = 4};
+	fired.singular = {.eligible = 1, .verifications = 2, .extensions = 3, .verification_nodes = 4, .multicuts = 9};
 	fired.frontier.skips = 5;
 	fired.lmp.skips = 6;
 	fired.aspiration = {.iterations = 1, .fail_lows = 2, .fail_highs = 3, .full_windows = 4, .fail_nodes = 5};
@@ -163,9 +163,9 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	const std::string fired_nodetypes = "nodetypes pv 1/2/3 cut 4/5/6 all 7/8/9 cutfaillow 10/11/12";
 	CHECK(payloads_of(fired) ==
 	      std::vector<std::string>{
-	          "singular eligible 1 verified 2 extended 3 verifynodes 4", "frontier skips 5", "lmp skips 6", fired_tt,
-	          "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5", fired_ordering,
-	          "lmr reduced 1 reducednodes 2 researched 3 confirmed 4 researchnodes 5",
+	          "singular eligible 1 verified 2 extended 3 verifynodes 4", "singular multicut 9", "frontier skips 5",
+	          "lmp skips 6", fired_tt, "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5",
+	          fired_ordering, "lmr reduced 1 reducednodes 2 researched 3 confirmed 4 researchnodes 5",
 	          "lmrhistory capped 6 less 7 more 8 killer 9", fired_nodetypes,
 	          "nullmove tried 1 cutoffs 2 failed 3 failnodes 4", "pruning rfp 1/2/3/4/5/6 floorbinds 7",
 	          "qsearch roots 1 delta 2 see 3 maxdepth 4"});
@@ -192,6 +192,9 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	SearchTelemetry singular_verified_only;
 	singular_verified_only.singular.verifications = 8;
 	CHECK(payloads_of(singular_verified_only) == std::vector<std::string>{zero_tt});
+	SearchTelemetry singular_multicut_only;
+	singular_multicut_only.singular.multicuts = 3;
+	CHECK(payloads_of(singular_multicut_only) == std::vector<std::string>{"singular multicut 3", zero_tt});
 
 	// Aspiration prints on an aspirated iteration, even one that never failed its window.
 	SearchTelemetry aspiration_only;
@@ -269,6 +272,17 @@ TEST_CASE("SearchTelemetry - quiescence maxdepth combines by max", "[search][tel
 	CHECK(total.max_depth == 9);
 	total.add({.roots = 0, .delta = 0, .see = 0, .max_depth = 12});
 	CHECK(total.max_depth == 12);
+}
+
+TEST_CASE("SearchTelemetry - singular counters sum across threads", "[search][telemetry]")
+{
+	SingularStats total{.eligible = 1, .verifications = 2, .extensions = 3, .verification_nodes = 4, .multicuts = 5};
+	total.add({.eligible = 10, .verifications = 20, .extensions = 30, .verification_nodes = 40, .multicuts = 50});
+	CHECK(total.eligible == 11);
+	CHECK(total.verifications == 22);
+	CHECK(total.extensions == 33);
+	CHECK(total.verification_nodes == 44);
+	CHECK(total.multicuts == 55);
 }
 
 // The profile counters' bookkeeping identities, on a search large enough to fill every bin.
