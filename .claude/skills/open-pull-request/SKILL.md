@@ -18,8 +18,9 @@ to the risk:
 - **inline:** a trivial fix whose cause and whole effect you can read off the changed functions and
   their callers, already shown working by a before/after run or a focused check. Review it in your
   own context against the inputs below. Example: the first commit of #780.
-- **light:** anything else without a hard trigger. Both axes run in one subagent on a cheaper model
-  (Claude: `sonnet`).
+- **light:** anything else without a hard trigger. Both axes run in one fresh subagent on a cheaper
+  model (Claude: `sonnet`; Codex: Luna 6). Where none can be selected, it runs on the session's
+  model, recorded as `light (session model)`.
 - **full:** each axis runs in its own subagent on the session's model.
 
 Hard triggers, at any size:
@@ -30,7 +31,8 @@ Hard triggers, at any size:
 - A change to what a measurement means: binary or option selection, pooling, statistics, validity.
 
 Load skill `code-review` (Claude: `mattpocock-skills:code-review`, not the built-in
-`/code-review`) and give it these inputs, so it never has to ask the user:
+`/code-review`) and give it these inputs, so it never has to ask the user. The mode above replaces
+only its dispatch step; its briefs, smell baseline and two-axis report still apply.
 
 - **Fixed point:** `origin/main`.
 - **Spec:** the issue the PR cites (`Closes`/`Refs #N`) plus any `.claude/plans/` document the
@@ -45,7 +47,7 @@ Load skill `code-review` (Claude: `mattpocock-skills:code-review`, not the built
 
 Question 4 covers only the changed functions, so every mode applies it. A stale comment that slips
 past a light review now and then is an accepted cost. An agent that cannot spawn subagents runs
-light and full in its own context and records `inline`.
+light and full in its own context and records the mode with `(no subagents)`.
 
 Every finding is fixed, rejected with a reason, or filed as an issue. A Spec finding rejected by
 reading the spec differently edits the spec (the issue or plan) to state that reading, in the same
