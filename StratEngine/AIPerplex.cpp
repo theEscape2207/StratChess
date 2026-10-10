@@ -870,7 +870,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	//
 	// Hoisting costs the exactness of "first legal move", so eligibility instead requires
 	// the hash move to be sorted first (ScoreMovesBestFirst guarantees that whenever one exists) and
-	// the loop re-checks that it was also the first LEGAL one before applying the extension.
+	// the loop re-checks that it was also the first LEGAL one before applying the depth adjustment.
 	// A hash move that fails legality wastes one verification and grants nothing.
 	// Plies added to the hash move's child depth: +1 singular, negative when reduced, else 0.
 	int hash_move_depth_adjust = 0;
