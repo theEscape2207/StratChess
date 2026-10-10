@@ -293,6 +293,8 @@ TEST_CASE("Singular multi-cut: a non-PV node returns beta and stores nothing", "
 		fix->set_null_move_enabled(false);
 		fix->set_reverse_futility(false);
 		fix->set_singular_multicut(multicut);
+		// On throughout: it must not fire where multi-cut returns, and takes over where multi-cut is off.
+		fix->set_singular_negative_extension(1);
 		fix->set_singular_margin_factor(1);
 		fix->store_main_entry_with_move(kLowValue, kShallowDepth, /*ply=*/1, BoundType::LOWER,
 		                                fix->first_sorted_move_uci());
@@ -305,6 +307,7 @@ TEST_CASE("Singular multi-cut: a non-PV node returns beta and stores nothing", "
 	REQUIRE(cut->singular_verifications() == 1);
 	CHECK(cut_score == kBeta);
 	CHECK(cut->singular_multicuts() == 1);
+	CHECK(cut->singular_negative_extensions() == 0);
 	// The return alone could coincide with a full search's fail-hard result; the entry cannot. A
 	// node that searched its moves overwrites it at kDepth.
 	const auto cut_entry = cut->probe_tt(/*ply=*/1);
@@ -314,6 +317,7 @@ TEST_CASE("Singular multi-cut: a non-PV node returns beta and stores nothing", "
 	const auto [full, full_score] = run(false, kBeta);
 	REQUIRE(full->singular_verifications() == 1);
 	CHECK(full->singular_multicuts() == 0);
+	CHECK(full->singular_negative_extensions() == 1);
 	CHECK(full_score >= kBeta);
 	const auto full_entry = full->probe_tt(/*ply=*/1);
 	REQUIRE(full_entry.has_value());
@@ -394,7 +398,8 @@ TEST_CASE("Singular negative extension: the hash move's child is searched shallo
 		CHECK(child->phase == SearchPhase::MAIN);
 		CHECK(child->depth == kDepth - 1 - plies);
 
-		// The reduced fail-high stands (D4): the node cuts and stores a full-depth LOWER bound on it.
+		// The reduced fail-high stands, with no re-search: the node cuts and stores a full-depth LOWER
+		// bound on it.
 		CHECK(score >= kBeta);
 		const auto node = fix->probe_tt(/*ply=*/1);
 		REQUIRE(node.has_value());

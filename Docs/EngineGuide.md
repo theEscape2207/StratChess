@@ -135,6 +135,7 @@ These payloads follow `info string`; zero-only categories can be absent:
 | `treenodes main N qs N` | Final main-tree and quiescence counts, summed over workers; together they equal the final UCI `nodes` |
 | `singular eligible N verified N extended N verifynodes N` | Eligible singular candidates, verification searches, granted extensions and work inside verification searches |
 | `singular multicut N` | Non-PV nodes that returned `beta` because the singular verification failed high at or above `beta` |
+| `singular negext N` | Verifications that failed high below `beta` while the hash move's TT bound reached it, so the hash move was searched `SingularNegativeExtension` plies shallower |
 | `frontier skips N` | Moves skipped by frontier futility |
 | `lmp skips N` | Moves skipped by late move pruning |
 | `aspiration iterations N faillow N failhigh N fullwindow N failnodes N` | Iterations, failed windows, full-window fallbacks and nodes spent in failed windows |
