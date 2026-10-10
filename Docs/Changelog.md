@@ -15,6 +15,17 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-10: Singular multi-cut, on by default (#795)
+
+### Added
+- Singular multi-cut (slice 1 of #721), runtime option `SingularMultiCut`, default true. When a
+  non-PV node's singular verification fails high and `singular_beta >= beta`, two moves reach the
+  cutoff, so the node returns `beta` (fail-hard, no TT store) instead of searching every move. Never
+  at a PV node or with a mate-range `beta`. Lab **+8.38 +/- 3.55 Elo** at 19,980 games (run
+  38061055145, `Measurements/ci-per-change.md`); bench nodes -22.3%, nps unchanged.
+- `info string singular multicut <n>`, printed only when non-zero; the `singular eligible` line is
+  unchanged.
+
 ## 2026-10-10: Separate engine documentation ownership
 
 ### Changed

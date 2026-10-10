@@ -240,6 +240,11 @@ class AIPerplex final {
 	// that evaluation on a node a cutoff could actually apply to.
 	bool reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame,
 	                               bool zugzwang_safe) const;
+	// Singular multi-cut: the verification failed high, so an alternative also reaches singular_beta,
+	// and singular_beta >= beta makes that two moves at the cutoff. It can only fire where the TT
+	// entry itself could not cut: one that deep would have returned at the probe, so a cut always
+	// rests on a shallower entry plus one reduced-depth alternative. Excludes PV nodes and a mate-score beta.
+	bool singular_multicut_eligible(int verify_value, int singular_beta, int beta, bool is_pv_node) const;
 	// The node-level frontier-futility guards. The move-level ones live in the pvs() move loop,
 	// where the move, the live killers and the made move's check status are at hand.
 	bool frontier_futility_eligible(int depth, int alpha, bool is_pv_node, bool in_check,

@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-10 | 81a7008, singular multi-cut: `SingularMultiCut=true`, shipped as the default (#795; one pre-registered run, ship iff lower bound > 0) | 81a7008 (with `SingularMultiCut=false`; both sides are one binary, so the delta is a runtime option) | 19980 | 10+0.1 | **+8.38 +/- 3.55** | gain |
 | 2026-10-09 | c16e692, TT bucket prefetch in `DoMove` and `DoNullMove` (#776; the lab builds GCC, the shipping build is clang-cl) | f07859d | 26640 | 10+0.1 | **+16.58 +/- 3.07** | gain |
 | 2026-10-09 | 98b2a07, SCREEN arm C: `SingularTtDepthMargin=3`, the null control (#722) | 98b2a07 (at the shipped singular defaults, TT depth margin 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-0.55 +/- 5.29** | calibration |
 | 2026-10-09 | 98b2a07, SCREEN arm B: `SingularTtDepthMargin=4` (#722) | 98b2a07 (at the shipped singular defaults, TT depth margin 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-0.16 +/- 5.30** | inconclusive @ 8880 |

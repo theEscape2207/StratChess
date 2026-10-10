@@ -235,6 +235,82 @@ TEST_CASE("Singular: a verification search takes no TT cutoff", "[search][singul
 }
 
 // ============================================================================
+// Multi-cut
+// ============================================================================
+
+TEST_CASE("Singular multi-cut: eligibility boundaries", "[search][singular]")
+{
+	AIPerlexTestFixture fix(kBaselineFen);
+	fix.set_singular_multicut(true);
+	constexpr int kSingularBeta = 50;
+	constexpr int kBeta = 40;
+
+	// A verification that exactly reaches singular_beta failed high; one below it failed low.
+	CHECK(fix.singular_multicut_eligible(kSingularBeta, kSingularBeta, kBeta, /*is_pv_node=*/false));
+	CHECK_FALSE(fix.singular_multicut_eligible(kSingularBeta - 1, kSingularBeta, kBeta, false));
+	// singular_beta itself must reach beta.
+	CHECK(fix.singular_multicut_eligible(kSingularBeta, kSingularBeta, kSingularBeta, false));
+	CHECK_FALSE(fix.singular_multicut_eligible(kSingularBeta, kSingularBeta, kSingularBeta + 1, false));
+	CHECK_FALSE(fix.singular_multicut_eligible(kSingularBeta, kSingularBeta, kBeta, /*is_pv_node=*/true));
+	// The reachable mate case: a negative mate-range beta, with everything else passing.
+	constexpr int kMatedBeta = -GameValues::Mate_Threshold;
+	CHECK_FALSE(fix.singular_multicut_eligible(kMatedBeta + 10, kMatedBeta + 5, kMatedBeta, false));
+	CHECK(fix.singular_multicut_eligible(kMatedBeta + 10, kMatedBeta + 5, kMatedBeta + 1, false));
+
+	fix.set_singular_multicut(false);
+	CHECK_FALSE(fix.singular_multicut_eligible(kSingularBeta, kSingularBeta, kBeta, false));
+}
+
+TEST_CASE("Singular multi-cut: a non-PV node returns beta and stores nothing", "[search][singular]")
+{
+	// A LOWER entry one ply shallower than the node, so the probe cannot cut but singular still
+	// trusts it. Its value is far below anything the position scores, so every alternative clears
+	// singular_beta, and beta is set to singular_beta: the boundary case that must cut.
+	constexpr int16_t kShallowDepth = kDepth - 1;
+	constexpr int16_t kLowValue = -500;
+	constexpr int kBeta = kLowValue - kDepth; // singular_beta at a margin factor of 1
+
+	const auto run = [&](bool multicut, int beta) {
+		auto fix = std::make_unique<AIPerlexTestFixture>(kBaselineFen);
+		arm(*fix);
+		// Either would cut first at a null-window node standing this far above beta.
+		fix->set_null_move_enabled(false);
+		fix->set_reverse_futility(false);
+		fix->set_singular_multicut(multicut);
+		fix->set_singular_margin_factor(1);
+		fix->store_main_entry_with_move(kLowValue, kShallowDepth, /*ply=*/1, BoundType::LOWER,
+		                                fix->first_sorted_move_uci());
+		fix->clear_singular_telemetry();
+		const int score = fix->search_node(kDepth, /*ply=*/1, beta - 1, beta, /*is_pv_node=*/false);
+		return std::pair{std::move(fix), score};
+	};
+
+	const auto [cut, cut_score] = run(true, kBeta);
+	REQUIRE(cut->singular_verifications() == 1);
+	CHECK(cut_score == kBeta);
+	CHECK(cut->singular_multicuts() == 1);
+	// The return alone could coincide with a full search's fail-hard result; the entry cannot. A
+	// node that searched its moves overwrites it at kDepth.
+	const auto cut_entry = cut->probe_tt(/*ply=*/1);
+	REQUIRE(cut_entry.has_value());
+	CHECK(cut_entry->depth == kShallowDepth);
+
+	const auto [full, full_score] = run(false, kBeta);
+	REQUIRE(full->singular_verifications() == 1);
+	CHECK(full->singular_multicuts() == 0);
+	CHECK(full_score >= kBeta);
+	const auto full_entry = full->probe_tt(/*ply=*/1);
+	REQUIRE(full_entry.has_value());
+	CHECK(full_entry->depth == kDepth);
+
+	// Below singular_beta, so a fail-soft return of singular_beta would differ from the fail-hard beta.
+	constexpr int kLowerBeta = kBeta - 10;
+	const auto [low, low_score] = run(true, kLowerBeta);
+	CHECK(low->singular_multicuts() == 1);
+	CHECK(low_score == kLowerBeta);
+}
+
+// ============================================================================
 // Exclusion-search semantics
 // ============================================================================
 

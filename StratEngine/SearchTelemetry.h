@@ -43,12 +43,17 @@ struct SingularStats {
 	// verification from the deeper subtrees the extensions themselves produce.
 	int64_t verification_nodes = 0;
 
+	// Completed multi-cuts. Its own payload line, printed only when non-zero, so the
+	// `singular eligible` wording never changes (scripts match it exactly).
+	int64_t multicuts = 0;
+
 	void add(const SingularStats& other) noexcept
 	{
 		eligible += other.eligible;
 		verifications += other.verifications;
 		extensions += other.extensions;
 		verification_nodes += other.verification_nodes;
+		multicuts += other.multicuts;
 	}
 
 	template <class Sink> void append_info(Sink&& sink) const
@@ -56,6 +61,8 @@ struct SingularStats {
 		if (eligible != 0)
 			sink("singular eligible " + std::to_string(eligible) + " verified " + std::to_string(verifications) +
 			     " extended " + std::to_string(extensions) + " verifynodes " + std::to_string(verification_nodes));
+		if (multicuts != 0)
+			sink("singular multicut " + std::to_string(multicuts));
 	}
 };
 

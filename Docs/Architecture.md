@@ -132,6 +132,7 @@ the implementation and [search contracts](EngineContracts.md#search-internals).
 | Reverse futility | `reverse_futility_eligible`, `pvs` | `reverse_futility_*` |
 | Null move | `should_try_null_move`, `pvs` | `null_move_*`; worker recursion state |
 | Singular extension | `pvs` verification search | `singular_*`; TT evidence and excluded move |
+| Singular multi-cut | `singular_multicut_eligible`, `pvs` after the verification | `singular_multicut_enabled`; fail-hard `beta`, no TT store |
 | Frontier futility | `frontier_futility_eligible`, `pvs` | `frontier_futility_*` |
 | Late move pruning | `late_move_pruning_eligible`, `pvs` | `late_move_pruning_enabled`; thresholds in [AIPerplex.h](../StratEngine/AIPerplex.h) |
 | Late move reduction | `pvs` reduced search and re-search; `lmr_reduction` in [AIPerplex.h](../StratEngine/AIPerplex.h) | `lmr_*`, including history adjustment through `lmr_history_divisor`; move classification and ordering |
