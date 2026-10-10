@@ -167,8 +167,7 @@ Search tier, with search-reviewer review.
   feature.
 - **Blast radius:** search tier. The UCI option table gains one entry.
 - **Review:** one search-reviewer pass plus the code review (170–270k tokens, 3–5 min).
-- **Lab:** one 19,980-game run, about 7–10 h (8,880 games take 3–4.5 h). This is more than #795
-  first stated, but less than a screen followed by a confirmation.
+- **Lab:** one 19,980-game run at Threads=1, about 3–3.5 h.
 
 ## Harvest
 
