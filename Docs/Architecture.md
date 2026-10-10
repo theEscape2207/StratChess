@@ -1,11 +1,16 @@
 # Architecture: current system
 
-Last verified: 2026-10-04.
+Last verified: 2026-10-10.
 
-Start here for responsibilities and execution. Read [CONTEXT](../CONTEXT.md) for domain
-definitions, [EngineContracts](EngineContracts.md) before changing behaviour, and
-[TestDesign](TestDesign.md) for existing test surfaces. Those documents retain their own jobs;
-this map does not replace their detailed contracts.
+**Purpose:** Explain how the current system fits together: module responsibilities, dependencies,
+state ownership and lifetimes, and the flows connecting its major components. This document owns
+the structural map and source navigation needed to locate a change.
+
+[EngineGuide](EngineGuide.md) owns practical usage and output interpretation;
+[EngineContracts](EngineContracts.md) owns non-obvious obligations when changing behaviour.
+[CONTEXT](../CONTEXT.md) defines domain terms, [TestDesign](TestDesign.md) maps test surfaces,
+and [Workflow](Workflow.md) owns validation and measurement choices. Summarize a boundary here
+and link to its detailed contract or procedure at that owner.
 
 ## 1. System and consumers
 
@@ -56,24 +61,39 @@ tools box is a collection of consumers: perft does not invoke evaluation or the 
 
 | Module | Responsibility and interface | Important dependencies / constraints |
 |---|---|---|
-| `Board` | Position, make/unmake, position metadata, hash and history | Owns the state that legality, repetition and evaluation inspect. Search uses a copy. |
+| `Board` | Position, make/unmake, position metadata, hash and history | Search uses a copy. An opaque `PrefetchTarget` lets make/null-move prefetch the child's TT bucket without Board owning the table. |
 | `Move` / `MoveFormatter` | Encoded move value / context-dependent presentation and parsing | [Move contracts](EngineContracts.md#moves). |
 | `MoveGenerator` | Candidate moves and attack geometry | [Generation contract](../StratEngine/MoveGenerator.h). |
 | `MoveSorter` / `See` | Ordering and static exchange judgement | Consume board and ordering state; ordering interacts with selective search. |
 | `AIPerplex` | Root search, async lifecycle, iterative deepening, recursive search, result assembly | Owns TT, evaluator, search control, tuning and worker state. One controlling thread owns lifecycle/configuration calls. |
 | `IterationPolicy` | Main-thread iteration acceptance, retained-result updates and continuation | Two pure value transitions; no Board, TT, clock or callback access. The driver supplies observations and owns side effects. |
 | `ThreadData` | Per-worker position, PV, counters, history and recursion scratch | Includes several lifetimes: per-node, per-search and state retained between moves. Not a purely temporary search record. |
-| `SearchControl` | Resolve/apply limits, stop latch, time and node checks | Shared stop condition; main worker polls limits. |
-| `TranspositionTable` | Cache searched scores/bounds and ordering hints | Packed entries, four per aligned bucket, each two XOR-validated relaxed atomic words, no locks; receives keys, not Boards. |
+| `SearchLimits` / `Engine::resolve_limits` | Express per-search constraints and resolve them against configured defaults | Declared in `SearchLimits.h`, implemented in `SearchLimits.cpp`; returns depth, soft/hard time budgets and node limit. |
+| `SearchControl` | Apply resolved limits, manage the stop latch and expose time/node checks | Soft time is checked at iteration boundaries; hard time and node limits can abort search. [Polling flow](#limit-observations). |
+| `TranspositionTable` | Cache searched scores/bounds and ordering hints | Lock-free probes/stores; clearing is a lifecycle operation. Exposes an opaque `PrefetchTarget` for Board; receives keys, not Boards. |
 | `Evaluator` | Static score and explanatory breakdown | Pure per-position term calculations plus a draw-score pair configured before search workers start. |
 | `SearchTuningSchema` | Validate and bind configuration | `SearchTuning.def` is the catalogue; JSON and UCI exposure are deliberately not identical. |
 | `UciHandler` / `UciWriter` | Protocol parsing, lifecycle coordination and serialized output | Owns a Board, concrete search instance and a separate unconfigured evaluator for `eval`. |
-| `Game` / `SearchPlayer` | Commit moves and adjudicate game play / adapt search to `IPlayer` | Game keeps the played Board; a returned `SearchResult` is the search's output. |
+| `Game` / `GameStates` | Commit moves, adjudicate the played position and accumulate game totals / represent outcomes | Game keeps the played Board; search returns its root outcome through `SearchResult`. [Adjudication contract](EngineContracts.md#the-search-service). |
+| `IPlayer` / `SearchPlayer` / `HumanPlayer` | Supply a move to Game; adapt concrete search or human input | `PlayerFactory` constructs configured players before type erasure. |
+| `PVTable` / `PVIntegrity` | Per-worker PV storage / legal replay check at iteration emission | `ThreadData` owns the table; the search's Debug assertion checks emitted lines against the root. |
+| `SearchTelemetry` / `TTStats` | Collect observations per worker, aggregate after joins and format diagnostic payloads | Returned in `SearchResult`; `UciHandler` emits through `UciWriter`. [Output reference](EngineGuide.md#interpret-search-output). |
+| `Utils/Logger` | General, game-performance and opt-in UCI command sinks using spdlog | Search has a shared sink with per-service write gating. [Runtime files](EngineGuide.md#logging-and-runtime-files). |
+| `Tools/Perft` / `Tools/TacticalTestRunner` | Move-generation traversal / tactical search consumers | CLI dispatches these independently of the Game loop. |
 
-Source entry points: [AIPerplex.h](../StratEngine/AIPerplex.h),
-[Board.h](../StratEngine/Board.h), [MoveGenerator.h](../StratEngine/MoveGenerator.h),
-[ThreadData.h](../StratEngine/ThreadData.h), [Eval.h](../StratEngine/Eval.h),
-[UCIHandler.h](../StratEngine/UCIHandler.h), [SearchPlayer.cpp](../StratEngine/SearchPlayer.cpp).
+### Source navigation
+
+| Area | Entry points |
+|---|---|
+| CLI and game composition | [main](../StratChessEvolved/StratChessEvolved.cpp), [Game](../StratEngine/Game.cpp), [PlayerFactory](../StratEngine/PlayerFactory.cpp), [GameState](../StratEngine/GameState.h) |
+| Protocol | [UciHandler](../StratEngine/UCIHandler.h), [UciWriter](../StratEngine/UciWriter.h) |
+| Search and worker state | [AIPerplex](../StratEngine/AIPerplex.h), [ThreadData](../StratEngine/ThreadData.h), [SearchControl](../StratEngine/SearchControl.h), [PVTable](../StratEngine/PVTable.h) |
+| Position and moves | [Board](../StratEngine/Board.h), [MoveGenerator](../StratEngine/MoveGenerator.h), [MoveFormatter](../StratEngine/MoveFormatter.h), [Magic](../StratEngine/Magic.h) |
+| Evaluation and ordering | [Evaluator](../StratEngine/Eval.h), [MoveSorter](../StratEngine/Sort.h), [See](../StratEngine/See.h) |
+| Diagnostics and tools | [SearchTelemetry](../StratEngine/SearchTelemetry.h), [TTStats](../StratEngine/TTStats.h), [PVIntegrity](../StratEngine/PVIntegrity.h), [Tools](../StratEngine/Tools/) |
+| Input, time and utility support | [Config](../StratEngine/Config.cpp), [Utils](../StratEngine/Utils/) (`FENParser`, `ArgParse`, `FenBatch`, `TimeManager`, `TimeUtils`, `Logger`) |
+
+This is a map of entry points; the directory tree and headers own the full file and API inventory.
 
 `Board` maintains both bitboards and a square-indexed mailbox, incremental Zobrist keys, repetition
 history and ply-indexed undo state. Sliding attacks use compile-time tables indexed through PEXT:
@@ -81,20 +101,20 @@ history and ply-indexed undo state. Sliding attacks use compile-time tables inde
 
 ### Configuration and input boundaries
 
-| Layer | Owner / when it takes effect | What the strength lab can vary |
-|---|---|---|
-| Build configuration | [CMakeLists.txt](../CMakeLists.txt); applied when building. CMake settings select compiler flags and target definitions. `STRAT_SANITIZE` selects instrumentation; `STRAT_ENABLE_TEST_ACCESS` is defined for the test target. | `cmake_defines` passes the same CMake arguments to both revisions. Target definitions are not automatically dispatchable CMake settings. |
-| Search tuning catalogue | [SearchTuning.def](../StratEngine/SearchTuning.def) owns defaults, ranges, availability and separate JSON/UCI exposure. [SearchTuningSchema](../StratEngine/SearchTuningSchema.h) validates updates; the search service applies them between searches. | Exposed UCI fields can differ between candidate/reference or candidate arms. JSON-only fields cannot be varied through the lab's UCI option inputs. |
-| Interactive game settings | [Config.cpp](../StratEngine/Config.cpp) reads `game_settings.json`; [PlayerFactory](../StratEngine/PlayerFactory.cpp) configures each player. | The lab runs UCI engines. That path starts from its own defaults and does not load `game_settings.json`. |
-| UCI engine options | [UciHandler](../StratEngine/UCIHandler.cpp) handles `Hash`, `Threads` and exposed tuning fields through `setoption`; changes are refused during search. | Advertised options can be supplied per side; the workflow reserves `Threads` and supplies it itself. |
-| Per-search limits | UCI `go` becomes [SearchLimits](../StratEngine/SearchLimits.h); [SearchControl](../StratEngine/SearchControl.h) applies the limits for that search. | The match runner supplies clocks from each side's time control; these are distinct from engine tuning options. |
+| Input | Owner and destination |
+|---|---|
+| Build configuration | [CMakeLists.txt](../CMakeLists.txt) selects target definitions and compiler settings before execution. |
+| Search tuning catalogue | [SearchTuning.def](../StratEngine/SearchTuning.def) defines fields and bindings; [SearchTuningSchema](../StratEngine/SearchTuningSchema.h) validates values for the search service. |
+| Game configuration | [Config.cpp](../StratEngine/Config.cpp) reads JSON; [PlayerFactory](../StratEngine/PlayerFactory.cpp) constructs each configured player. |
+| UCI options | [UciHandler](../StratEngine/UCIHandler.cpp) translates `setoption` into search-service configuration calls. |
+| Per-search limits | UCI `go` and Game supply [SearchLimits](../StratEngine/SearchLimits.h); `Engine::resolve_limits` resolves defaults/budgets and [SearchControl](../StratEngine/SearchControl.h) applies them. |
+| Positions | [FENParser](../StratEngine/Utils/FENParser.h) and `Board::SetupFromFEN` construct positions supplied through CLI, UCI or game configuration. |
 
-FEN enters through [FENParser](../StratEngine/Utils/FENParser.h) and `Board::SetupFromFEN`; UCI
-parsing belongs to `UciHandler`, and JSON game configuration to `Config.cpp`. Recovery depends on
-the boundary: a rejected UCI FEN reports the rejection, resets to the starting position and keeps
-the session alive; some malformed or unknown options are ignored. See the
-[threat model](Workflow.md#threat-model) for the robustness goal, and those owners for the actual
-error/recovery contracts.
+[EngineGuide](EngineGuide.md#configure-a-run) explains how to use these inputs;
+[EngineContracts](EngineContracts.md#configuration) defines validation and application obligations.
+The strength lab drives UCI; its dispatchable inputs belong to [CI](CI.md).
+Input recovery belongs to the consuming boundary; the [threat model](Workflow.md#threat-model)
+explains the robustness goal.
 
 ### Search mechanism index
 
@@ -112,11 +132,23 @@ the implementation and [search contracts](EngineContracts.md#search-internals).
 | Reverse futility | `reverse_futility_eligible`, `pvs` | `reverse_futility_*` |
 | Null move | `should_try_null_move`, `pvs` | `null_move_*`; worker recursion state |
 | Singular extension | `pvs` verification search | `singular_*`; TT evidence and excluded move |
+| Singular multi-cut | `singular_multicut_eligible`, `pvs` after the verification | `singular_multicut_enabled`; fail-hard `beta`, no TT store |
 | Frontier futility | `frontier_futility_eligible`, `pvs` | `frontier_futility_*` |
 | Late move pruning | `late_move_pruning_eligible`, `pvs` | `late_move_pruning_enabled`; thresholds in [AIPerplex.h](../StratEngine/AIPerplex.h) |
-| Late move reduction | `pvs` reduced search and re-search | `lmr_*`; move classification and ordering |
+| Late move reduction | `pvs` reduced search and re-search; `lmr_reduction` in [AIPerplex.h](../StratEngine/AIPerplex.h) | `lmr_*`, including history adjustment through `lmr_history_divisor`; move classification and ordering |
 | Quiescence delta / SEE pruning | `quiescence` | `delta_pruning_margin`, `see_pruning_enabled`, `see_pruning_margin`; material and check guards |
-| Move ordering and history | [MoveSorter::ScoreMoves](../StratEngine/Sort.h), `order_quiescence_moves`, [ThreadData](../StratEngine/ThreadData.h) | Hash move, SEE tiers, killers, history; `continuation_history_plies` |
+| Move ordering and history | [MoveSorter](../StratEngine/Sort.h): `ScoreMovesBestFirst` / `OrderRemaining` in `pvs`; `ScoreMoves` for in-check quiescence; `order_quiescence_moves` | Lazy main-search ordering; hash move, SEE tiers, killers, history and `continuation_history_plies`. [Ordering contract](EngineContracts.md#search-internals). |
+
+### Limit observations
+
+`SearchControl::ApplyLimits` calls `Engine::resolve_limits`, then arms the time budgets and node
+limit. The main worker samples `ShouldStopIteration()` after an iteration for the soft-time
+continuation decision. In the recursive per-node polling path, only thread 0 checks the hard clock
+and node limit, every 1024 calls; the node limit uses that worker's combined main/quiescence count.
+Helpers also call `StopRequested()` at aspiration retry boundaries and the LMR re-search guard,
+so they can observe hard-clock expiry directly. All workers use `IsAborted()` to read the shared
+stop latch without a clock call. See [SearchControl.cpp](../StratEngine/SearchControl.cpp) and
+`poll_search_limits` in [AIPerplex.cpp](../StratEngine/AIPerplex.cpp).
 
 ## 3. State ownership and lifetimes
 
@@ -126,9 +158,10 @@ the implementation and [search contracts](EngineContracts.md#search-internals).
 | TT allocation, tuning, evaluator, helper-state allocations | AIPerplex | Persist across searches. Tuning changes clear TT contents; new-game reset clears accumulated game state. |
 | Root colour and evaluator draw scores | AIPerplex / its evaluator | Established before helper creation; read-only during search. Nonzero contempt also affects TT validity. |
 | Board, PV, node counters, telemetry | One `ThreadData` per worker | Board copied from root; counters reset for each search. Mutable only by that worker while searching. |
+| Board's opaque `PrefetchTarget` | Stored on each worker Board; refers to AIPerplex's TT | Bound after copying the root at search start; reset to the dummy target after helper joins on every exit. [Lifetime contract](EngineContracts.md#the-search-service). |
 | History and continuation history | Same worker state | Retained and aged within a game, reset for a new game. Ordinary and continuation history have different ageing schedules. |
 | Excluded move, continuation keys, null-move flags | Worker recursion state | Ply-indexed scratch. Singular verification re-enters at the same ply and must restore the surrounding frame's state. |
-| TT entries | Shared table | Concurrent probes/stores are lock-free; racing stores can lose an entry, and a probe may return another position's entry, like a key collision. Whole-table lifecycle operations have additional caller constraints. |
+| TT entries | Shared table | Lock-free probes/stores during search; mutex-serialized clearing at lifecycle boundaries. [Concurrency obligations](EngineContracts.md#search-internals). |
 | Limits and abort latch | SearchControl | One search; stop can be requested concurrently. |
 | Retained iteration result and soft-limit extension | Local `Engine::IterationState` in main iterative deepening | One search; passed through the policy's value transitions. Helpers do not use it. |
 | Iteration observer and completion callback | One search/launch | Observations are snapshots. Completion runs after search has finished, on the launch thread. |
@@ -161,7 +194,6 @@ sequenceDiagram
     M->>H: Stop and join
     M->>M: Aggregate counters and build result
     M->>A: Finish search lifecycle
-    Note over A,M: IsSearching is false before completion callback
     M->>W: on_done(result) emits bestmove
 ```
 
@@ -179,11 +211,8 @@ large allocations. `MADV_HUGEPAGE` is advisory; Windows uses the standard alloca
 See [TranspositionTable.cpp](../StratEngine/TranspositionTable.cpp) and
 [TranspositionTable.h](../StratEngine/TranspositionTable.h) when comparing platform-sensitive costs.
 
-Inside recursion the critical order is **make → search/re-search → undo → abort check → persistent
-result writes**. Counters intentionally survive an abort. Singular verification has a restricted
-move set and cannot treat its own result as an ordinary TT result for the full position. A diagram
-cannot replace those exact guards: see [Search internals](EngineContracts.md#search-internals)
-and [AIPerplex.cpp](../StratEngine/AIPerplex.cpp).
+For abort unwinding, singular-verification restrictions and exact callback/lifecycle obligations,
+see [EngineContracts](EngineContracts.md#search-internals).
 
 ## 4. Evaluation data flow
 
@@ -215,59 +244,39 @@ features: it contains weighted, blended contributions, including nonlinear and c
 Source: [Eval.cpp](../StratEngine/Eval.cpp), especially `BuildContext`, `RawWhitePov`, `Evaluate`
 and `Breakdown`; [EvalTestFixture.h](../StratChessTests/EvalTestFixture.h).
 
-## 5. Build, tests and experiments
+## 5. Build, tests and diagnostic boundaries
 
 Both executables compile the engine sources. The production Release target enables LTO when
-supported; the test executable does not. The test target defines test access and search/TT profile
-instrumentation. This makes tests useful for inspecting internals, but they are not the production
-binary. Protocol-level checks, equivalence, tactical execution and matches exercise that binary.
-This topology is an existing trade-off, not evidence by itself that separate libraries are needed.
-Source: [CMakeLists.txt](../CMakeLists.txt), target definitions.
+supported; the test executable does not. Tests define `STRAT_ENABLE_TEST_ACCESS` and always enable
+`STRAT_SEARCH_PROFILE` and `STRAT_TT_STATS`. The production target makes those two counter families
+optional. [CMakeLists.txt](../CMakeLists.txt) owns the definitions; these observations explain why
+the test binary and the production binary are distinct validation surfaces.
 
-[CI.md](CI.md) maps the correctness gates and workflow triggers. [Scripts](../Scripts/) contains
-local validation and diagnostic tooling; [TestDesign](TestDesign.md) maps the test surfaces.
+Windows targets reserve an 8 MiB stack (`/STACK:8388608`) for executable and worker stacks;
+initial commitment is unchanged. This build setting supports the recursive search's stack use.
 
-```mermaid
-flowchart TD
-    Change["Change hypothesis and comparison"] --> Correct["Tests, contracts, sanitizers, protocol checks"]
-    Change --> Diagnose["Bench / search profile / position diagnostics"]
-    Correct --> Candidate["Candidate ready for strength measurement"]
-    Diagnose -.->|explains or prioritises; cannot establish Elo| Candidate
-    Candidate --> Build["Build both revisions with same toolchain"]
-    Build --> Options["Validate requested UCI options"]
-    Options --> Shards["Disjoint opening slices; colour-swapped pairs"]
-    Shards --> Pool["Require successful shards; pool pair counts"]
-    Pool --> Record["Result, uncertainty, artifacts and ledger"]
-    Record --> Decide["Keep, change, defer or reject"]
-```
+Search workers collect telemetry locally; after joining helpers, `AIPerplex` aggregates it into
+the returned result. `SearchTelemetry` formats the payloads and `UciHandler` serializes their
+emission through `UciWriter`. `PVIntegrity` separately supports a Debug assertion at iteration
+emission. Instrumentation output and logging serve external consumers described in
+[EngineGuide](EngineGuide.md#interpret-search-output); they are not independent search services.
 
-This shows the responsibilities of the current tools, not an automatically enforced end-to-end
-pipeline. Strength dispatch is manual. The lab uses colour-swapped pairs and disjoint opening
-slices. A failed shard prevents a pooled verdict. Build/toolkit staging happens once; all shards
-consume those binaries. Runtime inputs, defaults and pinned dependencies live in
-[strength.yml](../.github/workflows/strength.yml).
-
-Multi-arm screening distributes candidate option sets across shards against a shared reference,
-pooling each arm separately. An opening offset lets a later confirmation use fresh openings;
-the caller chooses the offset to keep runs disjoint.
-
-| Question | Existing evidence source | Limit of the answer |
-|---|---|---|
-| Does a contract hold? | Focused tests, sanitizers, perft, protocol tests | Does not establish strength. |
-| Did a supposedly neutral change alter search? | `Compare-SearchEquivalence.ps1` | Deterministic finite corpus at one thread; not a proof for all positions, abort schedules or SMP. |
-| Did equivalent work get faster? | Interleaved shipping-build bench, accounting for code placement | Nps is not Elo; changed trees also change the work mixture. |
-| What did a heuristic do? | Search profile, term breakdown, position diagnostics | Describes mechanisms; does not judge full-game strength. |
-| Is this configuration stronger under the tested conditions? | Timed games and pooled paired result | Specific to opponent/reference, build, book, time control and thread count. |
-
-Measurement method: [measure-strength](../.claude/skills/measure-strength/SKILL.md).
-Recording: [Measurements/README](../Measurements/README.md).
-Workflow: [strength.yml](../.github/workflows/strength.yml).
+Local scripts and CI invoke the production executable through UCI or diagnostic CLI commands.
+The strength lab stages candidate/reference binaries, runs match shards and collects results;
+its orchestration belongs to [CI](CI.md). [Workflow](Workflow.md#what-validates-what) explains
+correctness and equivalence evidence, and [TestDesign](TestDesign.md) maps test coverage.
+[measure-strength](../.claude/skills/measure-strength/SKILL.md) owns experiment procedures and
+the limits of profile, bench and Elo evidence.
+Recorded evidence lives in [Measurements](../Measurements/README.md).
 
 ## 6. How to maintain this map
 
-When a PR changes a responsibility or state lifetime described in a table, update that row and any
-affected diagram in the same PR. Apply the same rule to lifecycle and interface changes. Prefer
-links to implementation symbols and contract sections over copying algorithms or numerical defaults.
-Keep historical measurements and recommendations in dated reviews and measurement ledgers.
-Update the verification date after an architectural recheck. A new source file alone is not an
-architectural change, and a one-line lifecycle change can be one.
+Update the affected ownership row, source link and diagram in the PR that changes a responsibility,
+dependency, interface or state lifetime. Check the opening purpose before adding a section:
+usage and output examples belong in EngineGuide, precise obligations in EngineContracts, and
+validation procedures in Workflow or the relevant skill. Keep brief linked context here when
+needed to understand a boundary; keep algorithms, field catalogues and numeric defaults with
+their implementation owners. Historical findings belong in dated reviews and measurement records.
+
+Update the verification date after checking the affected descriptions against source. A date
+records a documentation check, not a claim that tests proved every statement.
