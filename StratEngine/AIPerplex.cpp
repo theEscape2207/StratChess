@@ -919,6 +919,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			singular_extension = 1;
 			td.telemetry.singular.extensions++;
 		}
+
+		// Multi-cut. Fail-hard and no store, as reverse futility and for the same reasons: the
+		// evidence is a shallower TT bound plus one reduced-depth search, so a stored LOWER bound at
+		// this depth would answer later full-depth probes, and a return above beta would let the
+		// null-window parent store a tighter bound than any full-depth search supports.
+		if (singular_multicut_eligible(verify_value, singular_beta, beta, is_pv_node)) {
+			td.telemetry.singular.multicuts++;
+			return beta;
+		}
 	}
 
 	bool move_found = false;
@@ -1834,6 +1843,20 @@ bool AIPerplex::late_move_pruning_eligible(int depth, int alpha, int beta, bool 
 	if (beta != alpha + 1)
 		return false;
 	return std::abs(alpha) < GameValues::Mate_Threshold && std::abs(beta) < GameValues::Mate_Threshold;
+}
+
+bool AIPerplex::singular_multicut_eligible(int verify_value, int singular_beta, int beta, bool is_pv_node) const
+{
+	if (!tuning_.singular_multicut_enabled)
+		return false;
+	// A PV caller would read the bound as a principal-variation score, with an empty PV row.
+	if (is_pv_node)
+		return false;
+	// Only a negative mate-range beta is reachable; returning it would claim a mate distance on
+	// reduced-depth evidence.
+	if (std::abs(beta) >= GameValues::Mate_Threshold)
+		return false;
+	return verify_value >= singular_beta && singular_beta >= beta;
 }
 
 bool AIPerplex::reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame,

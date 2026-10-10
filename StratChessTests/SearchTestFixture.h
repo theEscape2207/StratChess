@@ -145,6 +145,11 @@ class AIPerlexTestFixture {
 	void set_singular_min_depth(int depth) const { ai->tuning_.singular_min_depth = depth; }
 	void set_singular_tt_depth_margin(int margin) const { ai->tuning_.singular_tt_depth_margin = margin; }
 	void set_singular_margin_factor(int factor) const { ai->tuning_.singular_margin_factor = factor; }
+	void set_singular_multicut(bool enabled) const { ai->tuning_.singular_multicut_enabled = enabled; }
+	bool singular_multicut_eligible(int verify_value, int singular_beta, int beta, bool is_pv_node) const
+	{
+		return ai->singular_multicut_eligible(verify_value, singular_beta, beta, is_pv_node);
+	}
 
 	// --- Reverse futility pokes ---
 	// The feature ships enabled. Its tests still set the flag explicitly, so each one names the
@@ -297,6 +302,7 @@ class AIPerlexTestFixture {
 	int64_t singular_eligible() const { return ai->td_.telemetry.singular.eligible; }
 	int64_t singular_verifications() const { return ai->td_.telemetry.singular.verifications; }
 	int64_t singular_extensions() const { return ai->td_.telemetry.singular.extensions; }
+	int64_t singular_multicuts() const { return ai->td_.telemetry.singular.multicuts; }
 	// Main + quiescence edges spent inside verification searches, on the same scale as
 	// mainnodes() + qnodes(), so it can be subtracted from them.
 	int64_t singular_verification_nodes() const { return ai->td_.telemetry.singular.verification_nodes; }
