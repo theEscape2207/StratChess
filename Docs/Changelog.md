@@ -15,7 +15,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
-## 2026-10-10: Code review sized to the diff (#779)
+## 2026-10-11: Worktree shell note
+
+### Changed
+- `CLAUDE.md` → Shell Notes: run Bash commands bare from the worktree, and write scripts and bodies
+  with Write rather than heredocs. The worktree guard refused about 50 such commands across the
+  2026-10-09/10 sessions, and each refusal cost a full-context retry.
+
+## 2026-10-11: Code review sized to the diff (#779)
 
 ### Changed
 - `open-pull-request` §1: three code-review modes. **Inline** for a trivial, already-verified fix.
