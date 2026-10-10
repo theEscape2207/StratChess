@@ -15,6 +15,19 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-11: Singular negative extension, default off (#798)
+
+### Added
+- Singular negative extension (slice 2 of #721), runtime int option `SingularNegativeExtension`,
+  plies 0-2, default 0 (off). At a non-PV node with non-mate `beta`, when the singular verification
+  fails high below `beta` and the hash move's TT bound still reaches it, the hash move is searched
+  that many plies shallower, with no re-search. Lab at 1 ply **-1.46 +/- 3.54 Elo** at 19,980 games
+  (run 38079265803, `Measurements/ci-per-change.md`), so it stays off; 2 plies is #803.
+- `info string singular negext <n>`, printed only when non-zero.
+
+### Changed
+- The singular extension flag became a signed hash-move depth adjustment, `[-2, +1]`.
+
 ## 2026-10-11: Worktree shell note
 
 ### Changed

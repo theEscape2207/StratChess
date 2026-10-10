@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-11 | 27fb2db, singular negative extension: `SingularNegativeExtension=1`, kept default-off (#798; one pre-registered run, ship iff lower bound > 0) | 27fb2db (with `SingularNegativeExtension=0`; both sides are one binary, so the delta is a runtime option) | 19980 | 10+0.1 | **-1.46 +/- 3.54** | inconclusive @ 19980 |
 | 2026-10-10 | 81a7008, singular multi-cut: `SingularMultiCut=true`, shipped as the default (#795; one pre-registered run, ship iff lower bound > 0) | 81a7008 (with `SingularMultiCut=false`; both sides are one binary, so the delta is a runtime option) | 19980 | 10+0.1 | **+8.38 +/- 3.55** | gain |
 | 2026-10-09 | c16e692, TT bucket prefetch in `DoMove` and `DoNullMove` (#776; the lab builds GCC, the shipping build is clang-cl) | f07859d | 26640 | 10+0.1 | **+16.58 +/- 3.07** | gain |
 | 2026-10-09 | 98b2a07, SCREEN arm C: `SingularTtDepthMargin=3`, the null control (#722) | 98b2a07 (at the shipped singular defaults, TT depth margin 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-0.55 +/- 5.29** | calibration |
@@ -75,6 +76,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-11 -- 27fb2db, singular negative extension at 1 ply (#798) (19980 games)
+
+**Not shipped; the default stays 0.** [Run `38079265803`](https://github.com/theEscape2207/StratChess/actions/runs/38079265803), 3 h 17 min, multi-cut on both sides. Pooled Ptnml(0-2) [756, 2420, 3704, 2372, 738], score 49.79%, interval [-5.00, +2.08]; 5 of 18 shards favour the candidate by score (12 the reference, 1 even). Bench nodes were -7.3% and wall clock -7.0% at fixed depth, nps flat, so the saved work bought no measurable Elo. 2 plies is #803.
 
 ### 2026-10-09 -- c16e692, TT bucket prefetch in DoMove and DoNullMove (#776) (26640 games)
 

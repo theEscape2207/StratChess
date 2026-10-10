@@ -47,6 +47,10 @@ struct SingularStats {
 	// `singular eligible` wording never changes (scripts match it exactly).
 	int64_t multicuts = 0;
 
+	// Completed verifications that granted a negative extension, the counterpart of `extensions`:
+	// the reduced child search may still fail legality or abort. Its own line, like multicuts.
+	int64_t negative_extensions = 0;
+
 	void add(const SingularStats& other) noexcept
 	{
 		eligible += other.eligible;
@@ -54,6 +58,7 @@ struct SingularStats {
 		extensions += other.extensions;
 		verification_nodes += other.verification_nodes;
 		multicuts += other.multicuts;
+		negative_extensions += other.negative_extensions;
 	}
 
 	template <class Sink> void append_info(Sink&& sink) const
@@ -63,6 +68,8 @@ struct SingularStats {
 			     " extended " + std::to_string(extensions) + " verifynodes " + std::to_string(verification_nodes));
 		if (multicuts != 0)
 			sink("singular multicut " + std::to_string(multicuts));
+		if (negative_extensions != 0)
+			sink("singular negext " + std::to_string(negative_extensions));
 	}
 };
 

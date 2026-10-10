@@ -67,6 +67,10 @@ TUNING_FIELD(int,     singular_margin_factor,   1, 0, 1000,    false, "SingularM
 // Singular multi-cut: a non-PV node returns beta when the verification fails high at a
 // singular_beta that is itself at or above beta. Only meaningful while SingularExtensions is on.
 TUNING_FIELD(bool,    singular_multicut_enabled, true, false, true, true, "SingularMultiCut", true)
+// Singular negative extension: plies the hash move is searched shallower at a non-PV node whose
+// verification fails high while tt_value still reaches beta. 0 is off. Only meaningful while
+// SingularExtensions is on.
+TUNING_FIELD(int,     singular_negative_extension_plies, 0, 0, 2, false, "SingularNegativeExtension", true)
 
 // Reverse futility pruning. Depth band shallow by default because that is where the surface is:
 // nearly all eligible frames sit at depths 1-3, so a wider band adds almost nothing while trusting
