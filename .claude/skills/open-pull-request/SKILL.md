@@ -11,9 +11,28 @@ The one thing the script cannot do for you. Address every finding before step 2.
 
 ### Code review: every PR outside the Docs tier
 
-`Scripts/Get-ChangeTier.ps1` prints the tier. Every tier except Docs gets this review, whatever its
-size. Load skill `code-review` (Claude: `mattpocock-skills:code-review`, not the built-in
-`/code-review`) and give it these inputs, so it never has to ask the user:
+`Scripts/Get-ChangeTier.ps1` prints the tier. Every tier except Docs gets one of three review
+modes. The first hard trigger that applies picks **full**. Otherwise you pick, and size the review
+to the risk:
+
+- **inline:** a trivial fix whose cause and whole effect you can read off the changed functions and
+  their callers, already shown working by a before/after run or a focused check. Review it in your
+  own context against the inputs below. Example: the first commit of #780.
+- **light:** anything else without a hard trigger. Both axes run in one fresh subagent on a cheaper
+  model (Claude: `sonnet`; Codex: Luna 6). Where none can be selected, it runs on the session's
+  model, recorded as `light (session model)`.
+- **full:** each axis runs in its own subagent on the session's model.
+
+Hard triggers, at any size:
+
+- Engine or Build tier.
+- A new executable file.
+- A change to which paths get deleted, or the removal of a guard, safety check or recovery path.
+- A change to what a measurement means: binary or option selection, pooling, statistics, validity.
+
+Load skill `code-review` (Claude: `mattpocock-skills:code-review`, not the built-in
+`/code-review`) and give it these inputs, so it never has to ask the user. The mode above replaces
+only its dispatch step; its briefs, smell baseline and two-axis report still apply.
 
 - **Fixed point:** `origin/main`.
 - **Spec:** the issue the PR cites (`Closes`/`Refs #N`) plus any `.claude/plans/` document the
@@ -26,9 +45,9 @@ size. Load skill `code-review` (Claude: `mattpocock-skills:code-review`, not the
   under a separate `Nearby debt` heading with `file:line`; these items are not findings. List each behaviour the diff removes (a recovery path,
   a guard, a message) and whether anything still needs it."
 
-Run each axis in its own subagent, in parallel or one after the other, on the session's model: a
-cheaper tier missed planted nearby debt that the session model found. An agent that cannot spawn
-subagents runs both in its own context, and the Review line (step 3) records `inline`.
+Question 4 covers only the changed functions, so every mode applies it. A stale comment that slips
+past a light review now and then is an accepted cost. An agent that cannot spawn subagents runs
+light and full in its own context and records the mode with `(no subagents)`.
 
 Every finding is fixed, rejected with a reason, or filed as an issue. A Spec finding rejected by
 reading the spec differently edits the spec (the issue or plan) to state that reading, in the same
@@ -57,7 +76,8 @@ git diff --name-only origin/main...HEAD
   do not need it.
 - `AIPerplex.cpp/.h`, `ThreadData.h` (killers/history), `Sort.cpp/.h` (MVV-LVA) → `search-reviewer`
 
-**Default is to dispatch**; the script only reminds, it never blocks. A narrow self-certification
+They run on the session's model whatever the code-review mode. **Default is to dispatch**; the
+script only reminds, it never blocks. A narrow self-certification
 carve-out exists for logging-only diffs — its six conditions are in `Docs/Workflow.md` → When
 `search-reviewer` may be skipped. Read them before claiming a skip, and state the skip in the PR
 body so it is auditable.
@@ -109,10 +129,10 @@ bypasses `.github/pull_request_template.md`, so supply the structure yourself.
   SPRT or lab Elo), the run still pending, or why none applies. Load skill `measure-strength` to pick
   the instrument, and to check one you already ran: its rules catch silently invalid results.
 - **A PR outside the Docs tier** carries a **Review** line in its Test plan:
-  `Review: code-review, Standards n / Spec m: x fixed, y rejected, filed #a #b; cost tk tokens,
-  s min`. The cost sums both axes' subagent reports; it feeds the value-versus-cost call on this
-  review, so write `cost unknown` rather than estimate. Write `Spec: skipped (no spec)` when no spec
-  was given, and `inline` when both axes ran in one context.
+  `Review: <mode>, Standards n / Spec m: x fixed, y rejected, filed #a #b; cost tk tokens, s min`.
+  The cost sums the subagent reports; it feeds the value-versus-cost call on this review, so write
+  `cost unknown` rather than estimate. Write `Spec: skipped (no spec)` when no spec was given. An
+  inline review gives its reason instead of a cost: `Review: inline — <why it is trivial>`.
   Notes lists each rejected finding on its own line: the finding in a few words, then the reason.
 - Include motivation, design reasoning and expected impact for anything non-trivial. Keep it short;
   detail goes in chat.
