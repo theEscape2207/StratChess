@@ -134,7 +134,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.singular_min_depth == 6);
 	CHECK(tuning.singular_tt_depth_margin == 3);
 	CHECK(tuning.singular_margin_factor == 1);
-	CHECK_FALSE(tuning.singular_multicut_enabled);
+	CHECK(tuning.singular_multicut_enabled);
 	CHECK(tuning.reverse_futility_enabled);
 	CHECK(tuning.reverse_futility_max_depth == 3);
 	CHECK(tuning.reverse_futility_margin == 100);
@@ -486,7 +486,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name SingularMinDepth type spin default 6 min 1 max 256",
 	    "option name SingularTtDepthMargin type spin default 3 min 0 max 256",
 	    "option name SingularMarginFactor type spin default 1 min 0 max 1000",
-	    "option name SingularMultiCut type check default false",
+	    "option name SingularMultiCut type check default true",
 	    "option name ReverseFutility type check default true",
 	    "option name ReverseFutilityMaxDepth type spin default 3 min 1 max 256",
 	    "option name ReverseFutilityMargin type spin default 100 min 0 max 1000",
