@@ -28,6 +28,24 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 ### Changed
 - The singular extension flag became a signed hash-move depth adjustment, `[-2, +1]`.
 
+## 2026-10-11: Worktree shell note
+
+### Changed
+- `CLAUDE.md` → Shell Notes: run Bash commands bare from the worktree, and write scripts and bodies
+  with Write rather than heredocs. The worktree guard refused about 50 such commands across the
+  2026-10-09/10 sessions, and each refusal cost a full-context retry.
+
+## 2026-10-11: Code review sized to the diff (#779)
+
+### Changed
+- `open-pull-request` §1: three code-review modes. **Inline** for a trivial, already-verified fix.
+  **Light**, one subagent on a cheaper model (Claude `sonnet`, Codex Luna 6), for other diffs
+  without a hard trigger. **Full**, the existing two subagents on the session model, for
+  Engine/Build tier, new executable files, deletion or guard changes, and changes to what a
+  measurement means. The mode replaces only `code-review`'s dispatch step. Nearby debt is checked in
+  every mode, and a stale comment slipping past now and then is accepted. `eval-reviewer` and
+  `search-reviewer` are unchanged and stay on the session model.
+
 ## 2026-10-10: Singular multi-cut, on by default (#795)
 
 ### Added

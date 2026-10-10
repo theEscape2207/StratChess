@@ -168,3 +168,6 @@ keeping its code is a new change.
 
 - Run PowerShell in a PowerShell shell or from a `.ps1` file; PS7 syntax inlined into the Git Bash
   tool fails silently.
+- The Bash shell starts in your worktree: run commands bare. Write scripts and bodies with Write,
+  run them by path, and commit with `-m`; the worktree guard refuses heredocs, `cd` chains and
+  path variables.
