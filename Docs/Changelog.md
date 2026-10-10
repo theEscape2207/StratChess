@@ -28,6 +28,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   search-profile script help. Clarified lock-free TT probes/stores versus mutex-serialized clearing.
 - Refreshed limit resolution/polling, TT prefetch lifetime, lazy move ordering, history-adjusted
   LMR and the Windows stack reservation in the architecture map.
+- Kept the counter-build example in a separate profile directory, clarified evidence links and
+  preserved README maintenance guidance in a source comment following PR review.
 
 ## 2026-10-10: Compare-SearchEquivalence accepts a profile build again (#792)
 

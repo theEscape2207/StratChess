@@ -3,9 +3,12 @@
 A UCI chess engine written in modern C++23, focused on playing strength while keeping the code
 clear enough to keep changing.
 
-This README owns the project introduction and first build/run steps. Continue with the
-[Engine guide](Docs/EngineGuide.md) for usage examples, configuration and output interpretation;
-the documentation map below routes implementation and contributor questions to their owners.
+Continue with the [Engine guide](Docs/EngineGuide.md) for usage examples, configuration and output
+interpretation.
+
+<!-- Purpose: project introduction and first build/run steps. Keep detailed examples and references
+in their owning documents; maintain this entry point and its links when the build, launch interface
+or documentation structure changes. -->
 
 ## Features
 
@@ -87,15 +90,12 @@ default.
 | [Docs/EngineGuide.md](Docs/EngineGuide.md) | Run and configure the engine, use the search API, interpret output |
 | [Docs/Architecture.md](Docs/Architecture.md) | Module responsibilities, dependencies, state ownership and execution flows |
 | [Docs/EngineContracts.md](Docs/EngineContracts.md) | Non-obvious API contracts to read before an engine edit |
-| [Docs/Workflow.md](Docs/Workflow.md) | Standing decisions (validation strategy, speed/nps, threat model), validation tiers, review gates, runtime files |
+| [Docs/Workflow.md](Docs/Workflow.md) | Standing decisions (validation strategy, speed/nps, threat model), validation tiers and review gates |
 | [Docs/CI.md](Docs/CI.md) | What each GitHub Actions workflow runs, and when |
 | [Docs/TestDesign.md](Docs/TestDesign.md) | Test coverage map and how to write new tests |
 | [Docs/Changelog.md](Docs/Changelog.md) | What changed and when |
 | [Measurements/](Measurements/) | Every strength measurement taken, plus the setup and the recording convention |
 | [CLAUDE.md](CLAUDE.md) | Contributor rules and routing to required workflows |
-
-Keep detailed examples and references in their owning documents; maintain this short entry point
-and its links when the build, launch interface or documentation structure changes.
 
 ## Licence
 

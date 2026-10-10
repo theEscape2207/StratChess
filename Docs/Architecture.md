@@ -262,9 +262,10 @@ emission. Instrumentation output and logging serve external consumers described 
 
 Local scripts and CI invoke the production executable through UCI or diagnostic CLI commands.
 The strength lab stages candidate/reference binaries, runs match shards and collects results;
-its orchestration belongs to [CI](CI.md). [Workflow](Workflow.md#what-validates-what) explains the
-evidence each instrument supplies, [TestDesign](TestDesign.md) maps test coverage, and
-[measure-strength](../.claude/skills/measure-strength/SKILL.md) owns experiment procedures.
+its orchestration belongs to [CI](CI.md). [Workflow](Workflow.md#what-validates-what) explains
+correctness and equivalence evidence, and [TestDesign](TestDesign.md) maps test coverage.
+[measure-strength](../.claude/skills/measure-strength/SKILL.md) owns experiment procedures and
+the limits of profile, bench and Elo evidence.
 Recorded evidence lives in [Measurements](../Measurements/README.md).
 
 ## 6. How to maintain this map

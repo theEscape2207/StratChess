@@ -152,13 +152,15 @@ profiles, then rebuild the executable. Run the following from the repository roo
 **Visual Studio Developer PowerShell**, so raw CMake can find the compiler and SDK:
 
 ```powershell
-cmake --preset windows-clang-cl -DSTRAT_TT_STATS=1 -DSTRAT_SEARCH_PROFILE=1
-.\build.ps1 main
+cmake --preset windows-clang-cl -B build/windows-clang-cl-profile -DSTRAT_TT_STATS=1 -DSTRAT_SEARCH_PROFILE=1
+cmake --build build/windows-clang-cl-profile --target StratChessEvolved
 ```
 
-These are cached CMake settings: set both back to `0` and rebuild to restore the default
-instrumentation configuration. The test target always enables both. For experimental setup,
-comparison scripts and interpretation limits, use
+The instrumented executable is `build/windows-clang-cl-profile/StratChessEvolved.exe`; pass that
+path explicitly to diagnostic tools. This separate directory leaves the shipping build used by
+bench and match scripts unchanged. The flags stay cached in the profile directory; the test
+target always enables both regardless of these settings. For experimental setup, comparison
+scripts and interpretation limits, use
 [measure-strength](../.claude/skills/measure-strength/SKILL.md).
 
 ### TT statistics
