@@ -15,6 +15,16 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-10: Code review sized to the diff (#779)
+
+### Changed
+- `open-pull-request` §1: three code-review modes. **Inline** for a trivial, already-verified fix.
+  **Light**, one subagent on a cheaper model, for other diffs without a hard trigger. **Full**, the
+  existing two subagents on the session model, for Engine/Build tier, new executable files,
+  deletion or guard changes, and changes to what a measurement means. Nearby debt is checked in
+  every mode, and a stale comment slipping past now and then is accepted. `eval-reviewer` and
+  `search-reviewer` are unchanged and stay on the session model.
+
 ## 2026-10-10: Singular multi-cut, on by default (#795)
 
 ### Added
