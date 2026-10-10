@@ -80,7 +80,7 @@ for the actual entry memory and bucket count.
 **Game mode:** edit [game_settings.json](../StratChessEvolved/game_settings.json). Under
 `game.players.white` and `.black`, `search_limits` supplies per-move constraints, `search_tuning`
 supplies search parameters, and `threads` selects worker count. The file supports C-style comments
-through nlohmann/json; PowerShell's `ConvertFrom-Json` does not accept those comments.
+through nlohmann/json; PowerShell 7's `ConvertFrom-Json` also accepts those comments.
 
 [SearchTuning.def](../StratEngine/SearchTuning.def) is the catalogue of fields, defaults, ranges
 and JSON/UCI names. JSON and UCI expose different subsets. See
@@ -115,10 +115,12 @@ read [search-service contracts](EngineContracts.md#the-search-service) before in
 
 ## Interpret search output
 
-UCI `info depth` lines describe accepted iterations: score, cumulative nodes, elapsed time and
-principal variation (PV). `score cp` is in centipawns and `score mate` is a mate distance in moves,
+During search, UCI `info depth` lines describe accepted iterations: score, cumulative nodes,
+elapsed time and principal variation (PV). The final `info depth` line is a summary with aggregate
+counts and a one-move PV. `score cp` is in centipawns and `score mate` is a mate distance in moves,
 from the root side's perspective. `bestmove` completes the search; `0000` indicates no move.
-`hashfull` measures sampled TT occupancy in permille, not the usefulness of its entries.
+`hashfull` reports the fraction of sampled TT entries written since this search began, in
+permille. Older occupied entries do not count; it measures neither total occupancy nor usefulness.
 
 Iteration node counts describe the main worker. Final counts include helpers and work from a
 rejected trailing iteration, so subtracting the last iteration's nodes from the final total only
@@ -130,10 +132,13 @@ These payloads follow `info string`; zero-only categories can be absent:
 
 | Payload | Meaning |
 |---|---|
+| `treenodes main N qs N` | Final main-tree and quiescence counts, summed over workers; together they equal the final UCI `nodes` |
 | `singular eligible N verified N extended N verifynodes N` | Eligible singular candidates, verification searches, granted extensions and work inside verification searches |
 | `frontier skips N` | Moves skipped by frontier futility |
 | `lmp skips N` | Moves skipped by late move pruning |
 | `aspiration iterations N faillow N failhigh N fullwindow N failnodes N` | Iterations, failed windows, full-window fallbacks and nodes spent in failed windows |
+
+For node units and comparisons across revisions, see [Workflow](Workflow.md#speed-and-nps).
 
 Aspiration `failnodes` includes both main and quiescence trees but excludes the full-window
 fallback's own work. Telemetry aggregates all workers; helpers also aspirate their first depth
@@ -143,7 +148,8 @@ conditions live in [SearchTelemetry.h](../StratEngine/SearchTelemetry.h).
 ### Enable additional counters
 
 Configure CMake with `-DSTRAT_TT_STATS=1` for TT counts or `-DSTRAT_SEARCH_PROFILE=1` for search
-profiles, then rebuild the executable. For the Windows shipping preset, for example:
+profiles, then rebuild the executable. Run the following from the repository root in a
+**Visual Studio Developer PowerShell**, so raw CMake can find the compiler and SDK:
 
 ```powershell
 cmake --preset windows-clang-cl -DSTRAT_TT_STATS=1 -DSTRAT_SEARCH_PROFILE=1
@@ -157,8 +163,8 @@ comparison scripts and interpretation limits, use
 
 ### TT statistics
 
-`hashfull` says how full the table is, not whether that occupancy earns
-anything. A build configured with `-DSTRAT_TT_STATS=1` prints one line after each search:
+`hashfull` samples entries written during this search; probe/store statistics help explain how
+the table is used. A build configured with `-DSTRAT_TT_STATS=1` prints one line after each search:
 
 ```
 info string ttstats mainprobes .. mainhits .. maincutoffs .. qsprobes .. qshits .. qscutoffs ..
