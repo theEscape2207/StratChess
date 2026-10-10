@@ -229,7 +229,10 @@ function Get-ProfileInfoKeys {
     param([Parameter(Mandatory)][string]$HeaderText)
     foreach ($block in ($HeaderText -split '(?m)^struct ')) {
         if ($block -notmatch 'compiled = kSearchProfileCompiled;') { continue }
-        foreach ($m in [regex]::Matches($block, 'sink\("(\w+) ')) { $m.Groups[1].Value }
+        $keyMatches = [regex]::Matches($block, 'sink\("(\w+) ')
+        # A sink this pattern cannot read (a built string, a bare key) must not drop the struct silently.
+        if ($keyMatches.Count -eq 0) { throw "no literal sink key in profile struct '$(($block -split '\s')[0])'" }
+        foreach ($m in $keyMatches) { $m.Groups[1].Value }
     }
 }
 

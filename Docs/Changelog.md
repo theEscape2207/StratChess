@@ -15,7 +15,7 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
-## 2026-10-10: Compare-SearchEquivalence accepts a profile build again
+## 2026-10-10: Compare-SearchEquivalence accepts a profile build again (#792)
 
 ### Fixed
 - `Scripts/Compare-SearchEquivalence.ps1` did not list `lmrhistory` among the `STRAT_SEARCH_PROFILE`
