@@ -53,7 +53,8 @@ unchanged tree is `Run-Bench.ps1`'s question, and where the time goes is
 verdict: gate on wall clock and Elo as above. Screen with
 `-Seeds 8 -Depth 12 -Positions Tests/profile-screen.fen` (~24 min; catches a 5% late-cut change 97% of the time, a 3% one about 3 times in 5) and
 read the Screen block's ±2 SE. One run per side carries tree noise larger than a typical ordering
-effect (`Measurements/profile-screen.md`).
+effect (`Measurements/profile-screen.md`). Field meanings and emission conditions:
+[EngineGuide](../../../Docs/EngineGuide.md#interpret-search-output).
 
 A **local fixed batch** (500 games, ~40 min, ±25 Elo) is supported but is not the default: a third
 of the lab's wall-clock for a fraction of its precision, so it mostly buys inconclusive runs. Reach

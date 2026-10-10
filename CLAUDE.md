@@ -7,6 +7,7 @@ This file holds the rules that change what you do. Detail is pointed at, not dup
 
 | Need | Read |
 |---|---|
+| run the engine, configure a session, interpret output | `Docs/EngineGuide.md` |
 | module ownership, state lifetimes, search lifecycle | `Docs/Architecture.md` |
 | non-obvious API contracts before an engine edit | `Docs/EngineContracts.md` |
 | coding standards, for writing or reviewing code | `Docs/CodingStandards.md` |

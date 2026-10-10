@@ -15,6 +15,22 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-10: Separate engine documentation ownership
+
+### Changed
+- Renamed `Docs/Engine-Readme.md` to `Docs/EngineGuide.md`: practical build/run, configuration,
+  C++ usage and diagnostic output. Preserved telemetry field definitions and corrected logging
+  setup and file-creation guidance against the current implementation.
+- Architecture now owns the module/source map, state lifetimes and flows; EngineContracts owns
+  exact obligations. Purpose statements, boundary links and maintenance guidance preserve that
+  split. Removed duplicate algorithms, copied structs, stale limitations and historical figures.
+- Updated README/CLAUDE navigation, Workflow runtime-file routing, the measurement skill and
+  search-profile script help. Clarified lock-free TT probes/stores versus mutex-serialized clearing.
+- Refreshed limit resolution/polling, TT prefetch lifetime, lazy move ordering, history-adjusted
+  LMR and the Windows stack reservation in the architecture map.
+- Kept the counter-build example in a separate profile directory, clarified evidence links and
+  preserved README maintenance guidance in a source comment following PR review.
+
 ## 2026-10-10: Compare-SearchEquivalence accepts a profile build again (#792)
 
 ### Fixed

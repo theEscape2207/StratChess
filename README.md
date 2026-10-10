@@ -3,6 +3,13 @@
 A UCI chess engine written in modern C++23, focused on playing strength while keeping the code
 clear enough to keep changing.
 
+Continue with the [Engine guide](Docs/EngineGuide.md) for usage examples, configuration and output
+interpretation.
+
+<!-- Purpose: project introduction and first build/run steps. Keep detailed examples and references
+in their owning documents; maintain this entry point and its links when the build, launch interface
+or documentation structure changes. -->
+
 ## Features
 
 - **Search** — iterative deepening with principal variation search, quiescence search, null-move
@@ -60,27 +67,10 @@ The binary speaks UCI by default, which is what chess GUIs expect. Run it from t
 ```
 StratChessEvolved.exe                       # UCI mode (also: 'uci')
 StratChessEvolved.exe game                  # self-contained game using game_settings.json
-StratChessEvolved.exe perft run <depth>     # node counts from the start position
-StratChessEvolved.exe perft test            # perft suite with known-correct counts
-StratChessEvolved.exe tactical test         # tactical suite from Tests/
-StratChessEvolved.exe tactical stability N  # N consecutive runs, flags nondeterminism
-StratChessEvolved.exe eval <fen-file>       # batch-score positions
 ```
 
-In UCI mode the engine also accepts **`go perft <depth>`** (or `perft <depth>`), printing per-root-move
-node counts in the usual divide format:
-
-```
-position startpos
-go perft 3
-a2a4: 420
-...
-```
-
-That is what external move-generation validators drive.
-
-Per-player search limits, thread count and the starting position live in
-`StratChessEvolved/game_settings.json`.
+For a first UCI search, game configuration, perft, tactical tests and batch evaluation, follow the
+[Engine guide](Docs/EngineGuide.md#build-and-run).
 
 ## Tests
 
@@ -97,14 +87,15 @@ default.
 
 | Document | Contents |
 |---|---|
-| [Docs/Engine-Readme.md](Docs/Engine-Readme.md) | Engine internals: search, evaluation, data structures |
+| [Docs/EngineGuide.md](Docs/EngineGuide.md) | Run and configure the engine, use the search API, interpret output |
+| [Docs/Architecture.md](Docs/Architecture.md) | Module responsibilities, dependencies, state ownership and execution flows |
 | [Docs/EngineContracts.md](Docs/EngineContracts.md) | Non-obvious API contracts to read before an engine edit |
-| [Docs/Workflow.md](Docs/Workflow.md) | Standing decisions (validation strategy, speed/nps, threat model), validation tiers, review gates, runtime files |
+| [Docs/Workflow.md](Docs/Workflow.md) | Standing decisions (validation strategy, speed/nps, threat model), validation tiers and review gates |
 | [Docs/CI.md](Docs/CI.md) | What each GitHub Actions workflow runs, and when |
 | [Docs/TestDesign.md](Docs/TestDesign.md) | Test coverage map and how to write new tests |
 | [Docs/Changelog.md](Docs/Changelog.md) | What changed and when |
 | [Measurements/](Measurements/) | Every strength measurement taken, plus the setup and the recording convention |
-| [CLAUDE.md](CLAUDE.md) | Coding conventions and contributor workflow |
+| [CLAUDE.md](CLAUDE.md) | Contributor rules and routing to required workflows |
 
 ## Licence
 

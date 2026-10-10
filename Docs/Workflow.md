@@ -796,18 +796,7 @@ native ext4.
 
 ## Runtime output files
 
-All paths are relative to the **working directory**, not the exe location. Run the exe from
-`StratChessEvolved/` so `game_settings.json` resolves and output lands in `StratChessEvolved/logs/`.
-
-| File | Created by | Context | Notes |
-|---|---|---|---|
-| `logs/multisink.txt` | `Logger::InitDefault()` (`Logger.cpp`) | Game mode only; **not** in tests | trace→file, info→console |
-| `logs/aiperplex.log` | `AIPerplex::SetVerboseLogging(true)` (`AIPerplex.cpp`) | Whenever AIPerplex is constructed | Level `off` (file stays empty) when verbose is disabled afterwards, which is what tests do |
-| `logs/SimplePerfStats.txt` | `Logger::EnsurePerfLogger()` (`Game.cpp` only) | Game mode only — `Game::Init()` is the sole creator | Written per AI move by `StopTimerAndAdjustVars()`, which only writes if a logger already exists; no file in tests, the tactical runner or UCI mode |
-| `logs/gamelist.txt` | `Game::CreateGameMoveFile()` (`Game.cpp`) | Game mode only | One line per move via `MoveFormatter::ToShort` |
-| `logs/uci_commands_<pid>.log` | `uci --log-commands[=path]` (`UCIHandler.cpp`) | UCI mode, **opt-in only** — nothing is written without the flag | One line per received command, flushed per line so a hang or crash keeps its tail. The pid is in the name because a match at `-Concurrency 6` runs six engines from one directory. Never stdout: in UCI mode spdlog's *default* logger is still its built-in stdout console sink, silent only because `main()` sets the level to `off` |
-
-All five are gitignored. `logs/` does **not** need to pre-exist — spdlog's `file_helper::open` calls
-`os::create_dir()` on the parent path. spdlog *does* swallow a genuine `basic_file_sink` constructor
-failure silently, so a permissions problem produces no file and no error message.
-
+The [Engine guide](EngineGuide.md#logging-and-runtime-files) owns runtime log locations,
+creation conditions and logging examples. For telemetry field meanings, see its
+[output reference](EngineGuide.md#interpret-search-output); measurement procedures remain here
+and in [measure-strength](../.claude/skills/measure-strength/SKILL.md).
