@@ -585,15 +585,15 @@ past decisions and for retros, so a missed copy is tolerable and nothing is back
 
 | Artifact | Name |
 |---|---|
-| Design doc | `<issue> - <Title>.md` |
-| Its `.progress.md` ledger | `<issue> - <Title>.progress.md` |
-| Its cross-agent review | `<issue> - <Title>.review.md` |
-| A PR review | `<issue> - <Title> - PR <n>.review.md` |
+| Design doc | `<issue> - <name>.md` |
+| Its `.progress.md` ledger | `<issue> - <name>.progress.md` |
+| Its cross-agent review | `<issue> - <name>.review.md` |
+| A PR review | `<issue> - <name> - PR <n>.review.md` |
 
-- `<Title>` is the issue title at the first write, stripped of characters Windows forbids in file
-  names and cut to about 80 characters. A later issue rename leaves the files alone.
-- Without an issue, `<issue> - <Title>` becomes the plan's kebab name, or `PR <n> - <PR title>` for
-  a PR review. Several plans under one issue append ` - <kebab-name>`.
+- `<name>` is the plan's kebab file name in `.claude/plans/`, e.g.
+  `798 - singular-negative-extension.review.md`. A PR review with no plan uses a short kebab slug of
+  the PR title. Without an issue, drop `<issue> - `.
+- Records written under the earlier issue-title rule keep their names.
 - **Written** when a doc is reviewed (the review, plus a copy of the doc as reviewed; skill
   `cross-agent-review`), and when a plan is closed (the final doc and its ledger, overwriting the
   earlier copy; skill `exec-plan`).

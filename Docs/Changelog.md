@@ -15,6 +15,13 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-11: Design records named by plan kebab name (#801)
+
+### Changed
+- `Docs/Workflow.md` → Design records: records are `<issue> - <plan kebab name>`, e.g.
+  `798 - singular-negative-extension.review.md`, instead of the issue title cut to ~80 characters,
+  which broke mid-word and had to be truncated by hand. Existing records keep their names.
+
 ## 2026-10-11: Singular negative extension, default off (#798)
 
 ### Added
