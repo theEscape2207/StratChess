@@ -862,7 +862,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	                                td.history, scored_idx, cont_rows);
 
 	// Singular extension: if the transposition table's move is much better than every
-	// alternative, search it one ply deeper. The verification runs HERE, before the move
+	// alternative, search it one ply deeper; if an alternative also comes close, multi-cut or
+	// negative extension may apply instead. The verification runs HERE, before the move
 	// loop, because the loop only learns a move is legal from DoMove() returning true --
 	// by the time it can name a "first legal move" the board already holds the child, and
 	// the verification has to search this position, at this ply.
@@ -933,7 +934,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// Negative extension. No re-search: a reduced fail-high stands and the node stores a LOWER
 		// bound at this depth. That is a stronger speculation than LMR's, which re-searches any
 		// reduced result above alpha; re-searching here would undo the saving exactly where the TT
-		// bound expects the cut.
+		// bound expects the cut. The cutoff's killer and history bonuses still scale by this node's
+		// depth, not the reduced child's: deliberate, as the bound stored at this depth is.
 		if (singular_negative_extension_eligible(verify_value, singular_beta, tt_value_for_singular, beta,
 		                                         is_pv_node)) {
 			hash_move_depth_adjust = -tuning_.singular_negative_extension_plies;

@@ -63,6 +63,22 @@ TEST_CASE("Singular: baseline position triggers a verification and extends", "[s
 	CHECK(fix.singular_extensions() == 1);
 }
 
+TEST_CASE("Singular: a fail-low still extends by one ply with negative extension on", "[search][singular]")
+{
+	AIPerlexTestFixture fix(kBaselineFen);
+	arm_baseline(fix);
+	fix.set_singular_negative_extension(2);
+	const std::string hash_move = fix.first_sorted_move_uci();
+
+	fix.search_node(kDepth, /*ply=*/1);
+
+	CHECK(fix.singular_extensions() == 1);
+	CHECK(fix.singular_negative_extensions() == 0);
+	const auto child = fix.probe_tt_after(hash_move, /*ply=*/2);
+	REQUIRE(child.has_value());
+	CHECK(child->depth == kDepth);
+}
+
 TEST_CASE("Singular: the extension reaches the child search", "[search][singular]")
 {
 	// The counters above are incremented in the verification block, BEFORE the child is searched,
