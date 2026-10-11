@@ -219,6 +219,19 @@ if(STRAT_STDLIB_DEBUG AND (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
             "_ITERATOR_DEBUG_LEVEL in Debug builds already.")
 endif()
 
+# LLVM source-based coverage of the test binary; Scripts/Get-Coverage.ps1 drives it
+# through the windows-clang-cl-coverage preset (#156). clang-cl only: it is the one
+# toolchain the report was verified on, and a GNU driver would need its own spelling.
+option(STRAT_COVERAGE
+       "Instrument StratChessTests for LLVM source-based coverage. clang-cl only." OFF)
+
+if(STRAT_COVERAGE AND NOT (CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
+                           AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+    message(FATAL_ERROR
+            "STRAT_COVERAGE needs clang-cl. Use the windows-clang-cl-coverage preset, "
+            "or Scripts/Get-Coverage.ps1.")
+endif()
+
 # spdlog and nlohmann/json are INTERFACE targets whose headers compile inside our
 # own translation units, so they pick up these settings for free. Catch2 is the
 # exception: it is a compiled library, and it passes std::string and std::vector
@@ -416,6 +429,13 @@ add_executable(StratChessTests
     ${ENGINE_SOURCES}
     ${TEST_SOURCES})
 strat_configure_target(StratChessTests)
+
+# The /clang: spelling is what reaches the frontend (strat_configure_target explains
+# why); the driver then names the profile runtime in each object for lld-link.
+if(STRAT_COVERAGE)
+    target_compile_options(StratChessTests PRIVATE
+        /clang:-fprofile-instr-generate /clang:-fcoverage-mapping)
+endif()
 # STRAT_TT_STATS and STRAT_SEARCH_PROFILE are unconditional here, so the tests exercise the
 # counting; neither changes a search decision.
 target_compile_definitions(StratChessTests PRIVATE

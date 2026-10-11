@@ -38,6 +38,15 @@
       }
     },
     {
+      "name": "windows-clang-cl-coverage",
+      "inherits": "windows-clang-cl",
+      "displayName": "Windows / clang-cl + Ninja (Release, coverage)",
+      "description": "Instruments the test binary for LLVM source-based coverage. Driven by Scripts/Get-Coverage.ps1; never measure speed or strength with it.",
+      "cacheVariables": {
+        "STRAT_COVERAGE": "ON"
+      }
+    },
+    {
       "name": "windows-msvc",
       "inherits": "windows-base",
       "displayName": "Windows / MSVC + Ninja (Release)",
@@ -60,6 +69,7 @@
   "buildPresets": [
     { "name": "windows-clang-cl",       "configurePreset": "windows-clang-cl" },
     { "name": "windows-clang-cl-debug", "configurePreset": "windows-clang-cl-debug" },
+    { "name": "windows-clang-cl-coverage", "configurePreset": "windows-clang-cl-coverage" },
     { "name": "windows-msvc",           "configurePreset": "windows-msvc" },
     { "name": "windows-msvc-debug",     "configurePreset": "windows-msvc-debug" }
   ]
