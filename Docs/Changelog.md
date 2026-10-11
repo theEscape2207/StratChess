@@ -15,6 +15,16 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-11: Nightly ccache and off-the-hour schedule (#807)
+
+### Changed
+- `nightly.yml` builds reuse `build-and-test.yml`'s ccache keys, except `extended-tests` Debug,
+  kept uncached as the one daily from-scratch build. First run (38131532660) against the
+  uncached one (38128748003): `sanitize-extended` Build 288 → 7 s (job 6m19 → 1m49),
+  `extended-tests` Release 180 → 2 s, perft and tactical builds ~60-80 → 11-12 s, the
+  `lint-deep-windows` database step 97 → 59 s (its ThinLTO link is uncached).
+- Cron `0 3` → `23 1` UTC: GitHub's schedule queue had started the top-of-hour slot 6-7 h late.
+
 ## 2026-10-11: Singular negative extension removed (#803)
 
 ### Removed
