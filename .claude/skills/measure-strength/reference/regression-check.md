@@ -38,11 +38,16 @@ Elo, and the script rejects it.
 
 **Unresolved or Slowdown is not yet a slowdown.** If the change added no per-node work, code
 placement alone accounts for several percent — #556 read −3.90% over 9 pairs and was pure
-placement. Escalate in order, each a new series with its round count fixed up front:
+placement; #809's −0.60% on a 60-round control read −0.15% relinked. Escalate with one series,
+its round count fixed up front:
 
-1. `-Control -Rounds 60 -Affinity 4`, about 35 min: an identical baseline copy measures the
-   machine's own noise. Six short pairs that read inconclusive have resolved this way.
-2. `New-OrderedBuildPair.ps1` on both trees, then re-run on the pair it prints. It fails rather
-   than return a pair whose `pvs` and `quiescence` addresses differ.
+1. `New-OrderedBuildPair.ps1` on both trees. It fails rather than return a pair whose `pvs` and
+   `quiescence` addresses differ.
+2. `-Control -Rounds 60 -Affinity 4` on the pair it prints, about 35 min. The control arm measures
+   the machine's own noise and the relink removes placement, so the one series settles both.
 
+If the relink fails, run step 2 on the as-built exes and report its verdict as placement-unruled.
 Only a delta that survives the relink is a slowdown, and then find it before shipping.
+
+For a default-off option the lab is still deciding, hold this escalation until the lab verdict: its
+cost at the default matters only if the lab parks it and the code merges anyway.
