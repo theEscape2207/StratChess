@@ -21,10 +21,6 @@
 .PARAMETER Html
     Also write llvm-cov's annotated-source HTML report into this directory.
 
-.PARAMETER SummaryPath
-    Also write the total as JSON (lines, regions, branches, functions; each with
-    covered, count and percent) to this file.
-
 .PARAMETER SelfTest
     Run the summary-parsing tests and exit. Builds nothing.
 
@@ -40,8 +36,6 @@ param(
     [string]$Tag = '~[slow]',
 
     [string]$Html = '',
-
-    [string]$SummaryPath = '',
 
     [switch]$SelfTest
 )
@@ -160,15 +154,17 @@ if (Test-Path $profileDir) { Remove-Item -Recurse -Force $profileDir }
 New-Item -ItemType Directory -Path $profileDir | Out-Null
 
 Write-Host "`n==> Running instrumented tests ($Tag)" -ForegroundColor Cyan
+$callerProfileFile = $env:LLVM_PROFILE_FILE
 $env:LLVM_PROFILE_FILE = Join-Path $profileDir 'tests-%p.profraw'
 try {
     & $testExe $Tag
     $testExit = $LASTEXITCODE
 } finally {
-    Remove-Item Env:LLVM_PROFILE_FILE
+    $env:LLVM_PROFILE_FILE = $callerProfileFile
 }
 if ($testExit -ne 0) {
-    Write-Error "Tests failed (exit $testExit); no coverage report from a failing run."
+    # Write-Host, not Write-Error: under 'Stop' the latter would exit 1, not the test's code.
+    Write-Host "Tests failed (exit $testExit); no coverage report from a failing run." -ForegroundColor Red
     exit $testExit
 }
 
@@ -187,17 +183,14 @@ Write-Host "`n==> Coverage by file" -ForegroundColor Cyan
 & $llvmCov report @covArgs
 if ($LASTEXITCODE -ne 0) { Write-Error "llvm-cov report failed (exit $LASTEXITCODE)."; exit 1 }
 
-$exportJson = (& $llvmCov export -format=text -summary-only @covArgs) -join "`n"
+$exportText = (& $llvmCov export -format=text -summary-only @covArgs) -join "`n"
 if ($LASTEXITCODE -ne 0) { Write-Error "llvm-cov export failed (exit $LASTEXITCODE)."; exit 1 }
-$coverageTotals = Get-CoverageTotals -ExportJson $exportJson
+$coverageTotals = Get-CoverageTotals -ExportJson $exportText
 
 if ($Html) {
     & $llvmCov show -format=html "-output-dir=$Html" @covArgs
     if ($LASTEXITCODE -ne 0) { Write-Error "llvm-cov show failed (exit $LASTEXITCODE)."; exit 1 }
     Write-Host "HTML report: $(Join-Path $Html 'index.html')"
-}
-if ($SummaryPath) {
-    $coverageTotals | ConvertTo-Json -Depth 4 | Set-Content -Path $SummaryPath -Encoding utf8
 }
 
 Write-Host "`n==> Total ($Tag): $(Format-CoverageTotals -Totals $coverageTotals)" -ForegroundColor Cyan

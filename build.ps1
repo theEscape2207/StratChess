@@ -29,9 +29,9 @@
     between binaries from the same compiler.
 
 .PARAMETER Coverage
-    Use the windows-clang-cl-coverage preset: the test binary is instrumented for LLVM
-    source-based coverage. clang-cl Release only. Scripts/Get-Coverage.ps1 drives it
-    and turns the profile into a report.
+    Build the test binary into the windows-clang-cl-coverage preset, instrumented for
+    LLVM source-based coverage. 'tests' verb, clang-cl Release only. Scripts/Get-Coverage.ps1
+    drives it: it runs the binary with a profile path and turns the profile into a report.
 
 .PARAMETER SelfTest
     Run build-wrapper regression tests without configuring or building. Covers the
@@ -84,8 +84,10 @@ $RepoRoot = $PSScriptRoot
 $Preset = "windows-$Compiler"
 if ($Config -eq 'Debug') { $Preset += '-debug' }
 if ($Coverage) {
-    if ($Compiler -ne 'clang-cl' -or $Config -ne 'Release') {
-        Write-Error "-Coverage needs -Compiler clang-cl -Config Release; the only coverage preset is windows-clang-cl-coverage."
+    # Only 'tests': a run verb would scatter default.profraw into the working directory,
+    # and the engine binary is never instrumented.
+    if ($Verb -ne 'tests' -or $Compiler -ne 'clang-cl' -or $Config -ne 'Release') {
+        Write-Error "-Coverage takes the 'tests' verb with -Compiler clang-cl -Config Release. Run Scripts/Get-Coverage.ps1 for a report."
         exit 1
     }
     $Preset += '-coverage'

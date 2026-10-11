@@ -20,8 +20,9 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 ### Added
 - `STRAT_COVERAGE` CMake option (clang-cl only, refused elsewhere), the `windows-clang-cl-coverage`
   preset, `build.ps1 -Coverage` and `Scripts/Get-Coverage.ps1`: LLVM source-based coverage of the
-  test binary. Fast-tier baseline **79.3% of engine lines**, 83.4% of branches; the instrumented
-  tests run in ~6 s. Report-only; the nightly job is slice 2.
+  test binary. Fast-tier baseline **79.3% of engine lines**, 83.3% of branches (a few lines vary
+  between runs, from thread timing); the instrumented tests run in ~6 s. Report-only; the nightly
+  job is slice 2.
 
 ## 2026-10-11: Nightly ccache and off-the-hour schedule (#807)
 

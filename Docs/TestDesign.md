@@ -75,8 +75,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 
 The Coverage Map below says which tests target a component; `Scripts/Get-Coverage.ps1` measures
 what the fast tier actually executes (LLVM source-based coverage, `windows-clang-cl-coverage`
-preset). Baseline on 2026-10-11 (#156): **79.3% of engine lines**, 83.3% of branches.
-`-Html <dir>` writes annotated source to find the unexecuted lines. Near-zero figures for
+preset). `-Html <dir>` writes annotated source to find the unexecuted lines. Near-zero figures for
 `defines.h` and `Magic.h` are compile-time tables, not gaps; `Tools/` is exercised by `[slow]`.
 
 ---

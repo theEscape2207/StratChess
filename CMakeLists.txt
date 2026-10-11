@@ -220,7 +220,7 @@ if(STRAT_STDLIB_DEBUG AND (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
 endif()
 
 # LLVM source-based coverage of the test binary; Scripts/Get-Coverage.ps1 drives it
-# through the windows-clang-cl-coverage preset (#156). clang-cl only: it is the one
+# through the windows-clang-cl-coverage preset. clang-cl only: it is the one
 # toolchain the report was verified on, and a GNU driver would need its own spelling.
 option(STRAT_COVERAGE
        "Instrument StratChessTests for LLVM source-based coverage. clang-cl only." OFF)
@@ -430,8 +430,9 @@ add_executable(StratChessTests
     ${TEST_SOURCES})
 strat_configure_target(StratChessTests)
 
-# The /clang: spelling is what reaches the frontend (strat_configure_target explains
-# why); the driver then names the profile runtime in each object for lld-link.
+# The /clang: spelling is what reaches the frontend (see the clang-cl note in
+# strat_configure_target); the driver then names the profile runtime in each object
+# for lld-link, so no link option is needed.
 if(STRAT_COVERAGE)
     target_compile_options(StratChessTests PRIVATE
         /clang:-fprofile-instr-generate /clang:-fcoverage-mapping)

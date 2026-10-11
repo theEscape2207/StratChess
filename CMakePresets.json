@@ -67,10 +67,10 @@
     }
   ],
   "buildPresets": [
-    { "name": "windows-clang-cl",       "configurePreset": "windows-clang-cl" },
-    { "name": "windows-clang-cl-debug", "configurePreset": "windows-clang-cl-debug" },
+    { "name": "windows-clang-cl",          "configurePreset": "windows-clang-cl" },
+    { "name": "windows-clang-cl-debug",    "configurePreset": "windows-clang-cl-debug" },
     { "name": "windows-clang-cl-coverage", "configurePreset": "windows-clang-cl-coverage" },
-    { "name": "windows-msvc",           "configurePreset": "windows-msvc" },
-    { "name": "windows-msvc-debug",     "configurePreset": "windows-msvc-debug" }
+    { "name": "windows-msvc",              "configurePreset": "windows-msvc" },
+    { "name": "windows-msvc-debug",        "configurePreset": "windows-msvc-debug" }
   ]
 }
