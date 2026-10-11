@@ -88,6 +88,9 @@ jobs:
   # The [slow] tier: a handful of deep tactical, null-move and endgame-conversion
   # cases. It is a thin tier, not a second suite, so treat a green run as weak evidence.
   # Self-contained: no test reads anything from Tests/.
+  #
+  # The Debug leg deliberately skips ccache: it is the one daily from-scratch build,
+  # so a wrong object served from the cache cannot hide in every build at once.
   extended-tests:
     runs-on: ubuntu-26.04
     timeout-minutes: 30
@@ -107,10 +110,11 @@ jobs:
           key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
       - name: Set up ccache
+        if: matrix.config == 'Release'
         id: ccache
         uses: ./.github/actions/setup-ccache
         with:
-          key: ccache-linux-gcc15-${{ matrix.config == 'Release' && 'release' || 'debug' }}
+          key: ccache-linux-gcc15-release
 
       - name: Configure
         run: >

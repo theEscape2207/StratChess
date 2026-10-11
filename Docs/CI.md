@@ -88,9 +88,10 @@ run until LRU trims it — an order of magnitude more than one generation, again
 the FetchContent deps cache. That sharing was the risk this change was gated on: churn evicting a
 deps entry costs a fresh clone, turning ccache net negative while every job still reports green.
 
-**Nightly reuses four of those keys** (`-release`, `-debug`, `-asan-ubsan-stdlibdebug`,
-`windows-clang-cl-release`), adding up to ~1.8 GB per run at the caps on `main` (3.0 of 10 GB in use
-when added). Several Nightly jobs share `-release`, so all but one log "Unable to reserve cache"
+**Nightly reuses three of those keys** (`-release`, `-asan-ubsan-stdlibdebug`,
+`windows-clang-cl-release`), adding up to ~1.4 GB per run at the caps on `main` (3.0 of 10 GB in use
+when added). `extended-tests` Debug stays uncached on purpose: the one daily from-scratch build, so a
+wrong cached object cannot reach every build. Several Nightly jobs share `-release`, so all but one log "Unable to reserve cache"
 every night — a warning, not a failure. Each saved entry is a superset of what it restored, so a
 Nightly entry restored by the next PR only lacks objects when it itself started cold.
 
