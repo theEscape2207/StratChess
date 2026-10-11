@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-11 | 1d6d8a7, singular negative extension: `SingularNegativeExtension=2`, feature deleted (#803; one pre-registered run, ship iff lower bound > 0) | 1d6d8a7 (with `SingularNegativeExtension=0`; both sides are one binary, so the delta is a runtime option) | 26640 | 10+0.1 | **-2.87 +/- 3.06** | inconclusive @ 26640 |
 | 2026-10-11 | 27fb2db, singular negative extension: `SingularNegativeExtension=1`, kept default-off (#798; one pre-registered run, ship iff lower bound > 0) | 27fb2db (with `SingularNegativeExtension=0`; both sides are one binary, so the delta is a runtime option) | 19980 | 10+0.1 | **-1.46 +/- 3.54** | inconclusive @ 19980 |
 | 2026-10-10 | 81a7008, singular multi-cut: `SingularMultiCut=true`, shipped as the default (#795; one pre-registered run, ship iff lower bound > 0) | 81a7008 (with `SingularMultiCut=false`; both sides are one binary, so the delta is a runtime option) | 19980 | 10+0.1 | **+8.38 +/- 3.55** | gain |
 | 2026-10-09 | c16e692, TT bucket prefetch in `DoMove` and `DoNullMove` (#776; the lab builds GCC, the shipping build is clang-cl) | f07859d | 26640 | 10+0.1 | **+16.58 +/- 3.07** | gain |
@@ -76,6 +77,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-11 -- 1d6d8a7, singular negative extension at 2 plies (#803) (26640 games)
+
+**Not shipped; the feature is deleted.** [Run `38093323606`](https://github.com/theEscape2207/StratChess/actions/runs/38093323606), 4 h 22 min, 18 shards x 740 pairs, multi-cut and singular on both sides. All 21 jobs are green. Pooled Ptnml(0-2) [1046, 3171, 5039, 3085, 979], score 49.59%, interval [-5.93, +0.19]; 5 of 18 shards favour the candidate by score. Bench nodes were -12.5% and wall clock -9.3% at fixed depth, nps -3.5%. With 1 ply also negative (-1.46), neither size bought Elo, so the pre-registered rule removes the option, helper and telemetry.
 
 ### 2026-10-11 -- 27fb2db, singular negative extension at 1 ply (#798) (19980 games)
 
