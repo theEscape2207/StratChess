@@ -6,7 +6,7 @@ name: Nightly
 on:
   schedule:
     # UTC. Off the hour on purpose: GitHub queues scheduled runs and delays the
-    # top-of-hour rush most -- "0 3" started 6-7 hours late.
+    # top-of-hour rush most.
     - cron: "23 1 * * *"
   workflow_dispatch:
 

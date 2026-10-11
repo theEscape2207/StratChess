@@ -47,9 +47,10 @@ is branch-scoped so a PR can only restore a cache saved there. This is safe beca
 and changes only on a dependency bump, which is a `CMakeLists.txt` edit and so still Build tier — and
 because eviction is seven days without *access*, which every PR restore refreshes.
 
-**ccache fronts the compiler on all six build jobs**: the four Linux ones (`build-linux` Release and
-Debug, `sanitize-linux`, `tsan-linux`) via `-DCMAKE_CXX_COMPILER_LAUNCHER=ccache` on the configure
-line, and both `build-and-test` legs via the `CMAKE_CXX_COMPILER_LAUNCHER` environment variable —
+**ccache fronts the compiler on every build job**: the four Linux ones (`build-linux` Release and
+Debug, `sanitize-linux`, `tsan-linux`) and Nightly's Linux builds via
+`-DCMAKE_CXX_COMPILER_LAUNCHER=ccache` on the configure line, and both `build-and-test` legs and
+Nightly's `lint-deep-windows` via the `CMAKE_CXX_COMPILER_LAUNCHER` environment variable —
 those go through `build.ps1`, which takes no pass-through for cache variables, and CMake reads the
 variable at first configure. **Do not add a parameter to `build.ps1` for this.** Every call site must
 drop the launcher when the install reports unavailable: CMake does not check that a launcher exists,
@@ -82,10 +83,16 @@ cache key too, or the binary restores, the download is never attempted, and the 
 Each caching job keeps its own entry (`ccache-linux-gcc15-release`, `-debug`,
 `ccache-linux-gcc15-asan-ubsan-stdlibdebug`, `ccache-linux-gcc15-tsan`, `ccache-windows-clang-cl-release`,
 `-debug`) at `CCACHE_MAXSIZE=400M` (`sanitize-linux`: 600M). `actions/cache`
-entries are immutable, so **every run writes six new ones** and the store carries a generation per
+entries are immutable, so **every PR run writes six new ones** and the store carries a generation per
 run until LRU trims it — an order of magnitude more than one generation, against a budget shared with
 the FetchContent deps cache. That sharing was the risk this change was gated on: churn evicting a
 deps entry costs a fresh clone, turning ccache net negative while every job still reports green.
+
+**Nightly reuses four of those keys** (`-release`, `-debug`, `-asan-ubsan-stdlibdebug`,
+`windows-clang-cl-release`), adding up to ~1.8 GB per run at the caps on `main` (3.0 of 10 GB in use
+when added). Several Nightly jobs share `-release`, so all but one log "Unable to reserve cache"
+every night — a warning, not a failure. Each saved entry is a superset of what it restored, so a
+Nightly entry restored by the next PR only lacks objects when it itself started cold.
 
 **No CI job sets `base_dir` or `hash_dir`, and `Test-WorkflowCcachePaths.ps1` fails the run if one
 ever does.** Both are local-workflow levers for cross-*worktree* hits (#510, #511); CI has no such
@@ -303,7 +310,7 @@ flakiness. The `[slow]` Catch2 tier runs in `extended-tests` and `sanitize-exten
 
 **`nightly.yml`** runs at 01:23 UTC and on `workflow_dispatch`, and gates nothing — it answers "is
 `main` still correct?", not "may this land?". Off the hour because GitHub delays top-of-hour
-schedules most (`0 3` started 6–7 h late). Its builds reuse `build-and-test.yml`'s ccache keys.
+schedules most. Its builds reuse `build-and-test.yml`'s ccache keys — see the ccache section above.
 
 | Job | What it adds over the per-PR gate |
 |---|---|
