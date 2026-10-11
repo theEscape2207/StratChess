@@ -15,6 +15,19 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-11: Log-based LMR reduction base (#809)
+
+### Added
+- `LmrLogBase` / `LmrLogDivisor` (`SearchTuning::lmr_log_base` / `lmr_log_divisor`, hundredths,
+  default 0): R = base + ln d · ln m / divisor, then the unchanged `max(1, ·)`, `d-2` cap and
+  history shift. Divisor 0 keeps the sqrt base, which #730 measured on the cap for 99.0% of
+  reductions; the triage probes put 55% of reduced-search nodes at depth ≥ 5, where a log base
+  moves off it. Default-off build is node-identical to its merge base.
+
+### Changed
+- `resolve_limits()` clamps the root depth to `MAX_PLY - 1`; no deeper search could complete.
+  `game_settings.json` now rejects a search depth ≤ 0, which the clamp would read as 255.
+
 ## 2026-10-11: Nightly ccache and off-the-hour schedule (#807)
 
 ### Changed
