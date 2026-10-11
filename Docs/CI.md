@@ -301,8 +301,9 @@ flakiness. The `[slow]` Catch2 tier runs in `extended-tests` and `sanitize-exten
 
 ## Nightly (`nightly.yml`)
 
-**`nightly.yml`** runs at 03:00 UTC and on `workflow_dispatch`, and gates nothing — it answers "is
-`main` still correct?", not "may this land?".
+**`nightly.yml`** runs at 01:23 UTC and on `workflow_dispatch`, and gates nothing — it answers "is
+`main` still correct?", not "may this land?". Off the hour because GitHub delays top-of-hour
+schedules most (`0 3` started 6–7 h late). Its builds reuse `build-and-test.yml`'s ccache keys.
 
 | Job | What it adds over the per-PR gate |
 |---|---|

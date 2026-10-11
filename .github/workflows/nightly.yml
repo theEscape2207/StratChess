@@ -5,7 +5,9 @@ name: Nightly
 # answer "is main still correct?", not "may this land?".
 on:
   schedule:
-    - cron: "0 3 * * *"
+    # UTC. Off the hour on purpose: GitHub queues scheduled runs and delays the
+    # top-of-hour rush most -- "0 3" started 6-7 hours late.
+    - cron: "23 1 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -20,6 +22,11 @@ concurrency:
 # Every job sets timeout-minutes. The GitHub default is 6 hours, which a hung
 # network step burns in full before anyone sees a verdict. The values are well
 # above normal runtime -- they exist to catch a hang, not a slow runner.
+#
+# Every build reuses the matching build-and-test.yml ccache key, so a scheduled
+# run on main restores the objects main's last push already compiled. A key here
+# must describe the same compiler command line as its PR-side namesake; the
+# launcher is dropped when ccache is unavailable, as build-and-test.yml's D6 notes.
 jobs:
   # Perft is self-checking: a corrupted make/unmake or a mailbox/bitboard desync
   # shows up as a wrong node count without any assertion having to catch it. The
@@ -43,6 +50,8 @@ jobs:
             depth: 6
             fen: "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
             expected: 8031647685
+    env:
+      CCACHE_MAXSIZE: 400M
     steps:
       - uses: actions/checkout@v7
 
@@ -52,8 +61,16 @@ jobs:
           path: build/_deps
           key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
+      - name: Set up ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          key: ccache-linux-gcc15-release
+
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          ${{ steps.ccache.outputs.available == 'true' && '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache' || '' }}
 
       - name: Build
         run: cmake --build build --target StratChessEvolved --parallel
@@ -78,6 +95,8 @@ jobs:
       fail-fast: false
       matrix:
         config: [Release, Debug]
+    env:
+      CCACHE_MAXSIZE: 400M
     steps:
       - uses: actions/checkout@v7
 
@@ -87,8 +106,16 @@ jobs:
           path: build/_deps
           key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
+      - name: Set up ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          key: ccache-linux-gcc15-${{ matrix.config == 'Release' && 'release' || 'debug' }}
+
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }}
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }}
+          ${{ steps.ccache.outputs.available == 'true' && '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache' || '' }}
 
       - name: Build
         run: cmake --build build --target StratChessTests --parallel
@@ -101,6 +128,8 @@ jobs:
   sanitize-extended:
     runs-on: ubuntu-26.04
     timeout-minutes: 30
+    env:
+      CCACHE_MAXSIZE: 600M
     steps:
       - uses: actions/checkout@v7
 
@@ -110,12 +139,19 @@ jobs:
           path: build/_deps
           key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
+      - name: Set up ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          key: ccache-linux-gcc15-asan-ubsan-stdlibdebug
+
       - name: Configure
         run: >
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
           -DSTRAT_SANITIZE=address,undefined
           -DSTRAT_STDLIB_DEBUG=ON
+          ${{ steps.ccache.outputs.available == 'true' && '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache' || '' }}
 
       - name: Build
         run: cmake --build build --target StratChessTests --parallel
@@ -132,6 +168,8 @@ jobs:
   tactical-stability:
     runs-on: ubuntu-26.04
     timeout-minutes: 30
+    env:
+      CCACHE_MAXSIZE: 400M
     steps:
       - uses: actions/checkout@v7
 
@@ -141,8 +179,16 @@ jobs:
           path: build/_deps
           key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
 
+      - name: Set up ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          key: ccache-linux-gcc15-release
+
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          ${{ steps.ccache.outputs.available == 'true' && '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache' || '' }}
 
       - name: Build
         run: cmake --build build --target StratChessEvolved --parallel
@@ -247,6 +293,8 @@ jobs:
   lint-deep-windows:
     runs-on: windows-2025-vs2026
     timeout-minutes: 60
+    env:
+      CCACHE_MAXSIZE: 400M
     steps:
       - uses: actions/checkout@v7
 
@@ -316,8 +364,19 @@ jobs:
           python -m unittest discover -s Scripts -p "test_*.py" -v
           exit $LASTEXITCODE
 
+      # build.ps1 has no configure-only verb, so this compiles the engine too;
+      # ccache makes that cheap. The launcher goes in by environment for the
+      # reason build-and-test.yml's Windows Build step records.
+      - name: Set up ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          key: ccache-windows-clang-cl-release
+
       - name: Configure shipping clang-cl database
         shell: pwsh
+        env:
+          CMAKE_CXX_COMPILER_LAUNCHER: ${{ steps.ccache.outputs.available == 'true' && 'ccache' || '' }}
         run: .\build.ps1 main
 
       - name: clang-tidy Deep on shipping sources (blocking)
