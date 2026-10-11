@@ -22,6 +22,9 @@ tunable log formula, off by default, so one binary carries the lab's arms.
 
 - **D3, default off in the lab PR.** The binary the lab runs must be node-identical to the merge
   base at its defaults. Otherwise the arms do not isolate the base change.
+- **D3, the two-run gate.** The screen advances an arm at +3 Elo, which is lenient on purpose, and
+  the confirmation decides. Check that the confirmation's fresh-opening range and its three
+  outcomes leave no result undecided.
 - **D2, scaled-integer options.** Truncating `base + ln d · ln m / divisor` to int is the rounding
   every arm is measured under. A reviewer should check that the arms' child depths are the ones
   #809's P1 table quotes.
