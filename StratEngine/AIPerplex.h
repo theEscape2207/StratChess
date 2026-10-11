@@ -87,7 +87,7 @@ inline double lmr_raw_base(int depth, int move_number, int log_base, int log_div
 // keeps R >= 1 (R == 0 would make the re-search an identical repeat).
 //
 // A nonzero history_divisor shifts R by the move's ordering score / history_divisor, positive
-// reducing less. It is applied AFTER the cap: the raw product usually overshoots the cap by several
+// reducing less. It is applied AFTER the cap: the sqrt base usually overshoots the cap by several
 // plies, so an adjustment applied before it would be swallowed. A negative score can raise R only
 // where the base sits below the cap. A divisor small against the +-3 * HISTORY_MAX score range, the
 // default among them, makes this nearly a sign switch: a score of history_divisor * (cap - 1) already

@@ -1,7 +1,7 @@
-// SearchLmrTests.cpp — the late move reduction and its history adjustment.
+// SearchLmrTests.cpp — the late move reduction, its sqrt and log bases and its history adjustment.
 //
 // lmr_reduction() is pure, so the bounds and the placement of the adjustment are asserted on it
-// directly; one search case proves pvs() actually feeds it a nonzero divisor's effect.
+// directly; two search cases prove pvs() actually feeds it a nonzero history or log divisor.
 
 #include <catch2/catch_test_macros.hpp>
 #include "SearchTestFixture.h"
@@ -100,17 +100,20 @@ TEST_CASE("LMR: a displaced killer's score reduces it least at small divisors", 
 	CHECK(lmr_reduction(6, 3, kKillerScore, 1'000'000, 0, 0) == base_reduction(6, 3));
 }
 
-TEST_CASE("LMR: log divisor 0 is the sqrt base, whatever the log base", "[search][lmr]")
+TEST_CASE("LMR: log divisor 0 is the sqrt reduction, whatever the log base", "[search][lmr]")
 {
 	for (int depth = 1; depth <= MAX_PLY; ++depth)
 		for (int move = 1; move <= 64; ++move)
-			for (const int log_base : {0, 75, 1000})
-				REQUIRE(lmr_reduction(depth, move, 0, 0, log_base, 0) == base_reduction(depth, move));
+			for (const int log_base : {75, 1000})
+				for (const int divisor : {0, 64, 8192})
+					for (const int score : {-kOrdinaryMax, 0, kOrdinaryMax, kKillerScore})
+						REQUIRE(lmr_reduction(depth, move, score, divisor, log_base, 0) ==
+						        lmr_reduction(depth, move, score, divisor, 0, 0));
 }
 
-TEST_CASE("LMR: every lab arm's log base stays inside [1, depth - 2]", "[search][lmr]")
+TEST_CASE("LMR: the screened log bases stay inside [1, depth - 2]", "[search][lmr]")
 {
-	// The #809 screen's arms A-C, in hundredths.
+	// Base / divisor pairs in hundredths: 0.75 / 2.25, 1.00 / 1.75 and 1.00 / 1.50.
 	for (const auto [log_base, log_divisor] : {std::pair{75, 225}, std::pair{100, 175}, std::pair{100, 150}})
 		for (int depth = 3; depth < MAX_PLY; ++depth)
 			for (int move = 1; move <= static_cast<int>(MoveList::MAX_MOVES); ++move)
@@ -122,7 +125,7 @@ TEST_CASE("LMR: every lab arm's log base stays inside [1, depth - 2]", "[search]
 					}
 }
 
-TEST_CASE("LMR: arm 75/225 reproduces #809's child depths", "[search][lmr]")
+TEST_CASE("LMR: log base 0.75 / 2.25 reduces less than the cap at depth 10 and 4", "[search][lmr]")
 {
 	// d = 10, m = 5/10/20/40: R = 2/3/3/4, so the reduced child searches at 7/6/6/5.
 	const auto child_depth = [](int move) { return 10 - 1 - lmr_reduction(10, move, 0, 0, 75, 225); };

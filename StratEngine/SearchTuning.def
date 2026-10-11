@@ -39,9 +39,10 @@ TUNING_FIELD(bool,    lmr_enabled,        true, false,                          
 // A reduced quiet's R shifts by its ordering score / divisor, truncated toward zero (see
 // lmr_reduction()). At the default, any clearly positive score reduces it to R = 1. 0 disables it.
 TUNING_FIELD(int,     lmr_history_divisor, 64,  0,                                  1'000'000,                       true, "LmrHistoryDivisor", true)
-// The log base R = log_base / 100 + ln(depth) * ln(move number) * 100 / log_divisor: both in
-// hundredths because UCI spins are integers, so 75 / 225 means 0.75 + ln d * ln m / 2.25. A
-// divisor of 0 keeps the sqrt base and makes lmr_log_base inert (see lmr_raw_base()).
+// The log base R = log_base / 100 + ln(depth) * ln(m) * 100 / log_divisor: both in hundredths
+// because UCI spins are integers, so 75 / 225 means 0.75 + ln d * ln m / 2.25. m is the zero-based
+// legal-move index, one behind the move count other engines' constants assume. A divisor of 0
+// keeps the sqrt base and makes lmr_log_base inert (see lmr_raw_base()).
 TUNING_FIELD(int,     lmr_log_base,        0,   0,                                  1000,                            true, "LmrLogBase",        true)
 TUNING_FIELD(int,     lmr_log_divisor,     0,   0,                                  10000,                           true, "LmrLogDivisor",     true)
 

@@ -228,6 +228,19 @@ TEST_CASE("Config: a key of the wrong type is reported", "[config]")
 	REQUIRE_THROWS_AS(reader.ReadConfigFile(cfg.path(), board), nlohmann::json::type_error);
 }
 
+TEST_CASE("Config: a non-positive search depth is rejected naming the key", "[config]")
+{
+	Board board;
+	for (const char* depth : {"0", "-1"}) {
+		TempConfig cfg(std::string(R"({ "game": { "players": {
+            "white": { "type": 1, "search_limits": { "depth": )") +
+		               depth + R"( } }, "black": { "type": 1 } } } })");
+		Config reader = MakeReader();
+		REQUIRE_THROWS_WITH(reader.ReadConfigFile(cfg.path(), board),
+		                    Catch::Matchers::ContainsSubstring("search_limits.depth must be positive"));
+	}
+}
+
 TEST_CASE("Config: comments are accepted", "[config]")
 {
 	// game_settings.json ships heavily commented, so ignore_comments must stay

@@ -48,7 +48,7 @@ namespace Engine {
 	{
 		ResolvedLimits r{};
 		// Clamped because no search past MAX_PLY - 1 can complete (ply is capped there), and
-		// lmr_reduction()'s ln table relies on the bound. "go depth 100000" still searches until stopped.
+		// lmr_reduction()'s ln table relies on the bound. A larger "go depth" loses no reachable depth.
 		r.effective_depth =
 		    std::min(limits.depth ? static_cast<unsigned>(*limits.depth) : (limits.infinite ? 50u : default_depth),
 		             static_cast<unsigned>(MAX_PLY - 1));
