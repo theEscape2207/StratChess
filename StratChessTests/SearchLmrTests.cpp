@@ -114,7 +114,7 @@ TEST_CASE("LMR: log divisor 0 is the sqrt reduction, whatever the log base", "[s
 TEST_CASE("LMR: the screened log bases stay inside [1, depth - 2]", "[search][lmr]")
 {
 	// Base / divisor pairs in hundredths: 0.75 / 2.25, 1.00 / 1.75 and 1.00 / 1.50.
-	for (const auto [log_base, log_divisor] : {std::pair{75, 225}, std::pair{100, 175}, std::pair{100, 150}})
+	for (const auto& [log_base, log_divisor] : {std::pair{75, 225}, std::pair{100, 175}, std::pair{100, 150}})
 		for (int depth = 3; depth < MAX_PLY; ++depth)
 			for (int move = 1; move <= static_cast<int>(MoveList::MAX_MOVES); ++move)
 				for (const int divisor : {0, 64})
