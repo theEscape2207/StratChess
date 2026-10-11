@@ -189,7 +189,7 @@ Engine tier, search change: full `Validate-PrePR.ps1`.
 
 - **Size:** 50-200 lines, in `AIPerplex.h`, `AIPerplex.cpp`, `SearchTuning.def`,
   `SearchLimits.cpp`, three test files,
-  `Docs/EngineGuide.md` (option list) and `Docs/Changelog.md`.
+  `Config.cpp`, `Docs/EngineGuide.md` (the `capped` prose) and `Docs/Changelog.md`.
 - **Blast radius:** Engine tier, search change. One code review plus `search-reviewer`.
 - **Measurement:** two lab runs, both approved: the screen, then the confirmation if the screen
   advances an arm. Plus about 40 min of local profile screen and wall clock for the confirmed arm.
