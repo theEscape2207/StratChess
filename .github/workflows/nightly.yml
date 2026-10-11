@@ -23,7 +23,8 @@ concurrency:
 # network step burns in full before anyone sees a verdict. The values are well
 # above normal runtime -- they exist to catch a hang, not a slow runner.
 #
-# Every build reuses the matching build-and-test.yml ccache key, so a scheduled
+# Every build reuses the matching build-and-test.yml ccache key unless its job
+# says why not (extended-tests Debug, coverage), so a scheduled
 # run on main restores the objects main's last push already compiled. A key here
 # must describe the same compiler command line as its PR-side namesake; the
 # launcher is dropped when ccache is unavailable, as build-and-test.yml's D6 notes.
@@ -394,6 +395,39 @@ jobs:
             -BuildDirectory build/windows-clang-cl -ClangTidy $tidy -Jobs 2
           exit $LASTEXITCODE
 
+  # Report-only: the per-file table goes to the step summary and the annotated
+  # source to an artifact. Nothing compares the number against anything, so the
+  # job fails only when the build, a test or llvm-cov does.
+  #
+  # No ccache: the instrumented command line matches no PR-side key, so an entry
+  # would serve only the next night, against the budget the other keys share.
+  coverage:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.0
+
+      - name: Coverage of the fast tier
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File Scripts/Get-Coverage.ps1 `
+            -Html "$env:RUNNER_TEMP/coverage-html" -Markdown $env:GITHUB_STEP_SUMMARY
+          exit $LASTEXITCODE
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html
+          path: ${{ runner.temp }}/coverage-html
+          if-no-files-found: error
+          retention-days: 14
+
   # A doc citing something that no longer resolves, or a code comment citing an issue.
   # Pure PowerShell over the checkout, so it costs seconds.
   citations:
@@ -409,7 +443,7 @@ jobs:
           exit $LASTEXITCODE
 
   nightly-result:
-    needs: [deep-perft, extended-tests, sanitize-extended, tactical-stability, lint-tree, lint-deep-linux, lint-deep-windows, citations]
+    needs: [deep-perft, extended-tests, sanitize-extended, tactical-stability, lint-tree, lint-deep-linux, lint-deep-windows, coverage, citations]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -438,5 +472,6 @@ jobs:
           check "whole-tree lint"   "${{ needs.lint-tree.result }}"
           check "deep lint Linux"   "${{ needs.lint-deep-linux.result }}"
           check "deep lint Windows" "${{ needs.lint-deep-windows.result }}"
+          check "coverage"          "${{ needs.coverage.result }}"
           check "citations"         "${{ needs.citations.result }}"
           exit $fail
