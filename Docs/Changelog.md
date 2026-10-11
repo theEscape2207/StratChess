@@ -15,6 +15,13 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-11: Nightly coverage report (#156, slice 2)
+
+### Added
+- `nightly.yml` `coverage` job (Windows clang-cl): runs `Get-Coverage.ps1`, writes the total and
+  per-file table to the step summary and uploads the annotated-source HTML. Report-only; a ratchet
+  is a later decision, made from these figures. `Get-Coverage.ps1 -Markdown <file>` writes the table.
+
 ## 2026-10-11: Measured test coverage (#156, slice 1)
 
 ### Added
