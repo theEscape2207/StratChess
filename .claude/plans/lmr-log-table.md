@@ -38,6 +38,7 @@ tunable log formula, off by default, so one binary carries the lab's arms.
   `max(1, ·)` and the existing `d-2` cap. B2's history shift still follows, unchanged.
 - Add two tuning fields with UCI names, `LmrLogBase` and `LmrLogDivisor`. A divisor of 0 keeps
   today's sqrt formula.
+- Clamp the resolved root depth to `MAX_PLY - 1` (D5).
 - After the confirmation, set the defaults to the confirmed arm in the same PR. Leave them at 0 if
   the screen or the confirmation parks it (D3).
 
@@ -54,22 +55,20 @@ tunable log formula, off by default, so one binary carries the lab's arms.
 
 ### D1: A log lookup table, not `std::log` per call
 
-`ln(i)` for `i` in `[0, 256)` is precomputed once into a namespace-scope table in `AIPerplex.h`.
-Slot 0 is unused. It covers every move number (`MoveList::MAX_MOVES` = 218). It does not cover
-every depth: a search's remaining depth is not bounded by `MAX_PLY`. `MAX_PLY` bounds ply;
-`go depth N` passes N through unbounded (`SearchLimits.cpp:50`); and `SearchLmrTests.cpp:27`
-calls the helper at depth 256. So the log branch reads `ln(i)` through a helper that falls back
-to `std::log` for `i >= 256`. The divisor-0 branch is untouched and gains no new domain
-restriction.
+`ln(i)` for `i` in `[0, MAX_PLY)` is precomputed once into a namespace-scope table in
+`AIPerplex.h`. Slot 0 is unused. The table covers every move number (`MoveList::MAX_MOVES` = 218),
+and D5 bounds every depth that reaches it. The log branch asserts that the index is in range. The
+divisor-0 branch never reads the table and gains no domain restriction. That keeps
+`SearchLmrTests.cpp:27`'s pure-helper grid, which runs up to depth 256, valid.
 
 The table does not depend on tuning, so it has no lifecycle tied to `setoption` or to the search
 start.
 
 - **Rejected: `std::log` at each reduction.** Cached logarithms keep a transcendental library call
-  off the reduction path, where today's two `sqrt` calls are single instructions. The fallback is
-  taken only past depth 255, so its cost is negligible.
-- **Rejected: bounding the search depth at every entry point instead.** It changes UCI behaviour
-  to serve a lookup table.
+  off the reduction path, where today's two `sqrt` calls are single instructions.
+- **Rejected: fall back to `std::log` past the table.** It costs nothing measurable, but it is a
+  branch for a depth the engine cannot complete. D5 removes the case instead. The project owner
+  chose this on 2026-10-11, to revisit if the engine ever needs deeper searches.
 - **Rejected: a full `[d][m]` R table rebuilt when tuning changes.** It saves one multiply and adds
   a rebuild hook on every tuning write path.
 
@@ -128,6 +127,20 @@ base in `record_lmr_reach()`. The profile counter therefore measures the active 
 A struct parameter was considered, but every caller already holds the four tuning ints, so
 positional ints match today's signature style.
 
+### D5: Clamp the root search depth to `MAX_PLY - 1`
+
+`resolve_limits()` (`SearchLimits.cpp:50`) clamps `effective_depth` to `MAX_PLY - 1` (255).
+Today it passes `go depth N` through unbounded. Every search calls `control_.ApplyLimits()`, and
+so `resolve_limits()`, before it reads `EffectiveDepth()` (`AIPerplex.cpp:395,411`). So one clamp
+covers every entry point. No extension raises remaining
+depth: the singular extension keeps the parent's depth (`AIPerplex.cpp:1032`), and nothing adds
++1. So the root bound holds at every `lmr_reduction()` call. Ply is already capped at
+`MAX_PLY - 1` (`AIPerplex.cpp:649`), so no search deeper than 255 could complete anyway, and no
+real depth is lost.
+
+- **Rejected: reject `go depth` above 255.** The GUI would then receive no `bestmove` and wait
+  forever. Tools that send a large depth to mean "until stopped" keep working under a clamp.
+
 ## Assumptions I cannot verify from the code
 
 - **The lab accepts two options per arm.** Verified locally:
@@ -144,18 +157,19 @@ positional ints match today's signature style.
   stays exempt, as the assert already allows.
 - `lmr_log_divisor == 0` gives exactly today's R for every `(d, m, score, history_divisor)`, over
   the full existing test grid (depth 1..`MAX_PLY`).
-- With the log branch on, every positive `depth` and `move_number` gives a finite R: the table
-  below 256, `std::log` at 256 and above.
+- Every search's root depth is at most `MAX_PLY - 1`, so every `(depth, move_number)` that
+  reaches the log branch indexes inside the table (D5). This is asserted in the log branch.
 
 ## Validation
 
 Engine tier, search change: full `Validate-PrePR.ps1`.
 
 - **Unit tests, `SearchLmrTests.cpp`.** Divisor 0 equals the restated sqrt base over the existing
-  grid. For each arm, R lies in `[1, cap]` over d = 3..64 and m = 1..218, and at d = 255, 256
-  and 257, across the table boundary. Spot values reproduce #809's P1 table: arm 75/225 gives
+  grid. For each arm, R lies in `[1, cap]` over d = 3..255 and m = 1..218. Spot values reproduce #809's P1 table: arm 75/225 gives
   child depth 7/6/6/5 at d = 10, m = 5/10/20/40. A depth-4 case pins the reach that is not
   capped: at d = 4, m = 3 and score 0, arm A gives R = 1, against 2 today.
+- **Depth clamp, `SearchLimitsTests.cpp`.** `go depth` 255 resolves to 255, while 256 and
+  `INT_MAX` resolve to 255. Depth-less limits keep their 50 / default.
 - **Tuning tests, `SearchTuningTests.cpp`.** Defaults, UCI round-trip and range rejection for both
   options, and the option listing lines.
 - **Node identity.** `Compare-SearchEquivalence.ps1` at defaults against the merge base.
@@ -173,7 +187,8 @@ Engine tier, search change: full `Validate-PrePR.ps1`.
 
 ## Cost
 
-- **Size:** 50-200 lines, in `AIPerplex.h`, `AIPerplex.cpp`, `SearchTuning.def`, two test files,
+- **Size:** 50-200 lines, in `AIPerplex.h`, `AIPerplex.cpp`, `SearchTuning.def`,
+  `SearchLimits.cpp`, three test files,
   `Docs/EngineGuide.md` (option list) and `Docs/Changelog.md`.
 - **Blast radius:** Engine tier, search change. One code review plus `search-reviewer`.
 - **Measurement:** two lab runs, both approved: the screen, then the confirmation if the screen
