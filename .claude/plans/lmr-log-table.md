@@ -10,7 +10,8 @@ depth. Reducing less has gained twice: the `d-1` → `d-2` cap (#363, +9.64 ± 3
 history adjustment (#730, +10.23 ± 6.25). #809's triage probes measured the opportunity:
 
 - **Reach.** Depth 5 and up holds 21% of reductions but 55% of the nodes in reduced searches. At
-  depth 3-4 the cap binds for any table.
+  depth 3 the cap binds for any table. Depth 4 is mostly capped, but arm A changes move indices 3-7
+  and arm B changes index 3. P2 measured mean child depth there going from 1.10 to 1.15.
 - **Cost.** A log base adds +29% nodes at depth 12.
 - **Accuracy (spike S1).** The log base hides 27% fewer moves at depth ≥ 5, but today's rate is
   only 0.19% of reduced fail-lows.
@@ -42,8 +43,8 @@ tunable log formula, off by default, so one binary carries the lab's arms.
 
 **This change will not:**
 
-- Change the `d-2` cap, `lmr_min_depth`, `lmr_min_move_index` or LMR eligibility. Depth 3-4 is
-  out of reach by construction.
+- Change the `d-2` cap, `lmr_min_depth`, `lmr_min_move_index` or LMR eligibility. Depth 3 is out
+  of reach by construction, and depth 4 is mostly out of reach (Goal).
 - Re-tune `LmrHistoryDivisor`. B2's "reduce more" side becomes active below the cap, and the lab
   measures B1 together with B2 at 64. A divisor re-screen is a follow-up only if B1 ships.
 - Add depth-band telemetry. The existing `lmrhistory capped` counter already shows whether the
@@ -54,12 +55,21 @@ tunable log formula, off by default, so one binary carries the lab's arms.
 ### D1: A log lookup table, not `std::log` per call
 
 `ln(i)` for `i` in `[0, 256)` is precomputed once into a namespace-scope table in `AIPerplex.h`.
-It covers `MAX_PLY` (256) and `Move::MAX_MOVES` (218), and slot 0 is unused. It does not depend
-on tuning, so it has no lifecycle tied to `setoption` or to the search start.
+Slot 0 is unused. It covers every move number (`MoveList::MAX_MOVES` = 218). It does not cover
+every depth: a search's remaining depth is not bounded by `MAX_PLY`. `MAX_PLY` bounds ply;
+`go depth N` passes N through unbounded (`SearchLimits.cpp:50`); and `SearchLmrTests.cpp:27`
+calls the helper at depth 256. So the log branch reads `ln(i)` through a helper that falls back
+to `std::log` for `i >= 256`. The divisor-0 branch is untouched and gains no new domain
+restriction.
 
-- **Rejected: `std::log` at each reduction.** About 0.18 reductions per node and a 10-20 ns library
-  call add up to an estimated ~1% nps, which this change has no reason to spend. Today's two `sqrt`
-  calls are single instructions.
+The table does not depend on tuning, so it has no lifecycle tied to `setoption` or to the search
+start.
+
+- **Rejected: `std::log` at each reduction.** Cached logarithms keep a transcendental library call
+  off the reduction path, where today's two `sqrt` calls are single instructions. The fallback is
+  taken only past depth 255, so its cost is negligible.
+- **Rejected: bounding the search depth at every entry point instead.** It changes UCI behaviour
+  to serve a lookup table.
 - **Rejected: a full `[d][m]` R table rebuilt when tuning changes.** It saves one multiply and adds
   a rebuild hook on every tuning write path.
 
@@ -125,32 +135,41 @@ positional ints match today's signature style.
   The options are whitespace-separated, as in `candidate_uci_options`. Before any shard starts, the
   workflow checks that the engine advertises each option.
 - **Release nps is unchanged at defaults.** At default 0 the only addition is one predictable
-  branch on a path taken by about 0.18 reductions per node. This is assumed, and settled by
-  Run-Bench (Validation).
+  branch on the reduction path. This is unmeasured; `Compare-Bench.ps1` settles it (Validation).
 
 ## Invariants
 
-- `1 <= R <= max(1, depth - 2)` for every input, so the `depth - 1 - R >= 1` assert still holds.
-- `lmr_log_divisor == 0` gives exactly today's R for every `(d, m, score, history_divisor)`.
-- The log table covers every `(depth, move_number)` reaching `lmr_reduction()`. It is asserted
-  in `lmr_reduction()`.
+- `1 <= R <= max(1, depth - 2)` for every input. For `depth >= 3`, the `lmr_min_depth` default,
+  that keeps the call site's `depth - 1 - R >= 1` assert true. A lower configured `lmr_min_depth`
+  stays exempt, as the assert already allows.
+- `lmr_log_divisor == 0` gives exactly today's R for every `(d, m, score, history_divisor)`, over
+  the full existing test grid (depth 1..`MAX_PLY`).
+- With the log branch on, every positive `depth` and `move_number` gives a finite R: the table
+  below 256, `std::log` at 256 and above.
 
 ## Validation
 
 Engine tier, search change: full `Validate-PrePR.ps1`.
 
 - **Unit tests, `SearchLmrTests.cpp`.** Divisor 0 equals the restated sqrt base over the existing
-  grid. For each arm, R lies in `[1, cap]` over d = 3..64 and m = 1..218. Spot values reproduce
-  #809's P1 table, e.g. arm 75/225 gives child depth 7/6/6/5 at d = 10, m = 5/10/20/40.
+  grid. For each arm, R lies in `[1, cap]` over d = 3..64 and m = 1..218, and at d = 255, 256
+  and 257, across the table boundary. Spot values reproduce #809's P1 table: arm 75/225 gives
+  child depth 7/6/6/5 at d = 10, m = 5/10/20/40. A depth-4 case pins the reach that is not
+  capped: at d = 4, m = 3 and score 0, arm A gives R = 1, against 2 today.
 - **Tuning tests, `SearchTuningTests.cpp`.** Defaults, UCI round-trip and range rejection for both
   options, and the option listing lines.
 - **Node identity.** `Compare-SearchEquivalence.ps1` at defaults against the merge base.
-- **nps.** A `Run-Bench` pass at defaults against the merge base, per `measure-strength`.
-- **Reach.** A profile build at arm 75/225 shows the `capped` share falling well below 99%. P2
-  predicts most depth ≥ 5 reductions leave the cap.
-- **Strength.** D3's screen (about 3.5 h), then its confirmation (about 4 h; #735's 24,696-game run took 4 h 04 min) if the screen
-  advances an arm. The owner approved both on 2026-10-11. For the confirmed arm, add the #636 Method inputs: the depth-12 profile screen and the depth-14 wall clock,
-  recorded beside the lab row in `Measurements/ci-per-change.md`.
+- **nps at defaults.** `Compare-Bench.ps1` against the merge base, per `measure-strength` →
+  regression check. Fix the rounds before launch, build both binaries with their own
+  `build.ps1 main` under clang-cl, and announce the quiet window. Record the interval and the
+  verdict. Escalate only as the regression check prescribes, if the first series is unresolved.
+- **Reach.** On a depth-12 profile build at arm 75/225, the `capped` share falls from 99.0% to
+  about 79%. P3's per-band cap rates predict that figure; what remains capped is almost all at
+  depth 3-4.
+- **Strength.** D3's screen (about 3.5 h), then its confirmation if the screen advances an arm
+  (about 4 h; #735's 24,696-game run took 4 h 04 min). The owner approved both on 2026-10-11.
+  For the confirmed arm, add the #636 Method inputs: the depth-12 profile screen and the depth-14
+  wall clock, recorded beside the lab row in `Measurements/ci-per-change.md`. Neither gates.
 
 ## Cost
 
