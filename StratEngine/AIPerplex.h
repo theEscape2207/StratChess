@@ -10,6 +10,7 @@
 #include "SearchControl.h"
 #include "SearchTuningSchema.h"
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <chrono>
 #include <cmath>
@@ -60,9 +61,30 @@ inline constexpr unsigned DEFAULT_AIPERPLEX_HASH_MB = 192;
 inline constexpr int kLateMovePruningDepth = 2;
 inline constexpr int kLateMovePruningMinLegalIndex = 12;
 
-// The LMR reduction for a quiet at move_number (>= 1) searched from depth. The base scales with
-// sqrt(depth) * sqrt(move index); the cap keeps one main-tree ply below the reduced search, and its
-// own max(1, ...) keeps R >= 1 (R == 0 would make the re-search an identical repeat).
+// ln(i) for i in [1, MAX_PLY); slot 0 is unused. It covers every move number (MoveList::MAX_MOVES <
+// MAX_PLY) and every search depth, which resolve_limits() clamps to MAX_PLY - 1. Cached so the log
+// base pays no library call on the reduction path, where the sqrt base's calls are single instructions.
+inline const std::array<double, MAX_PLY> kLmrLn = [] {
+	std::array<double, MAX_PLY> table{};
+	for (int i = 1; i < MAX_PLY; ++i)
+		table[i] = std::log(static_cast<double>(i));
+	return table;
+}();
+static_assert(MoveList::MAX_MOVES < MAX_PLY);
+
+// The unrounded LMR base. log_divisor 0 selects sqrt(depth - 1) * sqrt(move index); otherwise it is
+// log_base / 100 + ln(depth) * ln(move_number) * 100 / log_divisor, both constants in hundredths.
+inline double lmr_raw_base(int depth, int move_number, int log_base, int log_divisor) noexcept
+{
+	if (log_divisor == 0)
+		return std::sqrt(static_cast<double>(depth - 1)) * std::sqrt(static_cast<double>(move_number - 1));
+	assert(depth >= 1 && depth < MAX_PLY && move_number < MAX_PLY);
+	return log_base / 100.0 + kLmrLn[depth] * kLmrLn[move_number] * 100.0 / log_divisor;
+}
+
+// The LMR reduction for a quiet at move_number (>= 1) searched from depth: lmr_raw_base() truncated,
+// then capped. The cap keeps one main-tree ply below the reduced search, and its own max(1, ...)
+// keeps R >= 1 (R == 0 would make the re-search an identical repeat).
 //
 // A nonzero history_divisor shifts R by the move's ordering score / history_divisor, positive
 // reducing less. It is applied AFTER the cap: the raw product usually overshoots the cap by several
@@ -70,19 +92,13 @@ inline constexpr int kLateMovePruningMinLegalIndex = 12;
 // where the base sits below the cap. A divisor small against the +-3 * HISTORY_MAX score range, the
 // default among them, makes this nearly a sign switch: a score of history_divisor * (cap - 1) already
 // gives R = 1. A displaced killer's killer-tier score follows the same formula, so it gets R = 1 too.
-inline int lmr_reduction(int depth, int move_number, int ordering_score, int history_divisor) noexcept
+inline int lmr_reduction(int depth, int move_number, int ordering_score, int history_divisor, int log_base,
+                         int log_divisor) noexcept
 {
-	assert(move_number >= 1 && history_divisor >= 0);
+	assert(move_number >= 1 && history_divisor >= 0 && log_divisor >= 0);
 	const int cap = std::max(1, depth - 2);
-	// clang-format off
-	// Hand-wrapped so the sqrt(depth) * sqrt(move index) product and the cap stay visible as
-	// separate steps.
-	const int base = std::min(
-		std::max(1, static_cast<int>(
-			std::sqrt(static_cast<double>(depth - 1)) *
-			std::sqrt(static_cast<double>(move_number - 1)))),
-		cap);
-	// clang-format on
+	const int base =
+	    std::min(std::max(1, static_cast<int>(lmr_raw_base(depth, move_number, log_base, log_divisor))), cap);
 	if (history_divisor == 0)
 		return base;
 	return std::clamp(base - ordering_score / history_divisor, 1, cap);

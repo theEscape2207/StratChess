@@ -212,7 +212,7 @@ info string qsearch roots N delta N see N maxdepth N
 - `reducednodes` and `researchnodes` count the nodes inside the outermost search of each kind. A
   reduced search inside a re-search counts in both, so the two must not be summed.
 - `lmrhistory` prints whenever `lmr` does, and its counts are over `reduced`. `capped` counts
-  reductions whose base sat at the `depth - 2` cap. `less` and `more` count ordinary quiet scores that
+  reductions whose base, sqrt or the `LmrLogDivisor` log base, sat at the `depth - 2` cap. `less` and `more` count ordinary quiet scores that
   moved R through `LmrHistoryDivisor`. `killer` counts a displaced killer's killer-tier score moving R.
   `Compare-SearchProfile.ps1` reports a side without the line as n/a, not 0.
 - `nodetypes` counts `pvs()` frames past the quiescence hand-off, by depth band and by

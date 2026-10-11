@@ -36,6 +36,8 @@ namespace {
 		int lmr_min_move_index;
 		bool lmr_enabled;
 		int lmr_history_divisor;
+		int lmr_log_base;
+		int lmr_log_divisor;
 		bool null_move_enabled;
 		int null_move_reduction;
 		int null_move_min_depth;
@@ -70,6 +72,8 @@ namespace {
 	SAME_MEMBER(lmr_min_move_index)
 	SAME_MEMBER(lmr_enabled)
 	SAME_MEMBER(lmr_history_divisor)
+	SAME_MEMBER(lmr_log_base)
+	SAME_MEMBER(lmr_log_divisor)
 	SAME_MEMBER(null_move_enabled)
 	SAME_MEMBER(null_move_reduction)
 	SAME_MEMBER(null_move_min_depth)
@@ -125,6 +129,8 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.lmr_min_move_index == 3);
 	CHECK(tuning.lmr_enabled);
 	CHECK(tuning.lmr_history_divisor == 64);
+	CHECK(tuning.lmr_log_base == 0);
+	CHECK(tuning.lmr_log_divisor == 0);
 	CHECK(tuning.null_move_enabled);
 	CHECK(tuning.null_move_reduction == 3);
 	CHECK(tuning.null_move_min_depth == 3);
@@ -393,6 +399,20 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(uci_rejection("LmrHistoryDivisor", "-1") == Code::InvalidType);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("LmrLogBase", "75", tuning));
+	expected.lmr_log_base = 75;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("LmrLogDivisor", "225", tuning));
+	expected.lmr_log_divisor = 225;
+	CHECK(tuning == expected);
+	CHECK(uci_rejection("LmrLogBase", "1001") == Code::OutOfRange);
+	CHECK(uci_rejection("LmrLogBase", "-1") == Code::InvalidType);
+	CHECK(uci_rejection("LmrLogDivisor", "10001") == Code::OutOfRange);
+	CHECK(uci_rejection("LmrLogDivisor", "-1") == Code::InvalidType);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("SeePruningMargin", "200", tuning));
 	expected.see_pruning_margin = 200;
 	CHECK(tuning == expected);
@@ -481,6 +501,8 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 {
 	const std::vector<std::string> expected{
 	    "option name LmrHistoryDivisor type spin default 64 min 0 max 1000000",
+	    "option name LmrLogBase type spin default 0 min 0 max 1000",
+	    "option name LmrLogDivisor type spin default 0 min 0 max 10000",
 	    "option name SeePruningMargin type spin default 0 min 0 max 900",
 	    "option name SingularExtensions type check default true",
 	    "option name SingularMinDepth type spin default 6 min 1 max 256",
