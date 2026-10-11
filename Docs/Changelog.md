@@ -15,6 +15,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-11: Singular negative extension removed (#803)
+
+### Removed
+- Singular negative extension, its `SingularNegativeExtension` option and `info string singular
+  negext` telemetry (added default-off in #798). Lab at 2 plies **-2.87 +/- 3.06 Elo** at 26,640
+  games (run 38093323606), after -1.46 at 1 ply; the pre-registered rule deleted it. The hash move's
+  depth adjustment is back to a 0/1 singular extension.
+
 ## 2026-10-11: Design records named by plan kebab name (#801)
 
 ### Changed
