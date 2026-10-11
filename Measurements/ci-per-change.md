@@ -80,7 +80,7 @@ Same order as the table above. A row with nothing to add beyond its verdict has 
 
 ### 2026-10-11 -- 1d6d8a7, singular negative extension at 2 plies (#803) (26640 games)
 
-**Not shipped; the feature is deleted.** [Run `38093323606`](https://github.com/theEscape2207/StratChess/actions/runs/38093323606), 4 h 22 min, 18 shards x 740 pairs, multi-cut and singular on both sides. All 21 jobs are green. Pooled Ptnml(0-2) [1046, 3171, 5039, 3085, 979], score 49.59%, interval [-5.93, +0.19]; 5 of 18 shards favour the candidate by score. Bench nodes were -12.5% and wall clock -9.3% at fixed depth, nps -3.5%. With 1 ply also negative (-1.46), neither size bought Elo, so the pre-registered rule removes the option, helper and telemetry.
+**Not shipped; the feature is deleted.** [Run `38093323606`](https://github.com/theEscape2207/StratChess/actions/runs/38093323606), 4 h 22 min, 18 shards x 740 pairs (26,640 rather than the issue's 19,980, as stated at dispatch), multi-cut and singular on both sides. All 21 jobs are green. Pooled Ptnml(0-2) [1046, 3171, 5039, 3085, 979], score 49.59%, interval [-5.93, +0.19]; 5 of 18 shards favour the candidate by score. Bench nodes were -12.5% and wall clock -9.3% at fixed depth, nps -3.5%. With 1 ply also negative (-1.46), neither size bought Elo, so the pre-registered rule removes the option, helper and telemetry.
 
 ### 2026-10-11 -- 27fb2db, singular negative extension at 1 ply (#798) (19980 games)
 
