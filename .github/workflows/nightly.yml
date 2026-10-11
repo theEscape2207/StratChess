@@ -23,7 +23,8 @@ concurrency:
 # network step burns in full before anyone sees a verdict. The values are well
 # above normal runtime -- they exist to catch a hang, not a slow runner.
 #
-# Every build reuses the matching build-and-test.yml ccache key, so a scheduled
+# Every build reuses the matching build-and-test.yml ccache key unless its job
+# says why not (extended-tests Debug, coverage), so a scheduled
 # run on main restores the objects main's last push already compiled. A key here
 # must describe the same compiler command line as its PR-side namesake; the
 # launcher is dropped when ccache is unavailable, as build-and-test.yml's D6 notes.

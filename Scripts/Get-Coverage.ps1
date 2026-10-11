@@ -82,17 +82,11 @@ function Format-CoverageValue {
     '{0}% ({1}/{2})' -f $percent, $Metric.covered.ToString($inv), $Metric.count.ToString($inv)
 }
 
-function Format-CoverageMetric {
-    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][object]$Metric)
-
-    "$Name $(Format-CoverageValue -Metric $Metric)"
-}
-
 function Format-CoverageTotals {
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Totals)
 
     $parts = foreach ($key in $Totals.Keys) {
-        Format-CoverageMetric -Name $key -Metric $Totals[$key]
+        "$key $(Format-CoverageValue -Metric $Totals[$key])"
     }
     $parts -join ' | '
 }
@@ -157,14 +151,16 @@ if ($SelfTest) {
         } }
     }
 
-    # Listed out of order, mixed separators, the root with a trailing separator and a different case.
+    # Listed out of order, mixed separators, the root with a trailing separator and a different
+    # case, and one file outside the root that must keep its full path.
     $markdownJson = New-ExportJson -Lines 5010, 6321 -Branches 2463, 2958 -Files @(
         New-FileSummary -Path 'C:/Repo/StratEngine/Sort.cpp' -Lines 3, 4 -Branches 0, 0
         New-FileSummary -Path 'C:\Repo\StratEngine\Eval.cpp' -Lines 1, 3 -Branches 2, 8
+        New-FileSummary -Path 'D:\Elsewhere\Repo\Other.h' -Lines 0, 1 -Branches 0, 0
     )
 
     $cases = @(
-        @{ Name     = 'markdown rows are relative, slash-separated and sorted'
+        @{ Name     = 'markdown rows are root-relative, slash-separated and sorted'
            Json     = $markdownJson
            Markdown = $true
            Expect   = @(
@@ -176,6 +172,7 @@ if ($SelfTest) {
                ''
                '| File | Lines | Branches | Functions |'
                '|---|---:|---:|---:|'
+               '| `D:/Elsewhere/Repo/Other.h` | 0.00% (0/1) | - | 50.00% (1/2) |'
                '| `StratEngine/Eval.cpp` | 33.33% (1/3) | 25.00% (2/8) | 50.00% (1/2) |'
                '| `StratEngine/Sort.cpp` | 75.00% (3/4) | - | 50.00% (1/2) |'
            ) -join "`n" }
@@ -197,7 +194,7 @@ if ($SelfTest) {
     try {
         foreach ($case in $cases) {
             try {
-                $actual = if ($case.ContainsKey('Markdown')) {
+                $actual = if ($case['Markdown']) {
                     Format-CoverageMarkdown -ExportJson $case.Json -Root 'c:\repo\' -Filter '~[slow]'
                 } else {
                     Format-CoverageTotals -Totals (Get-CoverageTotals -ExportJson $case.Json)

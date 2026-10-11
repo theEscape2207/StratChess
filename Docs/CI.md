@@ -322,7 +322,7 @@ schedules most. Its builds reuse `build-and-test.yml`'s ccache keys — see the 
 | `lint-tree` | Failing clang-format and fast Gate over the whole tree, covering what the per-PR job's one-unit-per-header cover does not reach |
 | `lint-deep-linux` | Failing Deep profile over normalized shipping sources with Linux Clang |
 | `lint-deep-windows` | Failing Deep profile over normalized shipping sources with Windows clang-cl, and `Validate-PrePR.ps1 -AllSelfTests` plus the script and workflow guards — every script self-test and every guard over the whole tree, against the PR gate's "only the ones the diff touched" |
-| `coverage` | `Get-Coverage.ps1` over the fast tier with Windows clang-cl: total and per-file table in the step summary, annotated source as the `coverage-html` artifact (14 days). Report-only — it fails when the build, a test or `llvm-cov` does, never on the number. Uncached: no PR job shares its command line |
+| `coverage` | `Get-Coverage.ps1` over the fast tier with Windows clang-cl: total and per-file table in the step summary, annotated source as the `coverage-html` artifact. Report-only — it fails when the build, a test or `llvm-cov` does, never on the number. Uncached: no PR job shares its command line |
 | `citations` | `Test-Citations.ps1`: a skill, subagent or Markdown link citing something that no longer resolves, or a code comment citing an issue. PrePR runs it too; this catches what reached `main` around it |
 
 `perft run <depth> [fen]` prints a count but does not verify it, so the workflow does the comparison.
