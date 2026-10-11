@@ -34,8 +34,8 @@ tunable log formula, off by default, so one binary carries the lab's arms.
   `max(1, ·)` and the existing `d-2` cap. B2's history shift still follows, unchanged.
 - Add two tuning fields with UCI names, `LmrLogBase` and `LmrLogDivisor`. A divisor of 0 keeps
   today's sqrt formula.
-- After the lab, set the defaults to the winning arm in the same PR, or leave them at 0 if no arm
-  clears.
+- After the confirmation, set the defaults to the confirmed arm in the same PR. Leave them at 0 if
+  the screen or the confirmation parks it (D3).
 
 **This change will not:**
 
@@ -85,11 +85,27 @@ against the merge base, following #730's procedure:
 
 These are arms A, B and C. The run uses 18 shards, a multiple of 3.
 
-The rule, fixed before dispatch as in PR #731: ship the best arm if its Elo minus its error bar is
-above 0, uncorrected for selection. If none clears, keep 0 and park #809.
+The rules below are fixed before dispatch. The owner approved both runs on 2026-10-11.
+
+1. **Screen** (about 20,000 games, 6,660 per arm, about ±6.3 Elo per arm). The best arm advances
+   if its point estimate is **at least +3 Elo**, about half its error bar. The bar is set low on
+   purpose, because a +4 ± 6.3 winner is still worth confirming. Otherwise keep 0 and park #809.
+2. **Confirmation** (one arm against the merge base, about 25,000 games, about ±3.2 Elo). It uses
+   fresh openings: `opening_offset` is set past the screen's range, so it never replays the
+   openings the screen selected on. Then:
+   - Elo minus its error bar > 0: set the defaults to that arm and ship.
+   - A positive estimate whose interval spans zero: the owner decides, as #735's +2.98 ± 3.23 did.
+   - Otherwise: keep 0 and park #809.
+
+The confirmation is the gate, not the screen. A best-of-three screen estimate runs high: #735's
+divisor 16 screened at +6.99 ± 6.16 and confirmed at +2.98 ± 3.23. The confirmation carries no
+selection bias.
 
 - **Rejected: ship 0.75/2.25 as default and lab it alone.** It forfeits the arms, and a loss could
   not be told apart from a bad constant.
+- **Rejected: ship the screen winner when Elo minus error bar > 0 (#730's rule).** It is both too
+  strict and too lenient. It rejects a +4 winner that may be real, and it ships a lucky +7
+  uncorrected.
 
 ### D4: One pure function keeps both bases
 
@@ -129,8 +145,8 @@ Engine tier, search change: full `Validate-PrePR.ps1`.
 - **nps.** A `Run-Bench` pass at defaults against the merge base, per `measure-strength`.
 - **Reach.** A profile build at arm 75/225 shows the `capped` share falling well below 99%. P2
   predicts most depth ≥ 5 reductions leave the cap.
-- **Strength.** The lab run in D3, about 3.5 h, approved by the owner on 2026-10-11. For the
-  shipped arm, add the #636 Method inputs: the depth-12 profile screen and the depth-14 wall clock,
+- **Strength.** D3's screen (about 3.5 h), then its confirmation (about 4 h; #735's 24,696-game run took 4 h 04 min) if the screen
+  advances an arm. The owner approved both on 2026-10-11. For the confirmed arm, add the #636 Method inputs: the depth-12 profile screen and the depth-14 wall clock,
   recorded beside the lab row in `Measurements/ci-per-change.md`.
 
 ## Cost
@@ -138,8 +154,8 @@ Engine tier, search change: full `Validate-PrePR.ps1`.
 - **Size:** 50-200 lines, in `AIPerplex.h`, `AIPerplex.cpp`, `SearchTuning.def`, two test files,
   `Docs/EngineGuide.md` (option list) and `Docs/Changelog.md`.
 - **Blast radius:** Engine tier, search change. One code review plus `search-reviewer`.
-- **Measurement:** one lab run (approved), plus about 40 min of local screen and wall clock for
-  the winner.
+- **Measurement:** two lab runs, both approved: the screen, then the confirmation if the screen
+  advances an arm. Plus about 40 min of local profile screen and wall clock for the confirmed arm.
 
 ## Harvest
 
