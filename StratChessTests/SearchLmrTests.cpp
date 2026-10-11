@@ -143,6 +143,7 @@ TEST_CASE("LMR: a nonzero log divisor reaches the search", "[search][lmr][nodes]
 {
 	constexpr const char* fen = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4";
 	AIPerlexTestFixture sqrt_base(fen);
+	sqrt_base.set_lmr_log(0, 0);
 	sqrt_base.get_move_at_threads(1, 8);
 
 	AIPerlexTestFixture log_base(fen);

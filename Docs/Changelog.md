@@ -15,14 +15,15 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
-## 2026-10-11: Log-based LMR reduction base (#809)
+## 2026-10-12: Log-based LMR reduction base (#809)
 
 ### Added
 - `LmrLogBase` / `LmrLogDivisor` (`SearchTuning::lmr_log_base` / `lmr_log_divisor`, hundredths,
-  default 0): R = base + ln d · ln m / divisor, then the unchanged `max(1, ·)`, `d-2` cap and
-  history shift. Divisor 0 keeps the sqrt base, which #730 measured on the cap for 99.0% of
-  reductions; the triage probes put 55% of reduced-search nodes at depth ≥ 5, where a log base
-  moves off it. Default-off build is node-identical to its merge base.
+  default 100 / 150): R = 1.00 + ln d · ln m / 1.50, then the unchanged `max(1, ·)`, `d-2` cap
+  and history shift. It replaces the sqrt base, which #730 measured on the cap for 99.0% of
+  reductions. Lab: +15.1 ± 3.2 Elo on 24,984 fresh-opening games against the sqrt base. The
+  screen ranked the arms by aggressiveness: 0.75 / 2.25 −4.1, 1.00 / 1.75 +14.3, 1.00 / 1.50
+  +15.2. `LmrLogDivisor=0` restores the sqrt base.
 
 ### Changed
 - `resolve_limits()` clamps the root depth to `MAX_PLY - 1`; no deeper search could complete.

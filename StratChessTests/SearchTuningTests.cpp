@@ -129,8 +129,8 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.lmr_min_move_index == 3);
 	CHECK(tuning.lmr_enabled);
 	CHECK(tuning.lmr_history_divisor == 64);
-	CHECK(tuning.lmr_log_base == 0);
-	CHECK(tuning.lmr_log_divisor == 0);
+	CHECK(tuning.lmr_log_base == 100);
+	CHECK(tuning.lmr_log_divisor == 150);
 	CHECK(tuning.null_move_enabled);
 	CHECK(tuning.null_move_reduction == 3);
 	CHECK(tuning.null_move_min_depth == 3);
@@ -501,8 +501,8 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 {
 	const std::vector<std::string> expected{
 	    "option name LmrHistoryDivisor type spin default 64 min 0 max 1000000",
-	    "option name LmrLogBase type spin default 0 min 0 max 1000",
-	    "option name LmrLogDivisor type spin default 0 min 0 max 10000",
+	    "option name LmrLogBase type spin default 100 min 0 max 1000",
+	    "option name LmrLogDivisor type spin default 150 min 0 max 10000",
 	    "option name SeePruningMargin type spin default 0 min 0 max 900",
 	    "option name SingularExtensions type check default true",
 	    "option name SingularMinDepth type spin default 6 min 1 max 256",
