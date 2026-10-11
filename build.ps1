@@ -28,6 +28,11 @@
     debugging; do not measure with it, since nps and Elo are only comparable
     between binaries from the same compiler.
 
+.PARAMETER Coverage
+    Build the test binary into the windows-clang-cl-coverage preset, instrumented for
+    LLVM source-based coverage. 'tests' verb, clang-cl Release only. Scripts/Get-Coverage.ps1
+    drives it: it runs the binary with a profile path and turns the profile into a report.
+
 .PARAMETER SelfTest
     Run build-wrapper regression tests without configuring or building. Covers the
     processor-architecture fallback, the artifact-freshness verdict and the ccache
@@ -48,6 +53,7 @@
     .\build.ps1 extended-tests
     .\build.ps1 all -Config Debug
     .\build.ps1 main -Compiler msvc
+    .\build.ps1 tests -Coverage
     .\build.ps1 -SelfTest
 #>
 [CmdletBinding()]
@@ -65,6 +71,8 @@ param(
     [ValidateSet('clang-cl', 'msvc')]
     [string]$Compiler = 'clang-cl',
 
+    [switch]$Coverage,
+
     [switch]$SelfTest
 )
 
@@ -75,6 +83,15 @@ $RepoRoot = $PSScriptRoot
 
 $Preset = "windows-$Compiler"
 if ($Config -eq 'Debug') { $Preset += '-debug' }
+if ($Coverage) {
+    # Only 'tests': a run verb would scatter default.profraw into the working directory,
+    # and the engine binary is never instrumented.
+    if ($Verb -ne 'tests' -or $Compiler -ne 'clang-cl' -or $Config -ne 'Release') {
+        Write-Error "-Coverage takes the 'tests' verb with -Compiler clang-cl -Config Release. Run Scripts/Get-Coverage.ps1 for a report."
+        exit 1
+    }
+    $Preset += '-coverage'
+}
 
 $BuildDir = Join-Path $RepoRoot "build\$Preset"
 $TestExe  = Join-Path $BuildDir 'StratChessTests.exe'
