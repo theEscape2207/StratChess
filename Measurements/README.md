@@ -25,10 +25,7 @@ carries the mechanical facts; the prose section carries what a reader could not 
 them.
 
 For new experiments, use existing issue/design notes to record the question, role (diagnostic,
-screen or confirmation), stopping rule and agreed budget **before dispatch**. A screen's
-declaration also says what happens on a failed shard (re-run it, abandon, or let the owner pick
-from the survivors) and on a tie between arms (the rule that picks one, or confirming both). The
-confirmation stays fresh-opening whichever applies. Link that declaration
+screen or confirmation), stopping rule and agreed budget **before dispatch**. Link that declaration
 from the row detail, and retain every tried arm, including weak or inconclusive ones, with its
 options and run reference. Mark invalid/cancelled attempts as discarded with a reason. A fresh
 confirmation names the screen that selected it and its opening range. Use the existing ledger
