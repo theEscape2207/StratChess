@@ -30,6 +30,10 @@ Hard triggers, at any size:
 - A change to which paths get deleted, or the removal of a guard, safety check or recovery path.
 - A change to what a measurement means: binary or option selection, pooling, statistics, validity.
 
+One exception: a follow-up commit that only moves a default to the value a lab confirmation passed,
+on a PR whose implementation already had its full review, gets an inline check of the value, that
+it reaches the search, and the test expectations. Record it as `inline — lab-confirmed default`.
+
 Load skill `code-review` (Claude: `mattpocock-skills:code-review`, not the built-in
 `/code-review`) and give it these inputs, so it never has to ask the user. The mode above replaces
 only its dispatch step; its briefs, smell baseline and two-axis report still apply.

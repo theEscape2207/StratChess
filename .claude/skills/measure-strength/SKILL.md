@@ -139,7 +139,7 @@ measurement and is not one.
   and the whole context is re-read at full price on wake.
 - A lab run occupies 18 of 20 repository CI slots for ~3 h and can delay every other PR. Say that
   when proposing one — as the cost it is, not as a reason to fall back on an instrument that will
-  not answer.
+  not answer. Lab runs are serial, never parallel: a second dispatch queues until the first ends.
 
 ## Where the result came from
 
