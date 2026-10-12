@@ -251,7 +251,7 @@ if ($SelfTest) {
     )
     foreach ($c in $cases) {
         $got = Get-MatchVerdict -EloText $c.Elo -SprtPreset $c.Preset -SprtVerdict $c.Verdict `
-            -GameCount $c.N -IsSmoke:([bool]$c.Smoke) -NoStrengthData:([bool]$c.None) -HardFail:([bool]$c.Fail)
+            -GameCount $c.N -IsSmoke:([bool]$c['Smoke']) -NoStrengthData:([bool]$c['None']) -HardFail:([bool]$c['Fail'])
         if ($got -eq $c.Expect) {
             Write-Host "  ok    $($c.Name)" -ForegroundColor DarkGray
         } else {
