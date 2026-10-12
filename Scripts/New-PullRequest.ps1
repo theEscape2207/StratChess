@@ -386,7 +386,7 @@ try {
         $editArgs = @(Get-PrEditArgument -Number $existing -NewTitle $Title -CurrentTitle $currentTitle -BodyPath $bodyPath)
         # `gh pr edit` prints the PR URL to stdout on success. Suppress it and let the
         # explicit view below be the one source of that line, so every path through
-        # this step emits exactly one URL -- this branch used to print two.
+        # this step emits exactly one URL.
         & gh @editArgs | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: gh pr edit failed." -ForegroundColor Red; exit 1 }
         & gh pr view $existing --json url --jq '.url'
