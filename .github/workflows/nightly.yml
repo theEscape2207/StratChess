@@ -279,7 +279,6 @@ jobs:
           -DCMAKE_C_COMPILER=clang-$LLVM_MAJOR
           -DCMAKE_CXX_COMPILER=clang++-$LLVM_MAJOR
 
-      # No "Validate lint scripts" step: lint-tree runs it on the same runner and LLVM.
       - name: clang-tidy Deep on shipping sources (blocking)
         shell: pwsh
         run: |
