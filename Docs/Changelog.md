@@ -30,6 +30,13 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - `resolve_limits()` clamps the root depth to `MAX_PLY - 1`; no deeper search could complete.
   `game_settings.json` now rejects a search depth ≤ 0, which the clamp would read as 255.
 
+## 2026-10-11: Nightly coverage report (#156, slice 2)
+
+### Added
+- `nightly.yml` `coverage` job (Windows clang-cl): runs `Get-Coverage.ps1`, writes the total and
+  per-file table to the step summary and uploads the annotated-source HTML. Report-only; a ratchet
+  is a later decision, made from these figures. `Get-Coverage.ps1 -Markdown <file>` writes the table.
+
 ## 2026-10-11: Measured test coverage (#156, slice 1)
 
 ### Added

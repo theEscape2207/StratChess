@@ -21,6 +21,10 @@
 .PARAMETER Html
     Also write llvm-cov's annotated-source HTML report into this directory.
 
+.PARAMETER Markdown
+    Also write the total and a per-file table (lines, branches, functions) as Markdown to
+    this file. Nightly passes $GITHUB_STEP_SUMMARY.
+
 .PARAMETER SelfTest
     Run the summary-parsing tests and exit. Builds nothing.
 
@@ -36,6 +40,8 @@ param(
     [string]$Tag = '~[slow]',
 
     [string]$Html = '',
+
+    [string]$Markdown = '',
 
     [switch]$SelfTest
 )
@@ -67,36 +73,109 @@ function Get-CoverageTotals {
     }
 }
 
-function Format-CoverageMetric {
-    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][object]$Metric)
+function Format-CoverageValue {
+    param([Parameter(Mandatory)][object]$Metric)
 
     $inv = [cultureinfo]::InvariantCulture
-    if ($Metric.count -eq 0) { return "$Name -" }
+    if ($Metric.count -eq 0) { return '-' }
     $percent = ([double]$Metric.covered / [double]$Metric.count * 100).ToString('0.00', $inv)
-    '{0} {1}% ({2}/{3})' -f $Name, $percent, $Metric.covered.ToString($inv), $Metric.count.ToString($inv)
+    '{0}% ({1}/{2})' -f $percent, $Metric.covered.ToString($inv), $Metric.count.ToString($inv)
 }
 
 function Format-CoverageTotals {
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Totals)
 
     $parts = foreach ($key in $Totals.Keys) {
-        Format-CoverageMetric -Name $key -Metric $Totals[$key]
+        "$key $(Format-CoverageValue -Metric $Totals[$key])"
     }
     $parts -join ' | '
 }
 
+# A Markdown report of an `llvm-cov export -summary-only` document: the total, then one
+# row per file with its path relative to the repository.
+function Format-CoverageMarkdown {
+    param(
+        [Parameter(Mandatory)][string]$ExportJson,
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$Filter
+    )
+
+    $totals = Get-CoverageTotals -ExportJson $ExportJson
+    # Paths reach llvm-cov with either separator, so both sides are normalised first.
+    $rootPrefix = ($Root -replace '\\', '/').TrimEnd('/') + '/'
+    $rows = foreach ($file in ($ExportJson | ConvertFrom-Json).data[0].files) {
+        $relative = $file.filename -replace '\\', '/'
+        if ($relative.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $relative = $relative.Substring($rootPrefix.Length)
+        }
+        [pscustomobject]@{
+            Path = $relative
+            Line = '| `{0}` | {1} | {2} | {3} |' -f $relative,
+                (Format-CoverageValue -Metric $file.summary.lines),
+                (Format-CoverageValue -Metric $file.summary.branches),
+                (Format-CoverageValue -Metric $file.summary.functions)
+        }
+    }
+
+    @(
+        "### Coverage (``$Filter``)"
+        ''
+        "**Total:** $(Format-CoverageTotals -Totals $totals)"
+        ''
+        'Report-only: no threshold is enforced.'
+        ''
+        '| File | Lines | Branches | Functions |'
+        '|---|---:|---:|---:|'
+        # Invariant culture: the machine's own would order paths by its alphabet.
+        @($rows | Sort-Object -Property Path -Culture '').Line
+    ) -join "`n"
+}
+
 if ($SelfTest) {
     function New-ExportJson {
-        param([int[]]$Lines, [int[]]$Branches)
-        @{ data = @(@{ totals = @{
+        param([int[]]$Lines, [int[]]$Branches, [object[]]$Files = @())
+        @{ data = @(@{ files = $Files; totals = @{
             lines     = @{ covered = $Lines[0];    count = $Lines[1] }
             regions   = @{ covered = 3956;         count = 4509 }
             branches  = @{ covered = $Branches[0]; count = $Branches[1] }
             functions = @{ covered = 516;          count = 595 }
-        } }) } | ConvertTo-Json -Depth 6
+        } }) } | ConvertTo-Json -Depth 8
     }
 
+    function New-FileSummary {
+        param([string]$Path, [int[]]$Lines, [int[]]$Branches)
+        @{ filename = $Path; summary = @{
+            lines     = @{ covered = $Lines[0];    count = $Lines[1] }
+            branches  = @{ covered = $Branches[0]; count = $Branches[1] }
+            functions = @{ covered = 1;            count = 2 }
+        } }
+    }
+
+    # Listed out of order, mixed separators, the root with a trailing separator and a different
+    # case, and one file outside the root that must keep its full path.
+    $markdownJson = New-ExportJson -Lines 5010, 6321 -Branches 2463, 2958 -Files @(
+        New-FileSummary -Path 'C:/Repo/StratEngine/Sort.cpp' -Lines 3, 4 -Branches 0, 0
+        New-FileSummary -Path 'C:\Repo\StratEngine\Eval.cpp' -Lines 1, 3 -Branches 2, 8
+        New-FileSummary -Path 'D:\Elsewhere\Repo\Other.h' -Lines 0, 1 -Branches 0, 0
+    )
+
     $cases = @(
+        @{ Name     = 'markdown rows are root-relative, slash-separated and sorted'
+           Json     = $markdownJson
+           Markdown = $true
+           Expect   = @(
+               '### Coverage (`~[slow]`)'
+               ''
+               '**Total:** Lines 79.26% (5010/6321) | Regions 87.74% (3956/4509) | Branches 83.27% (2463/2958) | Functions 86.72% (516/595)'
+               ''
+               'Report-only: no threshold is enforced.'
+               ''
+               '| File | Lines | Branches | Functions |'
+               '|---|---:|---:|---:|'
+               '| `D:/Elsewhere/Repo/Other.h` | 0.00% (0/1) | - | 50.00% (1/2) |'
+               '| `StratEngine/Eval.cpp` | 33.33% (1/3) | 25.00% (2/8) | 50.00% (1/2) |'
+               '| `StratEngine/Sort.cpp` | 75.00% (3/4) | - | 50.00% (1/2) |'
+           ) -join "`n" }
         @{ Name   = 'probe baseline formats invariantly'
            Json   = New-ExportJson -Lines 5010, 6321 -Branches 2463, 2958
            Expect = 'Lines 79.26% (5010/6321) | Regions 87.74% (3956/4509) | Branches 83.27% (2463/2958) | Functions 86.72% (516/595)' }
@@ -115,7 +194,11 @@ if ($SelfTest) {
     try {
         foreach ($case in $cases) {
             try {
-                $actual = Format-CoverageTotals -Totals (Get-CoverageTotals -ExportJson $case.Json)
+                $actual = if ($case['Markdown']) {
+                    Format-CoverageMarkdown -ExportJson $case.Json -Root 'c:\repo\' -Filter '~[slow]'
+                } else {
+                    Format-CoverageTotals -Totals (Get-CoverageTotals -ExportJson $case.Json)
+                }
             } catch {
                 $actual = 'THROWS'
             }
@@ -191,6 +274,10 @@ if ($Html) {
     & $llvmCov show -format=html "-output-dir=$Html" @covArgs
     if ($LASTEXITCODE -ne 0) { Write-Error "llvm-cov show failed (exit $LASTEXITCODE)."; exit 1 }
     Write-Host "HTML report: $(Join-Path $Html 'index.html')"
+}
+if ($Markdown) {
+    Format-CoverageMarkdown -ExportJson $exportText -Root $RepoRoot -Filter $Tag |
+        Set-Content -Path $Markdown -Encoding utf8
 }
 
 Write-Host "`n==> Total ($Tag): $(Format-CoverageTotals -Totals $coverageTotals)" -ForegroundColor Cyan

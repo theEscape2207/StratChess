@@ -77,6 +77,7 @@ The Coverage Map below says which tests target a component; `Scripts/Get-Coverag
 what the fast tier actually executes (LLVM source-based coverage, `windows-clang-cl-coverage`
 preset). `-Html <dir>` writes annotated source to find the unexecuted lines. Near-zero figures for
 `defines.h` and `Magic.h` are compile-time tables, not gaps; `Tools/` is exercised by `[slow]`.
+Nightly's `coverage` job publishes the same report for `main` (`Docs/CI.md` → Nightly).
 
 ---
 
