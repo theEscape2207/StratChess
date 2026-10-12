@@ -103,7 +103,7 @@ Nightly's `coverage` job publishes the same report for `main` (`Docs/CI.md` → 
 | Search/TT contract (terminal stores, probed-bound cutoffs, mate scores refused as cutoffs) | `[search][tt]` | `SearchTTContractTests.cpp` |
 | Quiescence (delta pruning, SEE pruning margin, in-check evasions, terminal states, ordering) | `[search][qsearch]` | `QuiescenceTests.cpp` |
 | Late move pruning (eligibility, legal index, exemptions, fail-low return and TT suppression, abort unwind) — every non-redundant guard falsified by mutation; the UCI `lmp skips` line is `[uci][lmp]` in `UCIReportingTests.cpp` | `[search][lmp]` | `SearchLateMovePruningTests.cpp` |
-| Late move reduction (base formula, `[1, depth - 2]` bounds, history shift applied after the cap, truncation, displaced-killer score, near sign switch at small divisors, divisor reaching `pvs()`) | `[search][lmr]` | `SearchLmrTests.cpp` |
+| Late move reduction (sqrt and log base formulas, `[1, depth - 2]` bounds, history shift applied after the cap, truncation, displaced-killer score, near sign switch at small divisors, divisor reaching `pvs()`) | `[search][lmr]` | `SearchLmrTests.cpp` |
 | Move ordering (Sort) | `[sort]` | `SortTests.cpp` |
 | Static exchange evaluation | `[see]` | `SeeTests.cpp` |
 | Board DoMove/UndoMove completeness | `[board]` | `BoardTests.cpp` |
