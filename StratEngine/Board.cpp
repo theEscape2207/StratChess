@@ -117,7 +117,7 @@ void Board::setup_board(const PiecePlacements& pieces)
 }
 
 // The one rule so far: the side not to move may not be in check, since reaching such a position would
-// have required leaving a king en prise. Kings on adjacent squares fail it too, because GetAttackBoard
+// have required leaving a king en prise. Kings on adjacent squares fail it too, because AttackersTo
 // includes king attacks. Any further rule belongs here, and only needs the scratch board below.
 bool Board::position_is_legal(const PiecePlacements& pieces, eColor side_to_move)
 {
