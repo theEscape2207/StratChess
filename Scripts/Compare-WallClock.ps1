@@ -100,8 +100,10 @@ $ErrorActionPreference = 'Stop'
 
 # #636's wall-clock gate: a mean change at least this fast, in percent, with its +2 SE bound below 0.
 $GateChangePct = -3.0
-# One search at depth 14 on the dev machine, from the recorded runs (2.1-3.2 s per position).
+# Rough time of one depth-14 search on the dev machine, for the phase plan only.
 $RoughSearchSeconds = 2.5
+# Below this a 1 ms timer step is over 1% of a ratio, so the report counts such searches.
+$ShortSearchMs = 100
 
 function Get-ChunkPlan {
     <# Consecutive chunks of $Size positions; the first build alternates, the baseline first. #>
@@ -222,16 +224,17 @@ function Get-WallClockSummary {
         CandidateSeconds = ($Pairs | ForEach-Object { $_.CandidateMs } | Measure-Object -Sum).Sum / 1000.0
         Faster           = @($Pairs | Where-Object { $_.CandidateMs -lt $_.BaselineMs }).Count
         Slower           = @($Pairs | Where-Object { $_.CandidateMs -gt $_.BaselineMs }).Count
+        Short            = @($Pairs | Where-Object { [math]::Min($_.BaselineMs, $_.CandidateMs) -lt $ShortSearchMs }).Count
         MeanByFirst      = $byFirst
     }
 }
 
 function Test-WallClockGate {
-    <# #636: a mean change of $ChangePct% or better, and the +2 SE bound below zero. #>
-    param([Parameter(Mandatory)][object]$Summary, [Parameter(Mandatory)][double]$ChangePct)
+    <# #636: a mean change of $GateChangePct% or better, and the +2 SE bound below zero. #>
+    param([Parameter(Mandatory)][object]$Summary)
     # Rounded so a mean of exactly 0.97 is -3%, not -2.9999999999999973%.
     $change = [math]::Round(100 * ($Summary.Mean - 1), 9)
-    return $change -le $ChangePct -and $Summary.High -lt 1
+    return $change -le $GateChangePct -and $Summary.High -lt 1
 }
 
 function Format-WallClockReport {
@@ -240,7 +243,6 @@ function Format-WallClockReport {
         [Parameter(Mandatory)][int]$SearchDepth,
         [Parameter(Mandatory)][int]$Size,
         [Parameter(Mandatory)][int]$ChunkCount,
-        [Parameter(Mandatory)][double]$ChangePct,
         [AllowEmptyString()][string]$BaseCommit = '',
         [AllowEmptyString()][string]$CandCommit = ''
     )
@@ -261,8 +263,11 @@ function Format-WallClockReport {
         if ($null -ne $s.MeanByFirst[$arm]) { & $f '{0} first {1:0.000}' $arm $s.MeanByFirst[$arm] }
     }
     $out.Add('Mean ratio by the build that ran first: ' + ($firstNote -join ', '))
-    $verdict = if (Test-WallClockGate -Summary $s -ChangePct $ChangePct) { 'PASS' } else { 'FAIL' }
-    $out.Add((& $f '#636 wall-clock gate, used only when the lab is declined (mean change {0}% or better, +2 SE bound below 0): {1}' $ChangePct $verdict))
+    if ($s.Short -gt 0) {
+        $out.Add((& $f 'WARNING: {0} position(s) searched under {1} ms on either build; timer steps weigh on their ratios. Raise -Depth.' $s.Short $ShortSearchMs))
+    }
+    $verdict = if (Test-WallClockGate -Summary $s) { 'PASS' } else { 'FAIL' }
+    $out.Add((& $f '#636 wall-clock gate, used only when the lab is declined (mean change {0}% or better, +2 SE bound below 0): {1}' $GateChangePct $verdict))
     $out.Add('')
     $out.Add('Ledger: ' + (& $f 'Fixed-depth {0} wall clock over the same {1} positions against {2}, in chunks of {3} with the order alternated: after/before **{4:0.00} +/- {5:0.00}** (mean per-position ratio, 2 SE), {6:0} s -> {7:0} s in total.' `
         $SearchDepth $s.N $baseName $Size $s.Mean (2 * $s.Se) $s.BaselineSeconds $s.CandidateSeconds))
@@ -310,8 +315,8 @@ if ($SelfTest) {
         ([math]::Abs($sum.Mean - 1.2) -lt 1e-12 -and [math]::Abs($sum.Se - 0.1) -lt 1e-12 -and
          [math]::Abs($sum.Low - 1.0) -lt 1e-12 -and [math]::Abs($sum.High - 1.4) -lt 1e-12) `
         "got mean $($sum.Mean) se $($sum.Se)"
-    Assert-Case 'totals, slower count and order split' `
-        ($sum.BaselineSeconds -eq 0.2 -and $sum.CandidateSeconds -eq 0.24 -and $sum.Slower -eq 2 -and $sum.Faster -eq 0 -and
+    Assert-Case 'totals, slower count, short searches and order split' `
+        ($sum.BaselineSeconds -eq 0.2 -and $sum.CandidateSeconds -eq 0.24 -and $sum.Slower -eq 2 -and $sum.Faster -eq 0 -and $sum.Short -eq 0 -and
          [math]::Abs($sum.MeanByFirst['candidate'] - 1.3) -lt 1e-12)
     Assert-Case 'FALSIFY: one position has no standard error' `
         (Test-Refuses -Match 'at least two positions' { Get-WallClockSummary -Pairs @($twoPairs[0]) })
@@ -323,7 +328,7 @@ if ($SelfTest) {
             @{ Mean = 0.98; Se = 0.001; Expect = $false; Why = 'FALSIFY: -2% is not enough' }
             @{ Mean = 0.95; Se = 0.03;  Expect = $false; Why = 'FALSIFY: -5% whose +2 SE bound is above 0' })) {
         $gateInput = [pscustomobject]@{ Mean = $case.Mean; High = $case.Mean + 2 * $case.Se }
-        $got = Test-WallClockGate -Summary $gateInput -ChangePct $GateChangePct
+        $got = Test-WallClockGate -Summary $gateInput
         Assert-Case "gate: $($case.Why) -> $(if ($case.Expect) { 'PASS' } else { 'FAIL' })" ($got -eq $case.Expect)
     }
 
@@ -388,9 +393,9 @@ if ($SelfTest) {
         [cultureinfo]::CurrentCulture = [cultureinfo]::GetCultureInfo('de-DE')
         $result = [pscustomobject]@{
             N = 200; Mean = 1.24; Se = 0.035; Low = 1.17; High = 1.31; BaselineSeconds = 483.2; CandidateSeconds = 548.4
-            Faster = 40; Slower = 158; MeanByFirst = [ordered]@{ baseline = 1.23; candidate = 1.25 }
+            Faster = 40; Slower = 158; Short = 0; MeanByFirst = [ordered]@{ baseline = 1.23; candidate = 1.25 }
         }
-        $report = @(Format-WallClockReport -Summary $result -SearchDepth 14 -Size 10 -ChunkCount 20 -ChangePct $GateChangePct -BaseCommit 'f9fcf8a' -CandCommit '6528d36')
+        $report = @(Format-WallClockReport -Summary $result -SearchDepth 14 -Size 10 -ChunkCount 20 -BaseCommit 'f9fcf8a' -CandCommit '6528d36')
     } finally {
         [cultureinfo]::CurrentCulture = $prior
     }
@@ -401,6 +406,10 @@ if ($SelfTest) {
     Assert-Case 'FALSIFY: a comma-decimal machine still prints decimal points' `
         ($text -match '1\.240 \+/- 0\.070' -and $text -notmatch '\d,\d')
     Assert-Case 'a slower candidate fails the gate in the report' ($text -match 'lab is declined .*: FAIL')
+    Assert-Case 'no short searches, no warning' ($text -notmatch 'WARNING')
+    $result.Short = 3
+    $warned = @(Format-WallClockReport -Summary $result -SearchDepth 14 -Size 10 -ChunkCount 20) -join "`n"
+    Assert-Case 'FALSIFY: short searches are named in the report' ($warned -match 'WARNING: 3 position\(s\) searched under 100 ms')
 
     Write-Host ''
     if ($failures -gt 0) {
@@ -475,7 +484,7 @@ Write-PhaseBanner -Name 'report' -Quiet $false -Seconds 1
 $paired | Export-Csv -LiteralPath (Join-Path $outPath 'pairs.csv') -NoTypeInformation
 $result = Get-WallClockSummary -Pairs $paired
 $report = @(Format-WallClockReport -Summary $result -SearchDepth $Depth -Size $ChunkSize -ChunkCount $chunkPlan.Count `
-    -ChangePct $GateChangePct -BaseCommit $BaselineCommit -CandCommit $CandidateCommit)
+    -BaseCommit $BaselineCommit -CandCommit $CandidateCommit)
 $report | Set-Content -LiteralPath (Join-Path $outPath 'report.txt')
 Write-Host ''
 $report | ForEach-Object { Write-Host $_ }

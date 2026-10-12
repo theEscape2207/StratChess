@@ -22,7 +22,7 @@
     untouched unless -Body/-BodyFile is passed. Anything else would silently replace a
     hand-written PR description with the placeholder on every subsequent push. A -Title
     that differs from the open PR's replaces it, and the script says which of the two it
-    changed: #813 merged under a stale title that the script had silently ignored.
+    changed.
 
     This script deliberately does NOT dispatch the specialised reviewers (eval-reviewer,
     search-reviewer). That is step 3 of the checklist and is a judgement call about what
@@ -329,9 +329,12 @@ $bodySupplied = [bool]($BodyFile -or $Body)
 $currentTitle = ''
 if ($existing) {
     $currentTitle = (& gh pr view $existing --json title --jq '.title')
-    if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: could not read PR #$existing's title." -ForegroundColor Red; exit 1 }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARNING: could not read PR #$existing's title -- branch is pushed, update the PR yourself." -ForegroundColor Yellow
+        exit 0
+    }
 }
-$titleChanged = [bool]($existing -and $Title -and $Title -cne $currentTitle)
+$titleChanged = $existing -and @(Get-PrEditArgument -Number $existing -NewTitle $Title -CurrentTitle $currentTitle).Count -gt 0
 
 if ($existing -and -not $bodySupplied -and -not $titleChanged) {
     # Updating an open PR with nothing new to say: leave it alone. Re-running this script
@@ -347,12 +350,11 @@ if ($existing -and -not $bodySupplied -and -not $titleChanged) {
 
 $tempBody = $null
 $bodyPath = ''
-if ($existing -and -not $bodySupplied) {
-    # Only the title changes; the scaffold below must not replace the description.
-} elseif ($BodyFile) {
+if ($BodyFile) {
     if (-not (Test-Path $BodyFile)) { Write-Host "FAIL: -BodyFile not found: $BodyFile" -ForegroundColor Red; exit 1 }
     $bodyPath = $BodyFile
-} else {
+} elseif ($bodySupplied -or -not $existing) {
+    # An open PR whose title alone changes keeps its description: no scaffold.
     if (-not $Body) {
         # gh --body bypasses .github/pull_request_template.md, so scaffold the house
         # headings rather than opening an empty PR.

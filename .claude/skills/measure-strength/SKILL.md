@@ -56,7 +56,7 @@ read the Screen block's ±2 SE. One run per side carries tree noise larger than 
 effect (`Measurements/profile-screen.md`). Field meanings and emission conditions:
 [EngineGuide](../../../Docs/EngineGuide.md#interpret-search-output). The #636 child's
 fixed-depth wall clock is `Compare-WallClock.ps1 -Baseline <merge-base exe> -Candidate <exe>`
-(~17 min at its defaults); its `Ledger:` line is the row text.
+(~17 min at its defaults); its `Ledger:` line drafts the ledger row.
 
 A **local fixed batch** (500 games, ~40 min, ±25 Elo) is supported but is not the default: a third
 of the lab's wall-clock for a fraction of its precision, so it mostly buys inconclusive runs. Reach

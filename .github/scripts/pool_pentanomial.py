@@ -24,7 +24,7 @@ those rows into one table across a run's arms.
 The lab names its engines candidate-<sha> and reference-<sha>, so the report
 prints both revisions from the logs' "Results of" lines, and refuses logs that
 name different ones. A ledger row copies them from here rather than from a
-branch, whose head may have moved on since the run (#809).
+branch, whose head may have moved on since the run.
 """
 
 import argparse
@@ -99,7 +99,8 @@ def parse_revisions(text):
     """(candidate, reference) revisions named by a log's "Results of" lines.
 
     None when the log has no such line, or names its engines otherwise (a local
-    match, a historical log). Raises when the lines disagree with each other.
+    match, a historical log). Raises when the lines disagree with each other,
+    including a named line beside an unnamed one.
     """
     found = set()
     for names in RESULTS_RE.findall(text):
@@ -108,13 +109,12 @@ def parse_revisions(text):
             match = REVISION_RE.fullmatch(name)
             if match:
                 sides[match.group(1)] = match.group(2)
-        if set(sides) != {"candidate", "reference"}:
-            return None
-        found.add((sides["candidate"], sides["reference"]))
-    if not found:
+        found.add((sides["candidate"], sides["reference"])
+                  if set(sides) == {"candidate", "reference"} else None)
+    if found <= {None}:
         return None
     if len(found) > 1:
-        raise ValueError(f"names more than one revision pair: {sorted(found)}")
+        raise ValueError(f"names more than one revision pair: {sorted(found, key=str)}")
     return found.pop()
 
 
@@ -353,6 +353,9 @@ def self_test():
                  expect_out="logs name different revisions")
         run_case("CLI one log without revisions refused", [[3, 4, 3, 3, 2]] * 2, flags, False,
                  heads=[lab, ""], expect_out="none")
+        run_case("CLI one log naming a pair beside an unnamed line refused", [[3, 4, 3, 3, 2]] * 2,
+                 flags, False, heads=[lab + results("engine-a", "engine-b"), lab],
+                 expect_out="more than one revision pair")
         run_case("CLI one log naming two pairs refused", [[3, 4, 3, 3, 2]] * 2, flags, False,
                  heads=[lab + results("candidate-a922cee", "reference-79c3217"), lab],
                  expect_out="more than one revision pair")
