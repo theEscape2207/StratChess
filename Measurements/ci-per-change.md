@@ -12,9 +12,9 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
 | 2026-10-11 | 3c5faee, CONFIRM `LmrLogBase=100 LmrLogDivisor=150`, shipped as the default (#809; selected by the screen below, fresh openings 9,991-22,482) | f47da71 (sqrt base; 3c5faee at its default `LmrLogDivisor=0` is node-identical to it) | 24984 | 10+0.1 | **+15.14 +/- 3.23** | gain |
-| 2026-10-11 | 3c5faee, SCREEN arm C: `LmrLogBase=100 LmrLogDivisor=150` (#809; 5 of 6 shards) | f47da71 (sqrt base) | 5550 | 10+0.1 | **+15.16 +/- 6.92** | discarded |
-| 2026-10-11 | 3c5faee, SCREEN arm B: `LmrLogBase=100 LmrLogDivisor=175` (#809) | f47da71 (sqrt base) | 6660 | 10+0.1 | **+14.25 +/- 6.27** | discarded |
-| 2026-10-11 | 3c5faee, SCREEN arm A: `LmrLogBase=75 LmrLogDivisor=225` (#809) | f47da71 (sqrt base) | 6660 | 10+0.1 | **-4.07 +/- 6.15** | discarded |
+| 2026-10-11 | 6528d36 (3c5faee less a test fix), SCREEN arm C: `LmrLogBase=100 LmrLogDivisor=150` (#809; 5 of 6 shards) | f47da71 (sqrt base) | 5550 | 10+0.1 | **+15.16 +/- 6.92** | discarded |
+| 2026-10-11 | 6528d36 (3c5faee less a test fix), SCREEN arm B: `LmrLogBase=100 LmrLogDivisor=175` (#809) | f47da71 (sqrt base) | 6660 | 10+0.1 | **+14.25 +/- 6.27** | discarded |
+| 2026-10-11 | 6528d36 (3c5faee less a test fix), SCREEN arm A: `LmrLogBase=75 LmrLogDivisor=225` (#809) | f47da71 (sqrt base) | 6660 | 10+0.1 | **-4.07 +/- 6.15** | discarded |
 | 2026-10-11 | f94ba49, probe: `SingularNegativeExtension=2 SingularNegativeExtensionMinDepth=8`, never merged (#806) | 21cc9ba (negative extension off; f94ba49 is 21cc9ba plus the gate option) | 26640 | 10+0.1 | **-0.65 +/- 3.00** | inconclusive @ 26640 |
 | 2026-10-11 | 1d6d8a7, singular negative extension: `SingularNegativeExtension=2`, feature deleted (#803; one pre-registered run, ship iff lower bound > 0) | 1d6d8a7 (with `SingularNegativeExtension=0`; both sides are one binary, so the delta is a runtime option) | 26640 | 10+0.1 | **-2.87 +/- 3.06** | inconclusive @ 26640 |
 | 2026-10-11 | 27fb2db, singular negative extension: `SingularNegativeExtension=1`, kept default-off (#798; one pre-registered run, ship iff lower bound > 0) | 27fb2db (with `SingularNegativeExtension=0`; both sides are one binary, so the delta is a runtime option) | 19980 | 10+0.1 | **-1.46 +/- 3.54** | inconclusive @ 19980 |
