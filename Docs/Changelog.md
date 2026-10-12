@@ -15,6 +15,15 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-12: Script self-tests fail on any error
+
+### Fixed
+- `Run-EloMatch.ps1 -SelfTest`: its 11 `Get-MatchVerdict` cases threw a StrictMode error on an
+  undefined optional key and were skipped while the script exited 0. They now run and pass.
+- `Validate-PrePR.ps1` (changed-script and `-AllSelfTests` paths) and the CI "Validate lint
+  scripts" steps run self-tests with errors terminating, so an uncaught error fails the self-test
+  whatever its exit code.
+
 ## 2026-10-12: Log-based LMR reduction base (#809)
 
 ### Added

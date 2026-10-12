@@ -3,7 +3,11 @@
 Scripts carry a `-SelfTest` switch. `Validate-PrePR.ps1` discovers them by parameter introspection
 and runs the self-test of any script your change touches, so a new one is picked up with no
 registration step. Keep them **pure and toolchain-free** — that property is why the pre-commit hook
-can run them. `Test-UciDriver.ps1` is the one exception, and it spawns `pwsh`, never a compiler.
+can run them. A few spawn `pwsh`; none spawns a compiler.
+
+The runner makes every error terminating, so an uncaught error fails the self-test. End the
+self-test with an explicit `exit`: the runner reports `$LASTEXITCODE`, which without one is the
+exit code of the last native call.
 
 Two rules are enforced rather than suggested:
 
