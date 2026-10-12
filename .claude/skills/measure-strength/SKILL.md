@@ -54,7 +54,9 @@ verdict: gate on wall clock and Elo as above. Screen with
 `-Seeds 8 -Depth 12 -Positions Tests/profile-screen.fen` (~24 min; catches a 5% late-cut change 97% of the time, a 3% one about 3 times in 5) and
 read the Screen block's ±2 SE. One run per side carries tree noise larger than a typical ordering
 effect (`Measurements/profile-screen.md`). Field meanings and emission conditions:
-[EngineGuide](../../../Docs/EngineGuide.md#interpret-search-output).
+[EngineGuide](../../../Docs/EngineGuide.md#interpret-search-output). The #636 child's
+fixed-depth wall clock is `Compare-WallClock.ps1 -Baseline <merge-base exe> -Candidate <exe>`
+(~17 min at its defaults); its `Ledger:` line drafts the ledger row.
 
 A **local fixed batch** (500 games, ~40 min, ±25 Elo) is supported but is not the default: a third
 of the lab's wall-clock for a fraction of its precision, so it mostly buys inconclusive runs. Reach
@@ -64,8 +66,8 @@ affordable game count.
 
 ## Before a local measurement: quiet window
 
-For `Run-Bench.ps1`, `Compare-Bench.ps1`, `Compare-BenchLinux.ps1`, `Run-EloMatch.ps1`,
-`Measure-UciLatency.ps1` and `Measure-CpuProfile.ps1`, do this before each launch:
+For `Run-Bench.ps1`, `Compare-Bench.ps1`, `Compare-BenchLinux.ps1`, `Compare-WallClock.ps1`,
+`Run-EloMatch.ps1`, `Measure-UciLatency.ps1` and `Measure-CpuProfile.ps1`, do this before each launch:
 
 1. **Estimate before launch** from script help, guidance or comparable past runs, adjusted for
    settings. Include benchmark warm-up and all arms/rounds; for matches use the effective game

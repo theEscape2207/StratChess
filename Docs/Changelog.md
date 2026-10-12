@@ -15,6 +15,22 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-12: Lab tooling: wall-clock script, pooled revisions, PR retitling (#818)
+
+### Added
+- `Compare-WallClock.ps1`: #636's fixed-depth wall clock as a script. `Threads=1`, depth 14 over
+  `Tests/profile-screen.fen` by default, in chunks of 10 with the first build alternated per
+  chunk; reports the mean per-position time ratio ± 2 SE, totals, the order split, #636's
+  lab-declined gate and a ledger line, with the quiet-window phase plan. Refuses a build that
+  answers other positions than it was given, or a 0 ms search.
+
+### Changed
+- `pool_pentanomial.py` prints `Revisions: candidate <sha>, reference <sha>` from the match logs'
+  `Results of` lines, and refuses a batch whose logs name different revisions or only some name
+  any. `Measurements/README.md` now copies a lab row's revisions from that line.
+- `New-PullRequest.ps1 -Title` on an open PR replaces a differing title, and the update path
+  says which of title and body it changed. Before, a changed `-Title` was silently ignored, so
+  #813 merged as "default off" after the default flipped.
 ## 2026-10-12: Nightly drops duplicate lint-script self-tests
 
 ### Changed
