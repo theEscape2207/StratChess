@@ -116,6 +116,19 @@ function Get-TopLevelPlan {
             $_ -match '^\.claude/plans/[^/]+\.md$' -and $_ -ne '.claude/plans/TEMPLATE.md' })
 }
 
+# Runs one script's -SelfTest in a child pwsh and returns its exit code. A child, not
+# dot-sourcing: these scripts exit rather than return, and dot-sourcing one would take
+# this script down with it. Errors are made terminating, as warnings are errors in the
+# build: a non-terminating error otherwise lets a self-test skip its cases and still exit 0.
+function Invoke-ScriptSelfTest {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $quoted = $Path -replace "'", "''"
+    & pwsh -NoProfile -ExecutionPolicy Bypass -Command `
+        "`$ErrorActionPreference = 'Stop'; & '$quoted' -SelfTest; exit `$LASTEXITCODE" | Out-Host
+    return $LASTEXITCODE
+}
+
 function Invoke-ChangedScriptSelfTest {
     param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$ChangedFile)
 
@@ -158,11 +171,9 @@ function Invoke-ChangedScriptSelfTest {
         if (-not (Test-Path -LiteralPath $selfTestPath)) { continue }
 
         $ran += $selfTestFile
-        # A child pwsh, not dot-sourcing: these scripts exit rather than return, and
-        # dot-sourcing one would take this script down with it.
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File $selfTestPath -SelfTest | Out-Host
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "  FAIL  $selfTestFile (-SelfTest exited $LASTEXITCODE)" -ForegroundColor Red
+        $exitCode = Invoke-ScriptSelfTest -Path $selfTestPath
+        if ($exitCode -ne 0) {
+            Write-Host "  FAIL  $selfTestFile (-SelfTest exited $exitCode)" -ForegroundColor Red
             $anyFailed = $true
         }
     }
@@ -306,9 +317,7 @@ if ($AllSelfTests) {
     $failed = @()
     foreach ($fact in $facts) {
         Write-Host "`n--- $($fact.Path)" -ForegroundColor Cyan
-        # A child pwsh, not dot-sourcing: these scripts exit rather than return.
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot $fact.Path) -SelfTest | Out-Host
-        if ($LASTEXITCODE -ne 0) { $failed += $fact.Path }
+        if ((Invoke-ScriptSelfTest -Path (Join-Path $RepoRoot $fact.Path)) -ne 0) { $failed += $fact.Path }
     }
 
     Write-Host ''
@@ -498,12 +507,43 @@ if ($SelfTest) {
         }
     }
 
+    # The runner, against throwaway scripts.
+    Write-Host ''
+    $runnerDir = Join-Path ([System.IO.Path]::GetTempPath()) "prepr-runner-selftest-$([guid]::NewGuid())"
+    New-Item -ItemType Directory -Path $runnerDir -Force | Out-Null
+    $runnerCases = @(
+        @{ Name = 'a clean self-test passes'; Body = 'exit 0'; ExpectPass = $true }
+        @{ Name = 'a failing exit code fails'; Body = 'exit 3'; ExpectPass = $false }
+        @{ Name = 'FALSIFY: an ignored StrictMode error fails despite exit 0'
+           Body = "Set-StrictMode -Version Latest; `$c = @{}; `$null = `$c.Missing; exit 0"; ExpectPass = $false }
+        @{ Name = 'a caught error still passes'
+           Body = "try { Write-Error 'boom' } catch { }; exit 0"; ExpectPass = $true }
+    )
+    try {
+        $i = 0
+        foreach ($case in $runnerCases) {
+            $scriptPath = Join-Path $runnerDir "case$i.ps1"; $i++
+            Set-Content -LiteralPath $scriptPath -Value @('param([switch]$SelfTest)', $case.Body)
+            $passed = (Invoke-ScriptSelfTest -Path $scriptPath 2>$null) -eq 0
+            if ($passed -eq $case.ExpectPass) {
+                Write-Host "  PASS  $($case.Name)" -ForegroundColor Green
+            }
+            else {
+                $failed++
+                Write-Host ("  FAIL  {0}: passed={1}, expected {2}" -f $case.Name, $passed, $case.ExpectPass) -ForegroundColor Red
+            }
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $runnerDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
     Write-Host ''
     if ($failed -gt 0) {
         Write-Host "$failed self-test case(s) FAILED." -ForegroundColor Red
         exit 1
     }
-    Write-Host "All $($cases.Count + $resolutions.Count + $fastFailCases.Count + $planCases.Count + $alignmentCases.Count + 1) self-test cases passed." -ForegroundColor Green
+    Write-Host "All $($cases.Count + $resolutions.Count + $fastFailCases.Count + $planCases.Count + $alignmentCases.Count + $runnerCases.Count + 1) self-test cases passed." -ForegroundColor Green
     exit 0
 }
 
