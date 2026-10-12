@@ -15,6 +15,12 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-12: Nightly drops duplicate lint-script self-tests
+
+### Changed
+- `nightly.yml` `lint-deep-linux` no longer runs "Validate lint scripts"; `lint-tree` runs the same
+  step on the same runner and LLVM. Saves ~19 s per Nightly.
+
 ## 2026-10-12: Script self-tests fail on any error
 
 ### Fixed
