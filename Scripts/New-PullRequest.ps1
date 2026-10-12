@@ -10,7 +10,7 @@
                    rather than leaving a half-merged tree.
       2. Validate -- `Validate-PrePR.ps1`, which self-scopes via Get-ChangeTier.ps1.
       3. Push   -- `git push -u origin <branch>`.
-      4. PR     -- creates it against `main`, or updates the body if one is already open.
+      4. PR     -- creates it against `main`, or updates the title and body of an open one.
 
     The body is written to a temp file and passed with `--body-file`, because
     `gh pr create --body` bypasses `.github/pull_request_template.md` entirely. To keep
@@ -20,7 +20,9 @@
     That scaffolding applies ONLY when creating. Re-running the script after another
     commit -- the normal way to update an open PR -- leaves the existing description
     untouched unless -Body/-BodyFile is passed. Anything else would silently replace a
-    hand-written PR description with the placeholder on every subsequent push.
+    hand-written PR description with the placeholder on every subsequent push. A -Title
+    that differs from the open PR's replaces it, and the script says which of the two it
+    changed: #813 merged under a stale title that the script had silently ignored.
 
     This script deliberately does NOT dispatch the specialised reviewers (eval-reviewer,
     search-reviewer). That is step 3 of the checklist and is a judgement call about what
@@ -29,7 +31,8 @@
     and leaves the call to you.
 
 .PARAMETER Title
-    PR title. Required when creating; ignored when updating an existing PR.
+    PR title. Required when creating. On an open PR, replaces its title when it differs;
+    omitted, the title is left unchanged.
 
 .PARAMETER BodyFile
     Path to a markdown file to use as the PR body. Mutually exclusive with -Body.
@@ -101,6 +104,23 @@ function Test-UntrackedBlocksPr {
            $Path -match '^(StratEngine|StratChessEvolved|StratChessTests)(/|\\)'
 }
 
+# The `gh pr edit` arguments for an open PR: only what the caller supplied and changed.
+# Empty when there is nothing to edit.
+function Get-PrEditArgument {
+    param(
+        [Parameter(Mandatory)][string]$Number,
+        [AllowEmptyString()][string]$NewTitle = '',
+        [AllowEmptyString()][string]$CurrentTitle = '',
+        [AllowEmptyString()][string]$BodyPath = ''
+    )
+    $edits = @()
+    # Case-sensitive: a capitalisation fix is a change worth making.
+    if ($NewTitle -and $NewTitle -cne $CurrentTitle) { $edits += '--title', $NewTitle }
+    if ($BodyPath) { $edits += '--body-file', $BodyPath }
+    if ($edits.Count -eq 0) { return @() }
+    return @('pr', 'edit', $Number) + $edits
+}
+
 if ($SelfTest) {
     $branchCases = @(
         @{ Name = 'master is refused';               Branch = 'master';                    Expect = $false }
@@ -121,7 +141,20 @@ if ($SelfTest) {
         @{ Name = 'a lookalike prefix does not block'; Path = 'StratEngineNotes/readme.txt';        Expect = $false }
     )
 
+    $editCases = @(
+        @{ Name = 'a changed title is edited';          New = 'default on'; Current = 'default off'; Body = '';     Expect = 'pr edit 7 --title default on' }
+        @{ Name = 'FALSIFY: the same title is no edit'; New = 'default on'; Current = 'default on';  Body = '';     Expect = '' }
+        @{ Name = 'a case-only title change is edited'; New = 'Default on'; Current = 'default on';  Body = '';     Expect = 'pr edit 7 --title Default on' }
+        @{ Name = 'no -Title leaves the title alone';   New = '';           Current = 'default off'; Body = 'b.md'; Expect = 'pr edit 7 --body-file b.md' }
+        @{ Name = 'title and body are edited together'; New = 'default on'; Current = 'default off'; Body = 'b.md'; Expect = 'pr edit 7 --title default on --body-file b.md' }
+    )
+
     $failed = 0
+    foreach ($case in $editCases) {
+        $actual = @(Get-PrEditArgument -Number '7' -NewTitle $case.New -CurrentTitle $case.Current -BodyPath $case.Body) -join ' '
+        if ($actual -eq $case.Expect) { Write-Host "  PASS  $($case.Name)" -ForegroundColor Green }
+        else { $failed++; Write-Host "  FAIL  $($case.Name): got '$actual', expected '$($case.Expect)'" -ForegroundColor Red }
+    }
     foreach ($case in $branchCases) {
         $actual = Test-BranchAllowedForPr -Branch $case.Branch
         if ($actual -eq $case.Expect) { Write-Host "  PASS  $($case.Name)" -ForegroundColor Green }
@@ -138,7 +171,7 @@ if ($SelfTest) {
         Write-Host "$failed self-test case(s) FAILED." -ForegroundColor Red
         exit 1
     }
-    $total = $branchCases.Count + $untrackedCases.Count
+    $total = $branchCases.Count + $untrackedCases.Count + $editCases.Count
     Write-Host "All $total self-test cases passed." -ForegroundColor Green
     exit 0
 }
@@ -293,12 +326,19 @@ if ($LASTEXITCODE -ne 0) {
 # "body given", and would overwrite a real PR description with the placeholder.
 $bodySupplied = [bool]($BodyFile -or $Body)
 
-if ($existing -and -not $bodySupplied) {
-    # Updating an open PR with nothing to say about the body: leave it alone. Re-running
-    # this script after another commit is the normal case, and silently replacing a
-    # hand-written description with the scaffold is destructive and easy to miss.
-    Write-Host "PR #$existing is already open for this branch -- pushed; body left unchanged." -ForegroundColor Yellow
-    Write-Host "  (pass -Body/-BodyFile to update the description)" -ForegroundColor DarkGray
+$currentTitle = ''
+if ($existing) {
+    $currentTitle = (& gh pr view $existing --json title --jq '.title')
+    if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: could not read PR #$existing's title." -ForegroundColor Red; exit 1 }
+}
+$titleChanged = [bool]($existing -and $Title -and $Title -cne $currentTitle)
+
+if ($existing -and -not $bodySupplied -and -not $titleChanged) {
+    # Updating an open PR with nothing new to say: leave it alone. Re-running this script
+    # after another commit is the normal case, and silently replacing a hand-written
+    # description with the scaffold is destructive and easy to miss.
+    Write-Host "PR #$existing is already open for this branch -- pushed; title and body left unchanged." -ForegroundColor Yellow
+    Write-Host "  (pass -Title or -Body/-BodyFile to update them)" -ForegroundColor DarkGray
     & gh pr view $existing --json url --jq '.url'
     Write-Host "`nDone." -ForegroundColor Green
     Show-NextStep
@@ -306,7 +346,10 @@ if ($existing -and -not $bodySupplied) {
 }
 
 $tempBody = $null
-if ($BodyFile) {
+$bodyPath = ''
+if ($existing -and -not $bodySupplied) {
+    # Only the title changes; the scaffold below must not replace the description.
+} elseif ($BodyFile) {
     if (-not (Test-Path $BodyFile)) { Write-Host "FAIL: -BodyFile not found: $BodyFile" -ForegroundColor Red; exit 1 }
     $bodyPath = $BodyFile
 } else {
@@ -335,11 +378,14 @@ if ($BodyFile) {
 
 try {
     if ($existing) {
-        Write-Host "PR #$existing is already open for this branch -- updating its body." -ForegroundColor Yellow
+        $titleNote = if ($titleChanged) { "title '$currentTitle' -> '$Title'" } else { 'title unchanged' }
+        $bodyNote = if ($bodySupplied) { 'body updated' } else { 'body unchanged' }
+        Write-Host "PR #$existing is already open for this branch -- $titleNote; $bodyNote." -ForegroundColor Yellow
+        $editArgs = @(Get-PrEditArgument -Number $existing -NewTitle $Title -CurrentTitle $currentTitle -BodyPath $bodyPath)
         # `gh pr edit` prints the PR URL to stdout on success. Suppress it and let the
         # explicit view below be the one source of that line, so every path through
         # this step emits exactly one URL -- this branch used to print two.
-        & gh pr edit $existing --body-file $bodyPath | Out-Null
+        & gh @editArgs | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: gh pr edit failed." -ForegroundColor Red; exit 1 }
         & gh pr view $existing --json url --jq '.url'
     } else {

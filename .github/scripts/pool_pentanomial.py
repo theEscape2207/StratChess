@@ -20,6 +20,11 @@ With --expect-pairs-per-shard N, every log must contain exactly N pairs before
 any report is printed. Omit it only for historical standalone pooling.
 --summary-tsv appends each pool's headline as a row, and --render-summary turns
 those rows into one table across a run's arms.
+
+The lab names its engines candidate-<sha> and reference-<sha>, so the report
+prints both revisions from the logs' "Results of" lines, and refuses logs that
+name different ones. A ledger row copies them from here rather than from a
+branch, whose head may have moved on since the run (#809).
 """
 
 import argparse
@@ -39,6 +44,9 @@ Z_95 = 1.959963984540054
 
 PTNML_RE = re.compile(r"Ptnml\(0-2\):[^\S\r\n]*([^\r\n]*)")
 ELO_RE = re.compile(r"^\s*Elo:\s*(-?[0-9.]+)\s*\+/-\s*([0-9.]+)", re.MULTILINE)
+RESULTS_RE = re.compile(r"^Results of (\S+) vs (\S+) \(", re.MULTILINE)
+# A multi-arm lab suffixes the candidate's name with -arm<label>; the revision is the same.
+REVISION_RE = re.compile(r"(candidate|reference)-([0-9a-f]{7,40})(?:-arm\w+)?")
 
 
 def elo_from_score(score):
@@ -85,6 +93,54 @@ def parse_counts(text):
     if not match:
         return None
     return [int(n) for n in match.group(1).split(",")]
+
+
+def parse_revisions(text):
+    """(candidate, reference) revisions named by a log's "Results of" lines.
+
+    None when the log has no such line, or names its engines otherwise (a local
+    match, a historical log). Raises when the lines disagree with each other.
+    """
+    found = set()
+    for names in RESULTS_RE.findall(text):
+        sides = {}
+        for name in names:
+            match = REVISION_RE.fullmatch(name)
+            if match:
+                sides[match.group(1)] = match.group(2)
+        if set(sides) != {"candidate", "reference"}:
+            return None
+        found.add((sides["candidate"], sides["reference"]))
+    if not found:
+        return None
+    if len(found) > 1:
+        raise ValueError(f"names more than one revision pair: {sorted(found)}")
+    return found.pop()
+
+
+def pooled_revisions(paths, revisions):
+    """The one (candidate, reference) pair every log names, or None when none names one.
+
+    Raises when logs disagree, or when some name a pair and others do not: either
+    means the batch mixes matches that were not the same comparison.
+    """
+    distinct = set(revisions)
+    if distinct == {None}:
+        return None
+    if len(distinct) > 1:
+        listing = "; ".join(f"{path}: {rev[0] + ' vs ' + rev[1] if rev else 'none'}"
+                            for path, rev in zip(paths, revisions))
+        raise ValueError(f"logs name different revisions, refusing to pool them: {listing}")
+    return distinct.pop()
+
+
+def read_revisions(path):
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        text = handle.read()
+    try:
+        return parse_revisions(text)
+    except ValueError as error:
+        raise ValueError(f"{path}: {error}") from None
 
 
 def read_shard(path, expected_pairs=None):
@@ -241,12 +297,14 @@ def self_test():
     with tempfile.TemporaryDirectory() as root:
         logs = [os.path.join(root, f"shard-{i}.log") for i in range(2)]
 
-        def run_case(name, counts, flags, success, payload=None, missing=False):
+        def run_case(name, counts, flags, success, payload=None, missing=False, heads=None,
+                     expect_out=None):
             nonlocal ok
-            for path, row in zip(logs, counts):
+            for index, (path, row) in enumerate(zip(logs, counts)):
+                head = heads[index] if heads else ""
                 with open(path, "w", encoding="utf-8") as handle:
                     handle.write(payload if payload is not None
-                                 else f"Ptnml(0-2): [{', '.join(map(str, row))}]\n")
+                                 else f"{head}Ptnml(0-2): [{', '.join(map(str, row))}]\n")
             if missing:
                 os.remove(logs[-1])
             result = subprocess.run([sys.executable, os.path.abspath(__file__), *flags, *logs],
@@ -254,6 +312,7 @@ def self_test():
             good = ((result.returncode == 0) == success
                     and ("**Pooled:" in result.stdout) == success
                     and (success or not result.stdout)
+                    and (expect_out is None or expect_out in result.stdout + result.stderr)
                     and "Traceback" not in result.stderr)
             ok &= good
             print(f"{'ok' if good else 'FAIL'} {name}")
@@ -275,6 +334,28 @@ def self_test():
                  flags, False, payload="interrupted match\n")
         run_case("CLI missing log fails cleanly before output", [[0, 0, 15, 0, 0]] * 2,
                  flags, False, missing=True)
+        def results(cand, ref):
+            return f"Results of {cand} vs {ref} (10+0.1, 4t, 192MB, UHO_4060_v3.epd):\n"
+
+        lab = results("candidate-c82dc6e", "reference-79c3217")
+        run_case("CLI prints the revisions the logs name", [[3, 4, 3, 3, 2]] * 2, flags, True,
+                 heads=[lab, lab], expect_out="Revisions: candidate c82dc6e, reference 79c3217")
+        run_case("CLI arm suffix keeps the candidate revision", [[3, 4, 3, 3, 2]] * 2, flags, True,
+                 heads=[results("candidate-c82dc6e-armA", "reference-79c3217")] * 2,
+                 expect_out="Revisions: candidate c82dc6e, reference 79c3217")
+        run_case("CLI logs without revisions say so", [[3, 4, 3, 3, 2]] * 2, flags, True,
+                 expect_out="Revisions: not named in the logs")
+        run_case("CLI logs naming different candidates refused", [[3, 4, 3, 3, 2]] * 2, flags,
+                 False, heads=[lab, results("candidate-a922cee", "reference-79c3217")],
+                 expect_out="logs name different revisions")
+        run_case("CLI logs naming different references refused", [[3, 4, 3, 3, 2]] * 2, flags,
+                 False, heads=[lab, results("candidate-c82dc6e", "reference-4dafbdd")],
+                 expect_out="logs name different revisions")
+        run_case("CLI one log without revisions refused", [[3, 4, 3, 3, 2]] * 2, flags, False,
+                 heads=[lab, ""], expect_out="none")
+        run_case("CLI one log naming two pairs refused", [[3, 4, 3, 3, 2]] * 2, flags, False,
+                 heads=[lab + results("candidate-a922cee", "reference-79c3217"), lab],
+                 expect_out="more than one revision pair")
         for count in ("0", "-1"):
             run_case(f"CLI nonpositive pair count {count} refused", [[0, 0, 15, 0, 0]] * 2,
                      ["--expect-pairs-per-shard", count], False)
@@ -367,6 +448,7 @@ def main():
 
     try:
         shard_counts = [read_shard(path, args.expect_pairs_per_shard) for path in args.logs]
+        revisions = pooled_revisions(args.logs, [read_revisions(path) for path in args.logs])
         total = [sum(column) for column in zip(*shard_counts)]
         elo, err, pairs, score = pool(total)
     except (OSError, ValueError) as error:
@@ -385,6 +467,9 @@ def main():
           f"({pairs} pairs = {2 * pairs} games, score {100 * score:.2f}%)")
     print()
     print(f"Pooled Ptnml(0-2): {total}")
+    print()
+    print(f"Revisions: candidate {revisions[0]}, reference {revisions[1]}" if revisions
+          else "Revisions: not named in the logs")
     print()
     for line in summary_lines(elo, err, pairs, shard_counts):
         print(f"- {line}")

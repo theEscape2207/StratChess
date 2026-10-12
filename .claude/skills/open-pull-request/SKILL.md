@@ -105,7 +105,8 @@ controller's whole context.
 pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\New-PullRequest.ps1 -Title "…" [-Draft] [-NoPr] [-BodyFile <path>]
 ```
 
-Sync → validate → push → create/update, stopping at the first failure. Its validation step scopes
+Sync → validate → push → create/update, stopping at the first failure. When the PR's claim changes
+(a flipped default, a dropped arm), re-run with the new `-Title`: it retitles an open PR. Its validation step scopes
 itself to the change tier, so there is no judgement call to make (tier table and fail-closed
 guarantees: `Docs/Workflow.md` → Validation tiers). Engine tier runs ~2 min warm, ~5 min cold; a
 *failed* run exits early, not late.
