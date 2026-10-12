@@ -279,15 +279,7 @@ jobs:
           -DCMAKE_C_COMPILER=clang-$LLVM_MAJOR
           -DCMAKE_CXX_COMPILER=clang++-$LLVM_MAJOR
 
-      - name: Validate lint scripts
-        shell: pwsh
-        # In-process, so the step's $ErrorActionPreference = 'stop' fails a self-test on any error.
-        run: |
-          & ./Scripts/New-TidyCompileDatabase.ps1 -SelfTest
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & ./Scripts/Run-Lint.ps1 -SelfTest
-          exit $LASTEXITCODE
-
+      # No "Validate lint scripts" step: lint-tree runs it on the same runner and LLVM.
       - name: clang-tidy Deep on shipping sources (blocking)
         shell: pwsh
         run: |
