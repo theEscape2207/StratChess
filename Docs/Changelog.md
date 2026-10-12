@@ -21,7 +21,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - `LmrLogBase` / `LmrLogDivisor` (`SearchTuning::lmr_log_base` / `lmr_log_divisor`, hundredths,
   default 100 / 150): R = 1.00 + ln d · ln m / 1.50, then the unchanged `max(1, ·)`, `d-2` cap
   and history shift. It replaces the sqrt base, which #730 measured on the cap for 99.0% of
-  reductions. Lab: +15.1 ± 3.2 Elo on 24,984 fresh-opening games against the sqrt base. The
+  reductions; the triage probes put 55% of reduced-search nodes at depth ≥ 5, where a log base
+  moves off it. Lab: +15.1 ± 3.2 Elo on 24,984 fresh-opening games against the sqrt base. The
   screen ranked the arms by aggressiveness: 0.75 / 2.25 −4.1, 1.00 / 1.75 +14.3, 1.00 / 1.50
   +15.2. `LmrLogDivisor=0` restores the sqrt base.
 
