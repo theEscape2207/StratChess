@@ -31,6 +31,11 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - `New-PullRequest.ps1 -Title` on an open PR replaces a differing title, and the update path
   says which of title and body it changed. Before, a changed `-Title` was silently ignored, so
   #813 merged as "default off" after the default flipped.
+## 2026-10-12: Nightly drops duplicate lint-script self-tests
+
+### Changed
+- `nightly.yml` `lint-deep-linux` no longer runs "Validate lint scripts"; `lint-tree` runs the same
+  step on the same runner and LLVM. Saves ~19 s per Nightly.
 
 ## 2026-10-12: Script self-tests fail on any error
 
