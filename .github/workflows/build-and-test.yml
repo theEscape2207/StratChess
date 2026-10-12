@@ -585,10 +585,11 @@ jobs:
 
       - name: Validate lint scripts
         shell: pwsh
+        # In-process, so the step's $ErrorActionPreference = 'stop' fails a self-test on any error.
         run: |
-          pwsh -NoProfile -File Scripts/New-TidyCompileDatabase.ps1 -SelfTest
+          & ./Scripts/New-TidyCompileDatabase.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pwsh -NoProfile -File Scripts/Run-Lint.ps1 -SelfTest
+          & ./Scripts/Run-Lint.ps1 -SelfTest
           exit $LASTEXITCODE
 
       - name: clang-format (blocking)
