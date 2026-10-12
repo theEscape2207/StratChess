@@ -220,6 +220,9 @@ class Board final {
 		return static_cast<size_t>(piece) + static_cast<size_t>(color);
 	}
 
+	// True if `color`'s king is attacked; the body of InCheck() and WaitingSideInCheck().
+	bool king_attacked(eColor color) const noexcept;
+
 	// --- Zobrist hash helpers ---
 	void update_zobrist_castling(uint8_t old_rights, uint8_t new_rights) noexcept;
 	void update_zobrist_ep(eSquare old_ep, eSquare new_ep) noexcept;

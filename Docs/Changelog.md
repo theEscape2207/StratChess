@@ -15,6 +15,16 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-12: InCheck tests one square instead of building the attack map (#822)
+
+### Changed
+- `Board::InCheck()` and `WaitingSideInCheck()` share `king_attacked()`, which asks
+  `MoveGenerator::AttackersTo` about the king's square instead of building the attacker's whole
+  `GetAttackBoard`. Answers are identical (search equivalence identical, perftcheck clean);
+  bench +1.57% nps [+1.24, +1.89], against a CPU-profile ceiling of ~10%.
+- `InCheckTests.cpp` compares both against the attack map at every node of depth-3 walks, and
+  each walk's node count against python-chess.
+
 ## 2026-10-12: Lab tooling: wall-clock script, pooled revisions, PR retitling (#818)
 
 ### Added

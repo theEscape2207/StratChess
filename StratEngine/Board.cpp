@@ -117,7 +117,7 @@ void Board::setup_board(const PiecePlacements& pieces)
 }
 
 // The one rule so far: the side not to move may not be in check, since reaching such a position would
-// have required leaving a king en prise. Kings on adjacent squares fail it too, because GetAttackBoard
+// have required leaving a king en prise. Kings on adjacent squares fail it too, because AttackersTo
 // includes king attacks. Any further rule belongs here, and only needs the scratch board below.
 bool Board::position_is_legal(const PiecePlacements& pieces, eColor side_to_move)
 {
@@ -618,14 +618,22 @@ ePiece Board::GetEffectiveMovPiece(const Move& m) const noexcept
 	}
 }
 
-// Returns true if the king of the side to move is under attack.
-bool Board::InCheck() const noexcept
+// True if any piece of the other colour attacks `color`'s king. Asks only about the king's square
+// rather than building the attacker's whole attack board — this runs on every DoMove. En passant
+// cannot matter: the en-passant square is empty, so no king stands on it.
+bool Board::king_attacked(eColor color) const noexcept
 {
-	// Generate attacks for the opponent to see if our king is under attack
-	const eColor byColor = (side_to_move_ == WHITE ? BLACK : WHITE);
-	const BITBOARD bb = MoveGenerator::GetAttackBoard(*this, byColor);
-	return Bits::isAnyBitSet(bb, bitboards_[bitboard_index(KING, side_to_move_)]);
+	const BITBOARD king = bitboards_[bitboard_index(KING, color)];
+	if (king == 0)
+		return false;
+	const eColor attacker = (color == WHITE ? BLACK : WHITE);
+	const BITBOARD attackers =
+	    MoveGenerator::AttackersTo(bitboards_.data(), GetFirstPiece(king), bitboards_[ALL_PIECES]);
+	return Bits::isAnyBitSet(attackers, bitboards_[ALL_FROM_COLOR + static_cast<int>(attacker)]);
 }
+
+// Returns true if the king of the side to move is under attack.
+bool Board::InCheck() const noexcept { return king_attacked(side_to_move_); }
 
 bool Board::IsCheckmated()
 {
@@ -638,13 +646,8 @@ bool Board::IsCheckmated()
 
 // Returns true if the king of the side NOT to move is under attack — the mirror of InCheck(), and
 // an illegal position rather than a legal one. Kings on adjacent squares are covered too, since
-// GetAttackBoard includes king attacks.
-bool Board::WaitingSideInCheck() const noexcept
-{
-	const eColor waiting = (side_to_move_ == WHITE ? BLACK : WHITE);
-	const BITBOARD bb = MoveGenerator::GetAttackBoard(*this, side_to_move_);
-	return Bits::isAnyBitSet(bb, bitboards_[bitboard_index(KING, waiting)]);
-}
+// AttackersTo includes king attacks.
+bool Board::WaitingSideInCheck() const noexcept { return king_attacked(side_to_move_ == WHITE ? BLACK : WHITE); }
 
 // Adds a piece and maintains material score.
 void Board::add_piece_to_board(ePiece piece, eSquare sq)
