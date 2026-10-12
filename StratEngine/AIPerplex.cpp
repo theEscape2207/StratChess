@@ -617,10 +617,11 @@ namespace {
 	}
 
 	// Profiles how the history adjustment moved one reduction R away from its base.
-	void record_lmr_reach(LmrStats& stats, int depth, int move_number, int ordering_score, int r) noexcept
+	void record_lmr_reach(LmrStats& stats, int depth, int move_number, int ordering_score, int r, int log_base,
+	                      int log_divisor) noexcept
 	{
 		if constexpr (kSearchProfileCompiled) {
-			const int base = lmr_reduction(depth, move_number, ordering_score, 0);
+			const int base = lmr_reduction(depth, move_number, ordering_score, 0, log_base, log_divisor);
 			if (base == std::max(1, depth - 2))
 				stats.capped++;
 			if (r == base)
@@ -1055,9 +1056,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 				if (apply_lmr) {
 					// scored_idx still holds the score ScoreMovesBestFirst gave this move before the loop.
-					const int R = lmr_reduction(depth, move_number, scored_idx[si].first, tuning_.lmr_history_divisor);
+					const int R = lmr_reduction(depth, move_number, scored_idx[si].first, tuning_.lmr_history_divisor,
+					                            tuning_.lmr_log_base, tuning_.lmr_log_divisor);
 					assert(depth - 1 - R >= 1 || tuning_.lmr_min_depth < 3);
-					record_lmr_reach(td.telemetry.lmr, depth, move_number, scored_idx[si].first, R);
+					record_lmr_reach(td.telemetry.lmr, depth, move_number, scored_idx[si].first, R,
+					                 tuning_.lmr_log_base, tuning_.lmr_log_divisor);
 
 					// Search profile: node totals count the outermost search of each kind only. Each
 					// nesting depth drops straight after its call, before any abort return.

@@ -11,6 +11,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-11 | 3c5faee, CONFIRM `LmrLogBase=100 LmrLogDivisor=150`, shipped as the default (#809; selected by the screen below, fresh openings 9,991-22,482) | f47da71 (sqrt base; 3c5faee at its default `LmrLogDivisor=0` is node-identical to it) | 24984 | 10+0.1 | **+15.14 +/- 3.23** | gain |
+| 2026-10-11 | 3c5faee, SCREEN arm C: `LmrLogBase=100 LmrLogDivisor=150` (#809; 5 of 6 shards) | f47da71 (sqrt base) | 5550 | 10+0.1 | **+15.16 +/- 6.92** | discarded |
+| 2026-10-11 | 3c5faee, SCREEN arm B: `LmrLogBase=100 LmrLogDivisor=175` (#809) | f47da71 (sqrt base) | 6660 | 10+0.1 | **+14.25 +/- 6.27** | discarded |
+| 2026-10-11 | 3c5faee, SCREEN arm A: `LmrLogBase=75 LmrLogDivisor=225` (#809) | f47da71 (sqrt base) | 6660 | 10+0.1 | **-4.07 +/- 6.15** | discarded |
 | 2026-10-11 | f94ba49, probe: `SingularNegativeExtension=2 SingularNegativeExtensionMinDepth=8`, never merged (#806) | 21cc9ba (negative extension off; f94ba49 is 21cc9ba plus the gate option) | 26640 | 10+0.1 | **-0.65 +/- 3.00** | inconclusive @ 26640 |
 | 2026-10-11 | 1d6d8a7, singular negative extension: `SingularNegativeExtension=2`, feature deleted (#803; one pre-registered run, ship iff lower bound > 0) | 1d6d8a7 (with `SingularNegativeExtension=0`; both sides are one binary, so the delta is a runtime option) | 26640 | 10+0.1 | **-2.87 +/- 3.06** | inconclusive @ 26640 |
 | 2026-10-11 | 27fb2db, singular negative extension: `SingularNegativeExtension=1`, kept default-off (#798; one pre-registered run, ship iff lower bound > 0) | 27fb2db (with `SingularNegativeExtension=0`; both sides are one binary, so the delta is a runtime option) | 19980 | 10+0.1 | **-1.46 +/- 3.54** | inconclusive @ 19980 |
@@ -78,6 +82,16 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-11 -- log LMR base 1.00 / 1.50, confirmation (#809) (24984 games)
+
+**Ships as the default.** [Run `38166360171`](https://github.com/theEscape2207/StratChess/actions/runs/38166360171), 4 h 05 min, 18 shards x 694 pairs, openings 9,991-22,482, after the screen's range. All 21 jobs are green, and the logs show zero time losses, illegal moves or disconnects; every shard logs PV-compliance warnings (#310), which are reporting-only. Resolved options: the run's `strength-38166360171-comparison` artifact. Pooled Ptnml(0-2) [871, 2709, 4547, 3191, 1174], score 52.18%, interval [+11.91, +18.37]; 18 of 18 shards favour the candidate by score. D3 of the reviewed plan (design record `809 - lmr-log-table`) set the rule before dispatch: ship if Elo minus its error bar is above 0. The screen's +15.2 did not shrink. The owner picked C over B without waiting for the screen's missing shard, because the two sat 0.9 Elo apart; B (1.00 / 1.75) is unconfirmed.
+
+**Screens beside the lab (#636 Method).** The 8-seed depth-12 profile screen on `Tests/profile-screen.fen` puts nodes at +9.3% ± 1.8% and late-cut work at +5.1% ± 2.7%; base reductions sat on their cap 99.1% of the time under the sqrt base and 93.7% under 1.00 / 1.50. Its Before side was 3c5faee at defaults, node-identical to f47da71. Fixed-depth 14 wall clock over the same 200 positions against f9fcf8a (engine sources identical to f47da71), in chunks of 10 with the order alternated: after/before **1.24 ± 0.07** (mean per-position ratio, 2 SE), 483 s → 548 s in total. The bigger fixed-depth tree did not cost Elo in timed games.
+
+### 2026-10-11 -- log LMR base screen (#809) (6660 games per arm)
+
+**Discarded: shard 17 (arm C) lost its runner.** [Run `38149928440`](https://github.com/theEscape2207/StratChess/actions/runs/38149928440), 18 shards x 555 pairs, openings 1-9,990, each arm on 6 shards against the merge base. Shard 17 died after 2 h 38 min with "The hosted runner lost communication with the server", uploading nothing, so the aggregate refused the batch. A re-run of that shard was cancelled to free the lab's single concurrency slot for the confirmation. The figures pool the 17 surviving shards locally and are a biased subset, read only to pick the confirmation arm: A [273, 782, 1270, 760, 245], 3 of 6 shards favour it; B [235, 717, 1247, 802, 329], 6 of 6; C [195, 602, 1030, 662, 286], 5 of 5. Reach at depth 12, arm A: base reductions on their cap fell from 99.1% to 79.2%, nodes +29.0%. The arms rank by aggressiveness: the one reducing least lost.
 
 ### 2026-10-11 -- f94ba49, singular negative extension at 2 plies gated at depth >= 8 (#806) (26640 games)
 

@@ -47,8 +47,11 @@ namespace Engine {
 	                              unsigned default_depth) noexcept
 	{
 		ResolvedLimits r{};
+		// Clamped because no search past MAX_PLY - 1 can complete (ply is capped there), and
+		// lmr_reduction()'s ln table relies on the bound. A larger "go depth" loses no reachable depth.
 		r.effective_depth =
-		    limits.depth ? static_cast<unsigned>(*limits.depth) : (limits.infinite ? 50u : default_depth);
+		    std::min(limits.depth ? static_cast<unsigned>(*limits.depth) : (limits.infinite ? 50u : default_depth),
+		             static_cast<unsigned>(MAX_PLY - 1));
 		r.node_limit = limits.nodes;
 		if (limits.movetime) { // movetime wins over clock (defensive)
 			r.budget = {*limits.movetime, *limits.movetime};

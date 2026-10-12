@@ -134,12 +134,23 @@ void Config::ReadConfigFile(const std::string& filename, Board& board)
 }
 
 namespace {
+	// A configured search depth. UCI ignores depth <= 0; here it is an error, since resolve_limits()
+	// would otherwise read a negative depth as a huge one and clamp it to MAX_PLY - 1.
+	int ReadDepth(const json& value, const char* key)
+	{
+		const int depth = value.get<int>();
+		if (depth <= 0)
+			throw std::invalid_argument(std::string("game_settings.json: ") + key + " must be positive, got " +
+			                            std::to_string(depth));
+		return depth;
+	}
+
 	// Parses the "search_limits" block into a SearchLimits (all keys optional).
 	SearchLimits ParseSearchLimitsBlock(const json& sl)
 	{
 		SearchLimits limits;
 		if (sl.contains("depth"))
-			limits.depth = sl["depth"].get<int>();
+			limits.depth = ReadDepth(sl["depth"], "search_limits.depth");
 		if (sl.contains("movetime"))
 			limits.movetime = std::chrono::milliseconds(sl["movetime"].get<int64_t>());
 		if (sl.contains("infinite"))
@@ -168,10 +179,10 @@ namespace {
 			// UCI-style 1h "depth only" budget instead of a real time cap.
 			bool usedLegacyKeys = false;
 			if (p.contains("max_depth")) {
-				cfg.search_limits.depth = p["max_depth"].get<int>();
+				cfg.search_limits.depth = ReadDepth(p["max_depth"], "max_depth");
 				usedLegacyKeys = true;
 			} else if (p.contains("depth")) {
-				cfg.search_limits.depth = p["depth"].get<int>();
+				cfg.search_limits.depth = ReadDepth(p["depth"], "depth");
 			}
 			cfg.search_limits.movetime = std::chrono::milliseconds(p.value("time_limit", 15000u));
 			if (p.contains("time_limit"))

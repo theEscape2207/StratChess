@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
+#include "defines.h"
 #include "SearchLimits.h"
 #include "Utils/TimeUtils.h"
+#include <limits>
 
 using namespace std::chrono_literals;
 
@@ -55,6 +57,18 @@ TEST_CASE("resolve_limits: empty limits — configured defaults", "[limits]")
 	REQUIRE(r.budget.soft == 15'000ms);
 	REQUIRE(r.budget.hard == 15'000ms);
 	REQUIRE(r.effective_depth == 15u);
+}
+
+TEST_CASE("resolve_limits: depth clamps to MAX_PLY - 1", "[limits]")
+{
+	const auto depth_of = [](int depth) {
+		return Engine::resolve_limits(SearchLimits::fixed_depth(depth), 15'000ms, 15).effective_depth;
+	};
+	CHECK(depth_of(MAX_PLY - 1) == MAX_PLY - 1u);
+	CHECK(depth_of(MAX_PLY) == MAX_PLY - 1u);
+	CHECK(depth_of(std::numeric_limits<int>::max()) == MAX_PLY - 1u);
+	// A configured default past the bound clamps too.
+	CHECK(Engine::resolve_limits(SearchLimits{}, 15'000ms, 1000).effective_depth == MAX_PLY - 1u);
 }
 
 // ============================================================
