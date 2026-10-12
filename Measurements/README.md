@@ -72,7 +72,9 @@ through and is not grounds to discard — say so in the row's detail section whe
 **Label the reference from what actually played.** `Run-EloMatch.ps1` names the reference side from
 `-ReferenceTag` regardless of `-ReferenceExe` (#309), which silently inverts the distinction these
 ledgers depend on — an anchor row measures cumulative standing, a merge-base row measures one
-change. Pass `-ReferenceTag` naming the commit whose binary is really on the other side.
+change. Pass `-ReferenceTag` naming the commit whose binary is really on the other side. For a lab
+row, copy both revisions from the run's match log (`candidate-<sha>` / `reference-<sha>`), never
+from the branch: a branch that moved after dispatch gives the wrong one (#809's screen).
 
 **Never compare across ledgers.** A Linux-lab row and a local clang-cl row differ in compiler,
 machine and book at once. Same trap as the MSVC rule, different axis.

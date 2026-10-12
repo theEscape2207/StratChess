@@ -89,10 +89,14 @@ deviation in Harvest.
    assumption.
 3. Complete Harvest before PR work: done when every Harvest row has a landed destination you can grep
    for.
-4. Move the plan and its `.progress.md` to `StratChessSupport\DesignRecords\`, named by
+4. Reconcile once against the final state, after the last result lands: the PR title and body
+   (claims, finding counts, rejected list), each harvested figure with its qualifier (discarded,
+   screen, unconfirmed), every plan assumption a measurement settled, and each revision as the run
+   logs name it. Piecemeal edits during the work leave stale text behind.
+5. Move the plan and its `.progress.md` to `StratChessSupport\DesignRecords\`, named by
    `Docs/Workflow.md` → Design records. Copy instead when told to keep it or something still
    cites it (`Docs/Workflow.md` → Plan states).
-5. Report checkpoint outcomes, Validation, deviations, remaining risks, and lifecycle disposition.
+6. Report checkpoint outcomes, Validation, deviations, remaining risks, and lifecycle disposition.
 
 Execution approval is not permission to publish, push, open a PR, or take other external actions not
 already authorized.

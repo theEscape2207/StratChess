@@ -32,8 +32,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   and history shift. It replaces the sqrt base, which #730 measured on the cap for 99.0% of
   reductions; the triage probes put 55% of reduced-search nodes at depth ≥ 5, where a log base
   moves off it. Lab: +15.1 ± 3.2 Elo on 24,984 fresh-opening games against the sqrt base. The
-  screen ranked the arms by aggressiveness: 0.75 / 2.25 −4.1, 1.00 / 1.75 +14.3, 1.00 / 1.50
-  +15.2. `LmrLogDivisor=0` restores the sqrt base.
+  screen, discarded after losing a shard, ranked the arms by aggressiveness: 0.75 / 2.25 −4.1,
+  1.00 / 1.75 +14.3, 1.00 / 1.50 +15.2. `LmrLogDivisor=0` restores the sqrt base.
 
 ### Changed
 - `resolve_limits()` clamps the root depth to `MAX_PLY - 1`; no deeper search could complete.
