@@ -11,6 +11,13 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-13 | cd97a1f, SCREEN arm B: `LmrHistoryDivisor=32` (#816; best of three by 0.0 sigma, not confirmed) | cd97a1f (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+0.52 +/- 6.18** | inconclusive @ 6660 |
+| 2026-10-13 | cd97a1f, SCREEN arm C: `LmrHistoryDivisor=128` (#816) | cd97a1f (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+0.42 +/- 6.27** | inconclusive @ 6660 |
+| 2026-10-13 | cd97a1f, SCREEN arm A: `LmrHistoryDivisor=16` (#816) | cd97a1f (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **-0.78 +/- 6.23** | inconclusive @ 6660 |
+| 2026-10-13 | cd97a1f, CONFIRM `LmrLogDivisor=175` (#816; selected by the screen below, fresh openings 50,000-63,319) | cd97a1f (at the shipped default `LmrLogDivisor=150`; both sides are one binary, so the delta is a runtime option) | 26640 | 10+0.1 | **+0.89 +/- 3.12** | inconclusive @ 26640 |
+| 2026-10-12 | b41d23e, SCREEN arm C: `LmrLogDivisor=175` (#816; best of three by 2.6 sigma; not confirmed, see the CONFIRM row) | b41d23e (at the shipped default `LmrLogDivisor=150`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+3.65 +/- 6.31** | inconclusive @ 6660 |
+| 2026-10-12 | b41d23e, SCREEN arm B: `LmrLogDivisor=125` (#816) | b41d23e (at the shipped default `LmrLogDivisor=150`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **-4.59 +/- 6.19** | inconclusive @ 6660 |
+| 2026-10-12 | b41d23e, SCREEN arm A: `LmrLogDivisor=100` (#816) | b41d23e (at the shipped default `LmrLogDivisor=150`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **-5.90 +/- 6.40** | inconclusive @ 6660 |
 | 2026-10-11 | 3c5faee, CONFIRM `LmrLogBase=100 LmrLogDivisor=150`, shipped as the default (#809; selected by the screen below, fresh openings 9,991-22,482) | f47da71 (sqrt base; 3c5faee at its default `LmrLogDivisor=0` is node-identical to it) | 24984 | 10+0.1 | **+15.14 +/- 3.23** | gain |
 | 2026-10-11 | 6528d36 (3c5faee less a test fix), SCREEN arm C: `LmrLogBase=100 LmrLogDivisor=150` (#809; 5 of 6 shards) | f47da71 (sqrt base) | 5550 | 10+0.1 | **+15.16 +/- 6.92** | discarded |
 | 2026-10-11 | 6528d36 (3c5faee less a test fix), SCREEN arm B: `LmrLogBase=100 LmrLogDivisor=175` (#809) | f47da71 (sqrt base) | 6660 | 10+0.1 | **+14.25 +/- 6.27** | discarded |
@@ -82,6 +89,18 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-13 -- `LmrHistoryDivisor` re-screen under the log base (#816) (6660 games per arm)
+
+**Nothing to confirm; the default stays 64.** [Run `38312922668`](https://github.com/theEscape2207/StratChess/actions/runs/38312922668), about 3 h 15 min of matches after queueing behind the confirmation, 18 shards x 555 pairs, openings 70,000-79,989, each arm on 6 shards. All 21 jobs are green; the logs show no time losses, illegal moves or disconnects, only the PV-compliance warnings (#310), which are reporting-only. Resolved options: the run's `strength-38312922668-comparison` artifact. Ptnml(0-2): A (16) [274, 776, 1238, 775, 267], B (32) [272, 745, 1274, 779, 260], C (128) [276, 770, 1231, 776, 277]. All three sit within 1.3 Elo of each other and of 64, on both sides of it, so the history shift is flat across 16-128 under base 1.00 / 1.50. Under the sqrt base 16 had read +6.99 on the screen and +2.98 ± 3.23 on confirmation (#735).
+
+### 2026-10-13 -- `LmrLogDivisor=175` confirmation (#816) (26640 games)
+
+**Not shipped; the default stays 150.** [Run `38307956532`](https://github.com/theEscape2207/StratChess/actions/runs/38307956532), 4 h 20 min, 18 shards x 740 pairs, openings 50,000-63,319, after both screens' ranges. All 21 jobs are green; the logs show no time losses, illegal moves or disconnects, only the PV-compliance warnings (#310), which are reporting-only. Resolved options: the run's `strength-38307956532-comparison` artifact. Pooled Ptnml(0-2) [1101, 3026, 4998, 3094, 1101], score 50.13%, interval [-2.24, +4.01]; 9 of 18 shards favour the candidate by score. Both sides are cd97a1f, the screen's b41d23e plus #824 (an `InCheck` speed-up). The screen's +3.65 shrank to +0.89 despite its 2.6-sigma lead over the runner-up, so 1.00 / 1.75 and 1.00 / 1.50 are indistinguishable at this resolution.
+
+### 2026-10-12 -- log LMR divisor screen (#816) (6660 games per arm)
+
+[Run `38283125311`](https://github.com/theEscape2207/StratChess/actions/runs/38283125311), 3 h 17 min, 18 shards x 555 pairs, openings 19,980-29,969, each arm on 6 shards. All 21 jobs are green; the logs show no time losses, illegal moves or disconnects, only the PV-compliance warnings (#310), which are reporting-only. Resolved options: the run's `strength-38283125311-comparison` artifact. Ptnml(0-2): A (100) [310, 809, 1172, 762, 277], 2 of 6 shards favour it; B (125) [279, 791, 1249, 761, 250], 2 of 6; C (175) [268, 770, 1209, 790, 293], 4 of 6. #809's screen had Elo rising with aggressiveness up to 1.00 / 1.50; here the two more aggressive divisors both read negative, so 150 sits at or past the turn.
 
 ### 2026-10-11 -- log LMR base 1.00 / 1.50, confirmation (#809) (24984 games)
 
