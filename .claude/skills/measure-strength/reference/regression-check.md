@@ -28,11 +28,13 @@ against the **merge base**:
 **No slowdown** is done. Report a positive delta as "no slowdown", never as a speedup: timing noise
 and placement have not been ruled out.
 
-**Claiming a speedup** — when faster nps is the change's success criterion — needs the
-**Speedup** verdict twice: once from a `-Control` series, and again on the placement-equalised pair
-that `New-OrderedBuildPair.ps1 -BaselineTree <dir> -CandidateTree <dir>` relinks from both built
-trees. The script only issues Speedup while the whole A/A interval lies within ±0.5%; a wide control
-is not a quiet one.
+**Claiming a speedup** — when faster nps is the change's success criterion — needs one **Speedup**
+from a predeclared `-Control` series on the placement-equalised pair that
+`New-OrderedBuildPair.ps1 -BaselineTree <dir> -CandidateTree <dir>` relinks from both built trees.
+Speedup already requires the gain to clear both baseline copies, so that run is its own noise
+control; a plain as-built series beforehand is optional screening. The script cannot tell an
+ordered pair from an as-built one — that part is yours. Report every series tried, failures
+included; the first predeclared run is the answer. An A/A WARNING leaves a Speedup standing.
 This covers node-identical changes only. A change that reshapes the tree is judged on wall clock and
 Elo, and the script rejects it.
 
