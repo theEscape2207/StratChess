@@ -9,6 +9,8 @@
 #include "Board.h"
 #include "MoveFormatter.h"
 #include "MoveGenerator.h"
+#include "Tools/Perft.h"
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -23,6 +25,69 @@ namespace {
 		for (const auto& move : moves)
 			out.push_back(MoveFormatter::ToUCI(move) + ":" + std::to_string(move.flags()));
 		return out;
+	}
+
+	// The oracle: ComputeLegalMoves() filtered by DoMove(), in emission order.
+	void LegalByOracle(Board& board, MoveList& out)
+	{
+		MoveList all;
+		MoveGenerator::ComputeLegalMoves(board, all);
+		for (const auto& move : all)
+			if (board.IsLegalMove(move))
+				out.push(move);
+	}
+
+	bool SameSequence(const MoveList& a, const MoveList& b)
+	{
+		return std::equal(a.begin(), a.end(), b.begin(), b.end());
+	}
+
+	// Every in-check position within `depth` plies of the board, each compared against the oracle.
+	void CompareInCheckPositions(Board& board, int depth, int& compared, int& mismatches)
+	{
+		if (board.InCheck()) {
+			MoveList evasions;
+			MoveGenerator::ComputeEvasions(board, evasions);
+			MoveList expected;
+			LegalByOracle(board, expected);
+			++compared;
+			if (!SameSequence(evasions, expected)) {
+				if (++mismatches <= 5)
+					UNSCOPED_INFO("mismatch at " << board.ExtractFEN());
+			}
+		}
+		if (depth == 0)
+			return;
+		MoveList moves;
+		MoveGenerator::ComputeLegalMoves(board, moves);
+		for (const auto& move : moves) {
+			if (!board.DoMove(move))
+				continue;
+			CompareInCheckPositions(board, depth - 1, compared, mismatches);
+			board.UndoMove(move);
+		}
+	}
+
+	// The evasions of a hand-built position, checked against the oracle, as UCI strings.
+	std::vector<std::string> Evasions(const char* fen)
+	{
+		INFO("fen = " << fen);
+		Board board(fen);
+		REQUIRE(board.InCheck());
+		MoveList evasions;
+		MoveGenerator::ComputeEvasions(board, evasions);
+		MoveList expected;
+		LegalByOracle(board, expected);
+		CHECK(SameSequence(evasions, expected));
+		std::vector<std::string> out;
+		for (const auto& move : evasions)
+			out.push_back(MoveFormatter::ToUCI(move));
+		return out;
+	}
+
+	bool Contains(const std::vector<std::string>& moves, const char* uci)
+	{
+		return std::ranges::find(moves, uci) != moves.end();
 	}
 
 	// Both colours, pawn captures in both directions, quiet and capture promotions, single and double
@@ -57,3 +122,61 @@ TEST_CASE("Generators keep their emission order", "[movegen]")
 		"b2b1q:11", "b2b1r:10", "b2b1b:9", "b2b1n:8", "g2g1q:11", "g2g1r:10", "g2g1b:9", "g2g1n:8", "c6d4:4", "d7d4:4"});
 }
 // clang-format on
+
+TEST_CASE("Evasions equal the legal subsequence of the pseudo-legal list", "[movegen][evasion]")
+{
+	int compared = 0;
+	int mismatches = 0;
+	for (const auto& position : Testing::Perft::get_test_positions(false)) {
+		Board board(position.fen);
+		CompareInCheckPositions(board, 3, compared, mismatches);
+	}
+	INFO("in-check positions compared: " << compared);
+	CHECK(mismatches == 0);
+	// A walk that reaches few checks proves little.
+	CHECK(compared > 1000);
+}
+
+TEST_CASE("Evasions: double check leaves king moves only", "[movegen][evasion]")
+{
+	const auto moves = Evasions("4r1k1/8/8/8/8/3n4/8/4K3 w - - 0 1");
+	REQUIRE_FALSE(moves.empty());
+	for (const auto& move : moves)
+		CHECK(move.starts_with("e1"));
+}
+
+TEST_CASE("Evasions: the king may not retreat along the checking line", "[movegen][evasion]")
+{
+	const auto moves = Evasions("4r1k1/8/8/8/4K3/8/8/8 w - - 0 1");
+	REQUIRE_FALSE(moves.empty());
+	CHECK_FALSE(Contains(moves, "e4e3"));
+}
+
+TEST_CASE("Evasions: the king takes an undefended checker, not a defended one", "[movegen][evasion]")
+{
+	CHECK(Contains(Evasions("7k/8/8/8/8/8/4q3/4K3 w - - 0 1"), "e1e2"));
+	CHECK_FALSE(Contains(Evasions("4r2k/8/8/8/8/8/4q3/4K3 w - - 0 1"), "e1e2"));
+}
+
+TEST_CASE("Evasions: a pinned piece does not block", "[movegen][evasion]")
+{
+	const auto moves = Evasions("4r1k1/8/8/8/1b6/8/4N3/4K3 w - - 0 1");
+	REQUIRE_FALSE(moves.empty());
+	CHECK_FALSE(Contains(moves, "e2c3"));
+}
+
+TEST_CASE("Evasions: a promotion blocks", "[movegen][evasion]")
+{
+	const auto moves = Evasions("K6r/2P5/8/8/8/8/8/k7 w - - 0 1");
+	CHECK(Contains(moves, "c7c8q"));
+	CHECK(Contains(moves, "c7c8n"));
+}
+
+TEST_CASE("Evasions: en passant takes the checking pawn unless it uncovers the king", "[movegen][evasion]")
+{
+	CHECK(Contains(Evasions("7k/8/8/3pP3/4K3/8/8/8 w - d6 0 1"), "e5d6"));
+
+	const auto pinned = Evasions("7k/8/2b5/3pP3/4K3/8/8/8 w - d6 0 1");
+	REQUIRE_FALSE(pinned.empty());
+	CHECK_FALSE(Contains(pinned, "e5d6"));
+}
