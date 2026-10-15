@@ -24,6 +24,11 @@ repeats the aborted-frame tripwire; change both together.
   use `Board::GetEffectiveMovPiece(m)` (pre-move only) and `Board::GetCapturedPiece(m)`. After
   `DoMove`, identify the moved piece with `board.GetPiece(m.to())`. Which board state each formatter
   expects is in `MoveFormatter.h`.
+- **The generators share one emission order.** `ComputeEvasions` (in check, exactly legal) is the
+  legal subsequence of `ComputeLegalMoves` (pseudo-legal), in the same order, and the sorter breaks
+  score ties by that order, so search is node-identical whichever list a node uses. Both come from the
+  same masked helpers; a change to one helper's order changes nodes, which
+  `[movegen]`'s pinned sequences catch.
 
 ## The search service
 

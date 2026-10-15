@@ -15,6 +15,18 @@ namespace Testing {
 
 	using json = nlohmann::json;
 
+	namespace {
+		// The search's generators: in check, ComputeEvasions(), so the perft suites and the perftcheck
+		// corpus validate it against independent node counts.
+		void GenerateMoves(const Board& board, MoveList& moves)
+		{
+			if (board.InCheck())
+				MoveGenerator::ComputeEvasions(board, moves);
+			else
+				MoveGenerator::ComputeLegalMoves(board, moves);
+		}
+	} // namespace
+
 	// Standard perft test positions
 	std::vector<PerftPosition> Perft::get_test_positions(bool extendedSuite)
 	{
@@ -169,7 +181,7 @@ namespace Testing {
 		}
 
 		MoveList moves;
-		MoveGenerator::ComputeLegalMoves(board, moves);
+		GenerateMoves(board, moves);
 
 		uint64_t nodes = 0;
 
@@ -199,7 +211,7 @@ namespace Testing {
 		}
 
 		MoveList moves;
-		MoveGenerator::ComputeLegalMoves(board, moves);
+		GenerateMoves(board, moves);
 
 		for (const auto& move : moves) {
 			// Try to make the move
@@ -250,7 +262,7 @@ namespace Testing {
 
 					// Check if it's checkmate
 					MoveList nextMoves;
-					MoveGenerator::ComputeLegalMoves(board, nextMoves);
+					GenerateMoves(board, nextMoves);
 					bool hasLegalMove = false;
 					for (const auto& nextMove : nextMoves) {
 						if (board.DoMove(nextMove)) {
@@ -315,7 +327,7 @@ namespace Testing {
 		}
 
 		MoveList moves;
-		MoveGenerator::ComputeLegalMoves(board, moves);
+		GenerateMoves(board, moves);
 
 		uint64_t total_nodes = 0;
 

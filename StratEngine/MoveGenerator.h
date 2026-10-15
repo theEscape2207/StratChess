@@ -13,6 +13,11 @@ class MoveGenerator final {
 	static void ComputeCaptures(const Board& board, MoveList& moveList);
 	// Computes all the pseudo legal moves on the current board - no check for Check here!
 	static void ComputeLegalMoves(const Board& board, MoveList& moveList);
+	// Every legal move of a side to move that is in check, and nothing else: exactly the moves of
+	// ComputeLegalMoves() that DoMove() accepts, in the same relative order, so the sorter's
+	// generation-index tie-break orders them as it orders ComputeLegalMoves(). Precondition:
+	// board.InCheck().
+	static void ComputeEvasions(const Board& board, MoveList& moveList);
 
 	// Returns BITBOARD with all squares attacked by 'Color'
 	static BITBOARD GetAttackBoard(const Board& board, eColor) noexcept;
@@ -34,19 +39,24 @@ class MoveGenerator final {
   private:
 	MoveGenerator() = default;
 
+	// The generators below emit moves only for pieces on `movers` and only to squares on `targets`.
+	// Masking removes moves without reordering the rest, which is what keeps ComputeEvasions() in
+	// ComputeLegalMoves() order. `epFrom` is the pawns allowed to capture en passant.
 	static void GeneratePawnCaptures(const Board& board, const BITBOARD* const bbBitBoards, MoveList& moveList,
-	                                 eColor color);
+	                                 eColor color, BITBOARD movers, BITBOARD targets, BITBOARD epFrom);
 
-	static void GeneratePawnNormalMoves(const BITBOARD* const bbBitBoards, eColor color, MoveList& moveList);
+	static void GeneratePawnNormalMoves(const BITBOARD* const bbBitBoards, eColor color, MoveList& moveList,
+	                                    BITBOARD movers, BITBOARD targets);
 
 	static void GenerateOfficerMoves(const Board& board, const BITBOARD* const bbBitBoards, MoveList& moveList,
-	                                 ePieceType piece, eColor color, bool onlyCaptures);
+	                                 ePieceType piece, eColor color, BITBOARD movers, BITBOARD targets);
 
 	static void AddOfficerMoves(const Board& board, MoveList& moveList, BITBOARD bbAttack, eSquare from);
-	static void AddPawnPromoteMoves(const BITBOARD* bbBitBoards, eColor color, MoveList& moveList);
+	static void AddPawnPromoteMoves(const BITBOARD* bbBitBoards, eColor color, MoveList& moveList, BITBOARD movers,
+	                                BITBOARD targets);
 	// board is only referenced inside assert() checks — compiled out in Release (NDEBUG).
 	static void AddPawnCaptures([[maybe_unused]] const Board& board, MoveList& moveList, const BITBOARD*, Move pawnMove,
-	                            eColor color);
+	                            eColor color, BITBOARD epFrom);
 	static void AddCastleMoves(const Board& board, MoveList& moveList, eColor color, const BITBOARD* bbBitBoards);
 
 	static BITBOARD GetAnyEnPassantAttackingPawns(const BITBOARD* bbBitBoards, eColor attackByColor,
