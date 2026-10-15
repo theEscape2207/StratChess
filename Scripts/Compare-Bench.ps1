@@ -542,8 +542,8 @@ if ($SelfTest) {
             @{ Aa = @(-0.49, 0.49); Warn = $false })) {
         foreach ($flip in @($false, $true)) {
             # Swapping the copies negates the log interval: [l, h] becomes [-h, -l].
-            $bounds = if ($flip) { @((ConvertTo-Pct (-(& $toLog $case.Aa[1]))), (ConvertTo-Pct (-(& $toLog $case.Aa[0])))) } else { $case.Aa }
-            $aaIv = & $logIv $bounds
+            $aaBounds = if ($flip) { @((ConvertTo-Pct (-(& $toLog $case.Aa[1]))), (ConvertTo-Pct (-(& $toLog $case.Aa[0])))) } else { $case.Aa }
+            $aaIv = & $logIv $aaBounds
             $fake = [pscustomobject]@{
                 Rounds = 12; VerdictBasis = 'ref'; RoundDeltas = @(0.01); Verdict = 'Speedup'; SpeedupFailures = @()
                 Comparisons = [ordered]@{ 'ref' = (& $logIv @(1, 2)); 'control vs baseline (A/A)' = $aaIv }
