@@ -846,8 +846,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			null_stats.record_failed(td.nodes_searched + td.qnodes_searched - null_start, null_start_fail);
 	}
 
+	// In check, only the legal evasions: about 4 of the ~35 pseudo-legal moves, in the same relative
+	// order, so the search is unchanged and skips scoring, sorting and rejecting the rest.
 	MoveList move_list;
-	MoveGenerator::ComputeLegalMoves(td.board, move_list);
+	if (in_check)
+		MoveGenerator::ComputeEvasions(td.board, move_list);
+	else
+		MoveGenerator::ComputeLegalMoves(td.board, move_list);
 
 	Move best_move;
 
@@ -991,7 +996,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		                           !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) &&
 		                           move != td.killers[ply][0] && move != td.killers[ply][1] && move != hash_move;
 
-		if (td.board.DoMove(move)) {
+		// In check the list is ComputeEvasions(), legal by construction, so DoMove() never rejects
+		// there. Its legality test stays: on ~4 moves per in-check node it costs too little to be worth
+		// a second, unchecked DoMove entry point.
+		const bool played = td.board.DoMove(move);
+		assert(played || !in_check);
+		if (played) {
 			const int move_number = legal_moves_searched++; // 0 for the first legal move
 			int value;
 
@@ -1500,10 +1510,9 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	MoveList move_list;
 	if (in_check) {
 		// Every evasion counts, including quiet blocks and king walks, so a capture-only
-		// generator cannot answer this node. The list is pseudo-legal; DoMove() below rejects
-		// the moves that leave the king in check, which is what makes an empty survivor set
-		// mean checkmate.
-		MoveGenerator::ComputeLegalMoves(td.board, move_list);
+		// generator cannot answer this node. The list is every legal evasion and nothing else,
+		// which is what makes an empty survivor set mean checkmate.
+		MoveGenerator::ComputeEvasions(td.board, move_list);
 	} else {
 		// Generate only capture moves and promotions
 		MoveGenerator::ComputeCaptures(td.board, move_list);
@@ -1562,7 +1571,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 			continue;
 		}
 
-		if (!td.board.DoMove(move))
+		// An evasion is legal by construction; as in pvs(), DoMove() still tests it.
+		const bool played = td.board.DoMove(move);
+		assert(played || !in_check);
+		if (!played)
 			continue;
 
 		// Per searched edge, matching pvs(): counting entries here instead would re-count
