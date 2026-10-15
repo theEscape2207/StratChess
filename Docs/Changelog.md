@@ -18,7 +18,7 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 ## 2026-10-15: Early TT prefetch from the predicted child key (#825)
 
 ### Changed
-- `pvs()` and `quiescence()` prefetch the child's TT bucket before their per-move guards, from
+- `pvs()` and `quiescence()` prefetch the child's TT bucket ahead of their pruning guards (after delta pruning in qsearch), from
   `Board::KeyAfter(move)`, a prediction exact for every move but en-passant captures. `DoMove`'s
   prefetch stays as the fallback. This is the variant #776 measured at −1.43% and dropped; it wins
   now because #822 removed most of the work the late prefetch hid behind, and because both helpers

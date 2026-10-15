@@ -127,9 +127,9 @@ class Board final {
 	void SetPrefetchTarget(const PrefetchTarget& target) noexcept { prefetch_target_ = target; }
 	const PrefetchTarget& prefetch_target() const noexcept { return prefetch_target_; }
 
-	// Prefetches the child's bucket before DoMove(m), so the miss overlaps the parent's per-move work
-	// (#825). KeyAfter(m) predicts the child's key; it is exact except for en-passant captures, where
-	// the captured pawn is left in, so no caller may treat it as the real key.
+	// Prefetches the child's bucket before DoMove(m), so the miss overlaps the parent's per-move work.
+	// KeyAfter(m) predicts the child's key; it is exact except for en-passant captures, where the
+	// captured pawn is left in, so no caller may treat it as the real key.
 	void PrefetchChild(const Move& m) const noexcept;
 	uint64_t KeyAfter(const Move& m) const noexcept;
 
@@ -299,8 +299,8 @@ namespace zobrist {
 	void initialize() noexcept;
 } // namespace zobrist
 
-// Force-inlined, as is PrefetchChild: left to the inliner, clang-cl kept KeyAfter out of line in #776
-// and in #825's spike, and neither showed a gain. A lost inline costs the whole speedup silently.
+// Force-inlined, as is PrefetchChild: left to the inliner, clang-cl keeps KeyAfter out of line, and
+// out of line it gains nothing. A lost inline costs the whole speedup silently.
 // The en-passant miss is deliberate: one more branch per move for a ~1-in-2,000 move, where a wrong
 // key only wastes a prefetch and DoMove's own prefetch still fetches the right bucket.
 STRAT_FORCEINLINE uint64_t Board::KeyAfter(const Move& m) const noexcept

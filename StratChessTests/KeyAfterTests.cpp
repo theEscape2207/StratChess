@@ -1,7 +1,7 @@
 // KeyAfterTests.cpp — Board::KeyAfter against the key DoMove actually produces
 //
-// KeyAfter predicts the child's zobrist key so the search can prefetch its bucket before DoMove
-// (#825). It is exact for every legal move except en-passant captures, which leave the captured pawn
+// KeyAfter predicts the child's zobrist key so the search can prefetch its bucket before DoMove.
+// It is exact for every legal move except en-passant captures, which leave the captured pawn
 // in the key by design. The walk compares the prediction with the real key at every accepted move.
 
 #include <catch2/catch_test_macros.hpp>
@@ -47,8 +47,8 @@ namespace {
 
 } // namespace
 
-// The InCheckTests.cpp corpus plus one position:the standard perft positions (castling both sides, promotions with
-// and without capture), plus en-passant captures that pin along a rank or a diagonal.
+// The InCheckTests.cpp corpus (castling both sides, promotions with and without capture, en-passant
+// captures pinned along a rank or a diagonal), plus a corner promotion-capture position.
 static constexpr const char* KEY_AFTER_FENS[] = {
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
     "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
