@@ -15,6 +15,18 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-15: Early TT prefetch from the predicted child key (#825)
+
+### Changed
+- `pvs()` and `quiescence()` prefetch the child's TT bucket before their per-move guards, from
+  `Board::KeyAfter(move)`, a prediction exact for every move but en-passant captures. `DoMove`'s
+  prefetch stays as the fallback. This is the variant #776 measured at −1.43% and dropped; it wins
+  now because #822 removed most of the work the late prefetch hid behind, and because both helpers
+  are force-inlined (left to the inliner, `KeyAfter` stayed out of line and gained nothing).
+- Search equivalence identical; ordered-pair bench, 24 rounds with control: +1.02% nps
+  [+0.76, +1.28] vs baseline, +1.20% [+0.96, +1.44] vs control. Elo unmeasured.
+- `KeyAfterTests.cpp` compares the prediction with `DoMove`'s key at every move of depth-3 walks.
+
 ## 2026-10-12: InCheck tests one square instead of building the attack map (#822)
 
 ### Changed
