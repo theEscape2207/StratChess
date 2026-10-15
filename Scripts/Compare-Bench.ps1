@@ -20,24 +20,33 @@
     like.
 
     Statistics. The sampling unit is the round, not the position. Each round gives one
-    aggregate delta, computed from total nodes / total ms over the suite. That is valid only
-    because the node counts were checked identical. The interval is a two-sided 95% Student-t
-    interval over the kept rounds. Above 30 degrees of freedom it uses the critical value of
-    the next lower table row, which errs wide.
-    With -Control, the verdict compares the candidate against the mean of both baseline arms.
+    aggregate nps per arm, total nodes / total ms over the suite. That is valid only because
+    the node counts were checked identical. Each contrast is the round's log nps ratio, not a
+    percentage ratio: a mean of percentage ratios reads above zero for identical arms
+    (mean(x/y) > 1), a mean of log ratios does not. The interval is a two-sided 95% Student-t
+    interval over the kept rounds' log ratios. Above 30 degrees of freedom it uses the
+    critical value of the next lower table row, which errs wide. Mean, bounds, median and
+    range print as the percentage each log value stands for, 100 x (e^v - 1); sd as 100 x sd.
+    With -Control, the verdict compares the candidate against the geometric mean of both
+    baseline arms, i.e. the average of its two per-arm log contrasts.
 
-    Verdict, from the 95% interval of the verdict comparison, checked in this order:
-      Speedup      lower bound > 0, only with -Control and only while the whole A/A interval
-                   lies within +-0.5%: a control that is wide or offset cannot show the
-                   machine was quiet. Pending until a rerun on a New-OrderedBuildPair.ps1 pair
-                   (shared /ORDER) agrees: placement alone moves node-identical builds by
-                   several percent either way.
-      No slowdown  lower bound >= -0.5%; a small cost inside that tolerance still passes, and
-                   the printed interval shows it.
-      Slowdown     upper bound < 0.
+    Verdict, checked in this order; every threshold is applied to the log values:
+      Speedup      only with -Control: the 95% lower bound > 0 against the baseline AND
+                   against the control, and, when the A/A interval excludes zero, the lower
+                   of those bounds above the run's own steady A/A offset |A/A mean|. The
+                   reference contrast needs no condition of its own: its lower bound is at
+                   least the average of the per-arm ones. The report says which condition
+                   failed when the reference's lower bound is > 0 but Speedup was not issued.
+                   Confirmed only on a New-OrderedBuildPair.ps1 pair (shared /ORDER):
+                   placement alone moves node-identical builds by several percent either way.
+      No slowdown  reference lower bound >= -0.5%; a small cost inside that tolerance still
+                   passes, and the printed interval shows it.
+      Slowdown     reference upper bound < 0.
       Unresolved   anything else. Rerun with -Control or relink both builds with
                    New-OrderedBuildPair.ps1 (measure-strength regression-check). Do not add
                    rounds to the same series until it passes.
+    An A/A interval not wholly inside +-0.5% prints a WARNING under any verdict, never a
+    veto: a 0.2% and an 8% gain need not be measured equally precisely.
     Any other positive delta is unconfirmed: timing noise and placement are not ruled out.
     No verdict is an Elo claim.
 
@@ -81,7 +90,7 @@
     Optional commit the candidate was built from, recorded likewise.
 
 .PARAMETER TrendOnly
-    Report the verdict comparison's interval as a trend instead of a verdict.
+    Report the verdict comparison's interval as a trend instead of a verdict, with no A/A warning.
 
 .PARAMETER OutDir
     Where to keep the CSVs, metadata.json and report.txt. Defaults to a new directory under the
@@ -134,6 +143,10 @@ $ErrorActionPreference = 'Stop'
 
 # The largest slowdown, in percent, that still counts as No slowdown. Fixed so it cannot move after a run.
 $SlowdownTolerancePct = 0.5
+# How far apart the two identical baseline copies may read before the report warns. A warning only:
+# per-arm intervals carry imprecision and Get-Verdict gates a steady offset. Kept apart from the
+# slowdown tolerance, because acceptable regression and control agreement are separate questions.
+$ControlBandPct = 0.5
 
 # $DefaultPositions, Resolve-Positions and Get-PositionSetHash: the set Run-Bench measures.
 . (Join-Path $PSScriptRoot 'BenchPositions.ps1')
@@ -212,15 +225,42 @@ function Get-Interval {
     }
 }
 
+function ConvertTo-Pct {
+    <# A log nps ratio as the percentage change it stands for. #>
+    param([Parameter(Mandatory)][double]$Log)
+    return 100.0 * ([math]::Exp($Log) - 1)
+}
+
 function Get-Verdict {
-    <# $AaInterval is the control-vs-baseline interval, or $null without -Control: no speedup without it.
-       Overlapping zero is not enough: the A/A interval must sit inside the tolerance band on both sides. #>
-    param([Parameter(Mandatory)][object]$Interval, [Parameter(Mandatory)][double]$TolerancePct, [object]$AaInterval = $null)
-    $quietMachine = $null -ne $AaInterval -and $AaInterval.Low -ge -$TolerancePct -and $AaInterval.High -le $TolerancePct
-    if ($Interval.Low -gt 0 -and $quietMachine) { return 'Speedup' }
-    if ($Interval.Low -ge -$TolerancePct) { return 'No slowdown' }
-    if ($Interval.High -lt 0) { return 'Slowdown' }
-    return 'Unresolved'
+    <#
+        Every interval is in log units; gates never compare displayed percentages, which are not
+        symmetric under swapping the two identical baseline copies.
+        Speedup needs -Control ($ArmIntervals: candidate vs 'baseline' and vs 'control', and
+        $AaInterval), both per-arm lower bounds > 0 and, when the A/A interval excludes zero, the
+        lower of them above the run's own steady offset |A/A mean|. No third condition on the
+        reference interval: against the geometric mean its lower bound is at least the average of
+        the per-arm ones, so the first condition implies it. Returns the verdict and the Speedup
+        conditions that failed, if any.
+    #>
+    param([Parameter(Mandatory)][object]$Interval, [Parameter(Mandatory)][double]$TolerancePct,
+          [hashtable]$ArmIntervals = $null, [object]$AaInterval = $null)
+    $failed = [System.Collections.Generic.List[string]]::new()
+    if ($null -ne $ArmIntervals) {
+        foreach ($arm in @('baseline', 'control')) {
+            if ($ArmIntervals[$arm].Low -le 0) { $failed.Add("lower bound <= 0 against $arm") }
+        }
+        $aaExcludesZero = $AaInterval.Low -gt 0 -or $AaInterval.High -lt 0
+        $minLow = [math]::Min($ArmIntervals['baseline'].Low, $ArmIntervals['control'].Low)
+        if ($aaExcludesZero -and $minLow -le [math]::Abs($AaInterval.Mean)) {
+            $failed.Add(('lower bound does not exceed the steady A/A offset of {0}%' -f
+                         (ConvertTo-Pct ([math]::Abs($AaInterval.Mean))).ToString('0.00', [cultureinfo]::InvariantCulture)))
+        }
+        if ($failed.Count -eq 0) { return [pscustomobject]@{ Verdict = 'Speedup'; Failed = @() } }
+    }
+    $verdict = if ($Interval.Low -ge [math]::Log(1 - $TolerancePct / 100)) { 'No slowdown' }
+               elseif ($Interval.High -lt 0) { 'Slowdown' }
+               else { 'Unresolved' }
+    return [pscustomobject]@{ Verdict = $verdict; Failed = @($failed) }
 }
 
 function Get-Comparison {
@@ -240,6 +280,10 @@ function Get-Comparison {
     }
     $hasControl = @($kept | Where-Object { $_.Arm -eq 'control' }).Count -gt 0
     $pct = { param($a, $b) 100.0 * ($a / $b - 1) }
+    # Contrasts are log ratios, converted to percent only for display. A mean of percentage ratios
+    # reads above zero for identically distributed arms (mean(x/y) > 1, Jensen); a mean of log
+    # ratios is exactly zero for them.
+    $logRatio = { param($a, $b) [math]::Log($a / $b) }
 
     # One delta per round per comparison; 'reference' is what the candidate is judged against.
     $pairs = [ordered]@{ 'candidate vs baseline' = @('candidate', 'baseline') }
@@ -250,18 +294,21 @@ function Get-Comparison {
     $comparisons = [ordered]@{}
     foreach ($name in $pairs.Keys) {
         $x, $y = $pairs[$name]
-        $deltas = foreach ($r in $byRound.Values) { & $pct (Get-AggregateNps $r[$x].Rows) (Get-AggregateNps $r[$y].Rows) }
+        $deltas = foreach ($r in $byRound.Values) { & $logRatio (Get-AggregateNps $r[$x].Rows) (Get-AggregateNps $r[$y].Rows) }
         $comparisons[$name] = Get-Interval -Values $deltas
     }
-    # The verdict judges the candidate against the baseline, or against mean(baseline, control).
+    # The verdict judges the candidate against the baseline, or against the geometric mean of
+    # baseline and control: the average of the two per-arm log contrasts. The arithmetic mean
+    # would read a phantom slowdown on equal arms under noise.
     # $select picks which of a run's rows to aggregate: all of them, or one position's.
     $candidateDelta = {
         param($r, $select)
-        $ref = Get-AggregateNps (& $select $r['baseline'])
-        if ($hasControl) { $ref = ($ref + (Get-AggregateNps (& $select $r['control']))) / 2 }
-        & $pct (Get-AggregateNps (& $select $r['candidate'])) $ref
+        $candidateLog = [math]::Log((Get-AggregateNps (& $select $r['candidate'])))
+        $refLog = [math]::Log((Get-AggregateNps (& $select $r['baseline'])))
+        if ($hasControl) { $refLog = ($refLog + [math]::Log((Get-AggregateNps (& $select $r['control'])))) / 2 }
+        $candidateLog - $refLog
     }
-    $verdictName = if ($hasControl) { 'candidate vs mean(baseline, control)' } else { 'candidate vs baseline' }
+    $verdictName = if ($hasControl) { 'candidate vs geomean(baseline, control)' } else { 'candidate vs baseline' }
     $roundDeltas = @(foreach ($r in $byRound.Values) { & $candidateDelta $r { param($run) $run.Rows } })
     if ($hasControl) { $comparisons[$verdictName] = Get-Interval -Values $roundDeltas }
 
@@ -290,14 +337,19 @@ function Get-Comparison {
         if ($values.Count -gt 0) { $armNps[$arm] = (Get-Interval -Values $values).Median }
     }
 
-    $verdictInterval = $comparisons[$verdictName]
-    $aaInterval = if ($hasControl) { $comparisons['control vs baseline (A/A)'] } else { $null }
+    $verdictArgs = @{ Interval = $comparisons[$verdictName]; TolerancePct = $TolerancePct }
+    if ($hasControl) {
+        $verdictArgs.ArmIntervals = @{ baseline = $comparisons['candidate vs baseline']; control = $comparisons['candidate vs control'] }
+        $verdictArgs.AaInterval = $comparisons['control vs baseline (A/A)']
+    }
+    $judged = Get-Verdict @verdictArgs
     return [pscustomobject]@{
         Rounds       = $byRound.Count
         Comparisons  = $comparisons
         VerdictBasis = $verdictName
         RoundDeltas  = $roundDeltas
-        Verdict      = Get-Verdict -Interval $verdictInterval -TolerancePct $TolerancePct -AaInterval $aaInterval
+        Verdict      = $judged.Verdict
+        Failed       = $judged.Failed
         PerPosition  = $perPosition
         Slots        = $slots
         ArmNps       = $armNps
@@ -305,28 +357,29 @@ function Get-Comparison {
 }
 
 function Format-Report {
-    param([Parameter(Mandatory)][object]$Result, [Parameter(Mandatory)][double]$TolerancePct, [switch]$TrendOnly)
+    param([Parameter(Mandatory)][object]$Result, [Parameter(Mandatory)][double]$TolerancePct,
+          [double]$BandPct = $ControlBandPct, [switch]$TrendOnly)
 
     $line = '{0,-38} {1,8:+0.00;-0.00;0.00}% {2,6:0.00} [{3,7:+0.00;-0.00;0.00}%, {4,7:+0.00;-0.00;0.00}%] {5,8:+0.00;-0.00;0.00}%  {6,7:+0.00;-0.00;0.00}% .. {7:+0.00;-0.00;0.00}%'
     # Invariant culture: the report is pasted into PRs, whatever the machine's decimal separator.
     $inv = [cultureinfo]::InvariantCulture
     # Rounded first: a tiny negative would otherwise take the negative section and print as '-+0.00'.
     $fmt = { param($pattern) [string]::Format($inv, $pattern, @($args | ForEach-Object { if ($_ -is [double]) { [math]::Round($_, 2) } else { $_ } })) }
+    # Intervals are in log units: each statistic prints as the percentage it stands for, sd as 100 x sd.
+    $row = { param($label, $c) & $fmt $line $label (ConvertTo-Pct $c.Mean) (100 * $c.Sd) (ConvertTo-Pct $c.Low) (ConvertTo-Pct $c.High) (ConvertTo-Pct $c.Median) (ConvertTo-Pct $c.Min) (ConvertTo-Pct $c.Max) }
     $out = [System.Collections.Generic.List[string]]::new()
     $out.Add("Kept rounds: $($Result.Rounds) (round 0 discarded as warm-up). Nodes and best moves identical in every run.")
     $out.Add('')
     $out.Add(('{0,-38} {1,9} {2,6} {3,20} {4,9}  {5}' -f 'comparison (aggregate nps, per round)', 'mean', 'sd', '95% t-interval', 'median', 'range'))
     foreach ($name in $Result.Comparisons.Keys) {
-        $c = $Result.Comparisons[$name]
-        $out.Add((& $fmt $line $name $c.Mean $c.Sd $c.Low $c.High $c.Median $c.Min $c.Max))
+        $out.Add((& $row $name $Result.Comparisons[$name]))
     }
     $out.Add("Per-round deltas, $($Result.VerdictBasis): " +
-             (($Result.RoundDeltas | ForEach-Object { & $fmt '{0:+0.00;-0.00;0.00}%' $_ }) -join ' '))
+             (($Result.RoundDeltas | ForEach-Object { & $fmt '{0:+0.00;-0.00;0.00}%' (ConvertTo-Pct $_) }) -join ' '))
     $out.Add('')
     $out.Add("Per position, candidate vs the verdict's reference:")
     foreach ($name in $Result.PerPosition.Keys) {
-        $c = $Result.PerPosition[$name]
-        $out.Add((& $fmt $line "  $name" $c.Mean $c.Sd $c.Low $c.High $c.Median $c.Min $c.Max))
+        $out.Add((& $row "  $name" $Result.PerPosition[$name]))
     }
     $out.Add('')
     $out.Add('Run-order effect, aggregate nps by slot vs the overall mean: ' +
@@ -336,12 +389,21 @@ function Format-Report {
     $out.Add('')
     if ($TrendOnly) {
         $c = $Result.Comparisons[$Result.VerdictBasis]
-        $out.Add((& $fmt "TREND: {0:+0.00;-0.00;0.00}% [{1:+0.00;-0.00;0.00}%, {2:+0.00;-0.00;0.00}%] ('$($Result.VerdictBasis)'); no verdict without placement control. Not Elo." $c.Mean $c.Low $c.High))
+        $out.Add((& $fmt "TREND: {0:+0.00;-0.00;0.00}% [{1:+0.00;-0.00;0.00}%, {2:+0.00;-0.00;0.00}%] ('$($Result.VerdictBasis)'); no verdict without placement control. Not Elo." (ConvertTo-Pct $c.Mean) (ConvertTo-Pct $c.Low) (ConvertTo-Pct $c.High)))
         return $out
     }
     $out.Add("VERDICT: $($Result.Verdict)  (from '$($Result.VerdictBasis)'; tolerance -$TolerancePct%)")
+    if ($Result.Failed.Count -gt 0 -and $Result.Comparisons[$Result.VerdictBasis].Low -gt 0) {
+        $out.Add("Speedup not issued: $($Result.Failed -join '; ').")
+    }
+    if ($Result.Comparisons.Contains('control vs baseline (A/A)')) {
+        $aa = $Result.Comparisons['control vs baseline (A/A)']
+        if ((ConvertTo-Pct $aa.Low) -lt -$BandPct -or (ConvertTo-Pct $aa.High) -gt $BandPct) {
+            $out.Add((& $fmt "WARNING: A/A [{0:+0.00;-0.00;0.00}%, {1:+0.00;-0.00;0.00}%] leaves +-{2}%: the two baseline copies disagree by more than the band (offset, imprecision or both). Per-arm intervals carry the imprecision; a steady offset is gated by the offset condition. No arm is named faulty." (ConvertTo-Pct $aa.Low) (ConvertTo-Pct $aa.High) $BandPct))
+        }
+    }
     switch ($Result.Verdict) {
-        'Speedup'     { $out.Add('PENDING: relink both builds with New-OrderedBuildPair.ps1 and rerun with -Control; claim it only if Speedup holds there too. Not Elo.') }
+        'Speedup'     { $out.Add('Confirmed only if both exes came from New-OrderedBuildPair.ps1; otherwise relink and rerun with -Control. Not Elo.') }
         'No slowdown' { $out.Add('A positive delta here is no confirmed speedup: timing noise and placement are not ruled out. A speedup claim needs -Control and a Speedup verdict. Not Elo.') }
         'Slowdown'    { $out.Add('Relink both builds with New-OrderedBuildPair.ps1 before treating it as real (measure-strength regression-check).') }
         'Unresolved'  { $out.Add('Rerun with -Control, or relink with New-OrderedBuildPair.ps1. Do not extend this series until it passes.') }
@@ -431,33 +493,48 @@ if ($SelfTest) {
         "got mean $($iv.Mean) sd $($iv.Sd) high $($iv.High) median $($iv.Median)"
     Assert-Case 'even-count median averages the middle pair' ((Get-Interval -Values @(4, 1, 3, 2)).Median -eq 2.5)
 
-    $flatAa = [pscustomobject]@{ Low = -0.3; High = 0.4 }
-    $driftAa = [pscustomobject]@{ Low = 0.6; High = 0.9 }
-    $wideAa = [pscustomobject]@{ Low = -20; High = 20 }
-    $preciseAa = [pscustomobject]@{ Low = 0.001; High = 0.002 }
-    foreach ($case in @(
-            @{ Low = 0.2; High = 1.0; Aa = $flatAa; Expect = 'Speedup' }
-            @{ Low = 0.2; High = 1.0; Aa = $null; Expect = 'No slowdown' }
-            @{ Low = 0.2; High = 1.0; Aa = $driftAa; Expect = 'No slowdown' }
-            @{ Low = 0.2; High = 1.0; Aa = $wideAa; Expect = 'No slowdown' }
-            @{ Low = 0.2; High = 1.0; Aa = $preciseAa; Expect = 'Speedup' }
-            @{ Low = -0.1; High = 1.0; Aa = $flatAa; Expect = 'No slowdown' }
-            @{ Low = -0.3; High = 0.4; Expect = 'No slowdown' }
-            @{ Low = -0.45; High = -0.1; Expect = 'No slowdown' }
-            @{ Low = -1.5; High = -0.2; Expect = 'Slowdown' }
-            @{ Low = -1.0; High = 0.5; Expect = 'Unresolved' })) {
-        $aa = if ($case.ContainsKey('Aa')) { $case.Aa } else { $null }
-        $got = Get-Verdict -Interval ([pscustomobject]@{ Low = $case.Low; High = $case.High }) -TolerancePct 0.5 -AaInterval $aa
-        $aaLabel = if ($null -eq $aa) { 'no control' } else { "A/A [$($aa.Low), $($aa.High)]" }
-        Assert-Case "verdict [$($case.Low), $($case.High)], $aaLabel -> $($case.Expect)" ($got -eq $case.Expect) "got $got"
+    # Get-Verdict takes log intervals; the table states them in percent, as the report shows them.
+    $toLog = { param($p) [math]::Log(1 + $p / 100) }
+    # @(low, high[, mean]); the mean defaults to the midpoint.
+    $logIv = {
+        param([double[]]$Bounds)
+        $mid = if ($Bounds.Count -gt 2) { $Bounds[2] } else { ($Bounds[0] + $Bounds[1]) / 2 }
+        [pscustomobject]@{ Low = & $toLog $Bounds[0]; High = & $toLog $Bounds[1]; Mean = & $toLog $mid }
     }
+    foreach ($case in @(
+            @{ Name = '#825 spike shape, A/A spans zero';         Ref = @(1.5, 2.7);   Base = @(1.32, 2.44); Ctrl = @(1.75, 2.95); Aa = @(-0.94, 0.03); Expect = 'Speedup' }
+            @{ Name = '#825 12-round ordered shape, baseline -0.01'; Ref = @(0.3, 1.5); Base = @(-0.01, 1.44); Ctrl = @(0.4, 1.6); Aa = @(-0.3, 0.2); Expect = 'No slowdown'; Fails = 'against baseline' }
+            @{ Name = '#825 24-round ordered shape, A/A low -0.51'; Ref = @(0.9, 1.3); Base = @(0.76, 1.28); Ctrl = @(0.96, 1.44); Aa = @(-0.51, 0.1); Expect = 'Speedup' }
+            @{ Name = '#725 shape, +8% over both, A/A +-1%';     Ref = @(7, 9);       Base = @(7, 9);       Ctrl = @(7, 9);       Aa = @(-1, 1);        Expect = 'Speedup' }
+            @{ Name = 'steady A/A -2%, +0.8% over the faster arm'; Ref = @(1.5, 2.1); Base = @(0.5, 1.1); Ctrl = @(2.5, 3.2); Aa = @(-2.3, -1.7, -2.0); Expect = 'No slowdown'; Fails = 'steady A/A offset' }
+            @{ Name = 'steady A/A -2%, +3% over the faster arm';  Ref = @(3.7, 4.3);  Base = @(2.7, 3.3);   Ctrl = @(4.7, 5.4);   Aa = @(-2.3, -1.7, -2.0); Expect = 'Speedup' }
+            @{ Name = 'FALSIFY: a lower bound exactly 0';         Ref = @(0.2, 1.0);   Base = @(0, 1.0);     Ctrl = @(0.4, 1.0);   Aa = @(-0.2, 0.2);    Expect = 'No slowdown'; Fails = 'against baseline' }
+            @{ Name = 'FALSIFY: control lower bound below 0';     Ref = @(0.2, 1.0);   Base = @(0.4, 1.0);   Ctrl = @(-0.1, 1.0);  Aa = @(-0.2, 0.2);    Expect = 'No slowdown'; Fails = 'against control' }
+            @{ Name = 'narrow A/A, ordinary gain';                Ref = @(0.2, 1.0);   Base = @(0.2, 1.0);   Ctrl = @(0.2, 1.0);   Aa = @(-0.1, 0.1);    Expect = 'Speedup' }
+            @{ Name = 'FALSIFY: no control, clear gain';          Ref = @(0.2, 1.0);   Expect = 'No slowdown' }
+            @{ Name = 'lower bound exactly -0.5%';                Ref = @(-0.5, 0.4);  Expect = 'No slowdown' }
+            @{ Name = 'no control, small cost';                   Ref = @(-0.45, -0.1); Expect = 'No slowdown' }
+            @{ Name = 'no control, clear cost';                   Ref = @(-1.5, -0.2); Expect = 'Slowdown' }
+            @{ Name = 'no control, wide';                         Ref = @(-1.0, 0.5);  Expect = 'Unresolved' })) {
+        $verdictArgs = @{ Interval = (& $logIv $case.Ref); TolerancePct = 0.5 }
+        if ($case.ContainsKey('Base')) {
+            $verdictArgs.ArmIntervals = @{ baseline = (& $logIv $case.Base); control = (& $logIv $case.Ctrl) }
+            $verdictArgs.AaInterval = & $logIv $case.Aa
+        }
+        $got = Get-Verdict @verdictArgs
+        $failsOk = if ($case.ContainsKey('Fails')) { @($got.Failed | Where-Object { $_ -match $case.Fails }).Count -eq 1 } else { $got.Failed.Count -eq 0 }
+        Assert-Case "verdict: $($case.Name) -> $($case.Expect)" ($got.Verdict -eq $case.Expect -and $failsOk) "got $($got.Verdict), failed: $($got.Failed -join '; ')"
+    }
+    $baseIv = (& $logIv @(0.4, 1.0)); $ctrlIv = (& $logIv @(0.2, 1.0))
+    $swapped = (Get-Verdict -Interval (& $logIv @(0.3, 1.0)) -TolerancePct 0.5 -ArmIntervals @{ baseline = $ctrlIv; control = $baseIv } -AaInterval (& $logIv @(-0.2, 0.2))).Verdict
+    Assert-Case 'verdict: swapping the per-arm intervals keeps the verdict' ($swapped -eq 'Speedup') "got $swapped"
 
     # End to end over synthetic runs, with jitter so the interval has width.
     $jitter = @{ 1 = 1.004; 2 = 0.996; 3 = 1.002; 4 = 0.998; 5 = 1.001; 6 = 0.999 }
     $runs = New-Series -Arms @('baseline', 'candidate') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 0.97 } -Jitter $jitter
     $res = Get-Comparison -Runs $runs -TolerancePct 0.5
     Assert-Case 'a 3% slower candidate is a Slowdown near -3%' `
-        ($res.Verdict -eq 'Slowdown' -and [math]::Abs($res.Comparisons['candidate vs baseline'].Mean + 3) -lt 0.01 -and $res.Rounds -eq 12) `
+        ($res.Verdict -eq 'Slowdown' -and [math]::Abs((ConvertTo-Pct $res.Comparisons['candidate vs baseline'].Mean) + 3) -lt 0.01 -and $res.Rounds -eq 12) `
         "got $($res.Verdict) mean $($res.Comparisons['candidate vs baseline'].Mean)"
 
     $runs = New-Series -Arms @('baseline', 'candidate') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.0 } -Jitter $jitter -Round0 0.5
@@ -468,13 +545,15 @@ if ($SelfTest) {
 
     $runs = New-Series -Arms @('baseline', 'candidate', 'control') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.0; control = 1.0 } -Jitter $jitter
     $res = Get-Comparison -Runs $runs -TolerancePct 0.5
-    Assert-Case 'with a control the verdict is judged against mean(baseline, control)' `
-        ($res.VerdictBasis -eq 'candidate vs mean(baseline, control)' -and $res.Comparisons.Contains('control vs baseline (A/A)') -and
+    Assert-Case 'with a control the verdict is judged against geomean(baseline, control)' `
+        ($res.VerdictBasis -eq 'candidate vs geomean(baseline, control)' -and $res.Comparisons.Contains('control vs baseline (A/A)') -and
          $res.PerPosition.Count -eq 2 -and $res.Slots.Count -eq 3)
     $runs = New-Series -Arms @('baseline', 'candidate', 'control') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.03; control = 1.0 } -Jitter $jitter
     $res = Get-Comparison -Runs $runs -TolerancePct 0.5
-    Assert-Case 'a 3% faster candidate with a quiet control is a pending Speedup' `
-        ($res.Verdict -eq 'Speedup' -and @(Format-Report -Result $res -TolerancePct 0.5 | Where-Object { $_ -match '^PENDING: relink' }).Count -eq 1) `
+    $report = @(Format-Report -Result $res -TolerancePct 0.5)
+    Assert-Case 'a 3% faster candidate with a quiet control is Speedup, ordered-pair caveat, no warning' `
+        ($res.Verdict -eq 'Speedup' -and @($report | Where-Object { $_ -match '^Confirmed only if both exes came from New-OrderedBuildPair' }).Count -eq 1 -and
+         @($report | Where-Object { $_ -match '^WARNING|^Speedup not issued' }).Count -eq 0) `
         "got $($res.Verdict)"
     $runs = New-Series -Arms @('baseline', 'candidate') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.03 } -Jitter $jitter
     $res = Get-Comparison -Runs $runs -TolerancePct 0.5
@@ -490,14 +569,14 @@ if ($SelfTest) {
     $res = Get-Comparison -Runs $runs -TolerancePct 0.5
     $aa = $res.Comparisons['control vs baseline (A/A)']
     Assert-Case 'FALSIFY: a wide control whose arms cancel in the mean blocks Speedup' `
-        ($res.Verdict -ne 'Speedup' -and $aa.High - $aa.Low -gt 10) "got $($res.Verdict), A/A [$($aa.Low), $($aa.High)]"
+        ($res.Verdict -ne 'Speedup' -and (ConvertTo-Pct $aa.High) - (ConvertTo-Pct $aa.Low) -gt 10) "got $($res.Verdict), A/A [$($aa.Low), $($aa.High)]"
     $noisy = @{}
     for ($r = 1; $r -le 12; $r++) { $noisy[$r] = @{ candidate = $(if ($r % 2) { 1.03 } else { 0.97 }) } }
     $runs = New-Series -Arms @('baseline', 'candidate') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.0 } -ArmJitter $noisy
     $res = Get-Comparison -Runs $runs -TolerancePct 0.5
     $iv = $res.Comparisons['candidate vs baseline']
     Assert-Case 'a noisy candidate with no true change is Unresolved' `
-        ($res.Verdict -eq 'Unresolved' -and $iv.Low -lt -0.5 -and $iv.High -gt 0) "got $($res.Verdict) [$($iv.Low), $($iv.High)]"
+        ($res.Verdict -eq 'Unresolved' -and (ConvertTo-Pct $iv.Low) -lt -0.5 -and $iv.High -gt 0) "got $($res.Verdict) [$($iv.Low), $($iv.High)]"
     $runs = New-Series -Arms @('baseline', 'candidate', 'control') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.0; control = 1.0 } -Jitter $jitter
     $res = Get-Comparison -Runs $runs -TolerancePct 0.5
     Assert-Case 'the report renders every section' `
@@ -509,7 +588,76 @@ if ($SelfTest) {
     $trend = @(Format-Report -Result $res -TolerancePct 0.5 -TrendOnly)
     Assert-Case 'FALSIFY: -TrendOnly turns a Speedup into a trend, with no verdict or relink advice' `
         ($res.Verdict -eq 'Speedup' -and @($trend | Where-Object { $_ -match '^TREND: \+3\.' }).Count -eq 1 -and
-         @($trend | Where-Object { $_ -cmatch 'VERDICT|PENDING|New-OrderedBuildPair' }).Count -eq 0) ($trend[-1])
+         @($trend | Where-Object { $_ -cmatch 'VERDICT|WARNING|Confirmed|New-OrderedBuildPair' }).Count -eq 0) ($trend[-1])
+
+    # B1: identically distributed arms. Each round permutes (0.7, 1.0, 1.3) over the arms, and every
+    # permutation meets every schedule order, so the log contrasts cancel exactly.
+    $values = @(0.7, 1.0, 1.3)
+    $perms = @(@(0, 1, 2), @(0, 2, 1), @(1, 0, 2), @(1, 2, 0), @(2, 0, 1), @(2, 1, 0))
+    $permuted = @{}
+    for ($r = 1; $r -le 576; $r++) {
+        $perm = $perms[[math]::Floor(($r - 1) / 6) % 6]
+        $permuted[$r] = @{ baseline = $values[$perm[0]]; candidate = $values[$perm[1]]; control = $values[$perm[2]] }
+    }
+    $runs = New-Series -Arms @('baseline', 'candidate', 'control') -RoundCount 576 -Speed @{ baseline = 1.0; candidate = 1.0; control = 1.0 } -ArmJitter $permuted
+    $res = Get-Comparison -Runs $runs -TolerancePct 0.5
+    $means = @($res.Comparisons.Values | ForEach-Object { $_.Mean })
+    $report = @(Format-Report -Result $res -TolerancePct 0.5)
+    Assert-Case 'FALSIFY: B1 equal arms under +-30% noise read a zero mean contrast, not Speedup, with a warning' `
+        ($res.Verdict -ne 'Speedup' -and @($means | Where-Object { [math]::Abs($_) -gt 1e-9 }).Count -eq 0 -and
+         @($report | Where-Object { $_ -match '^WARNING: A/A' }).Count -eq 1) "got $($res.Verdict), means $($means -join ', ')"
+    $runs = New-Series -Arms @('baseline', 'candidate', 'control') -RoundCount 576 -Speed @{ baseline = 1.0; candidate = 0.99; control = 1.0 } -ArmJitter $permuted
+    $res = Get-Comparison -Runs $runs -TolerancePct 0.5
+    Assert-Case 'FALSIFY: B1 noise with a 1% slower candidate reads negative, not Speedup' `
+        ($res.Verdict -ne 'Speedup' -and $res.Comparisons[$res.VerdictBasis].Mean -lt 0) "got $($res.Verdict)"
+
+    # A steady offset between the identical copies, larger in log units than the candidate's gain over
+    # the faster one. A percent comparison would pass in one orientation only.
+    foreach ($case in @(@{ Name = 'baseline faster'; Speed = @{ baseline = 1.0; control = 100000 / 102000 } },
+                        @{ Name = 'control faster';  Speed = @{ baseline = 100000 / 102000; control = 1.0 } })) {
+        $case.Speed.candidate = 100000 / 98058
+        $runs = New-Series -Arms @('baseline', 'candidate', 'control') -RoundCount 12 -Speed $case.Speed
+        $res = Get-Comparison -Runs $runs -TolerancePct 0.5
+        $report = @(Format-Report -Result $res -TolerancePct 0.5)
+        Assert-Case "FALSIFY: a steady A/A offset above the gain over the faster arm blocks Speedup ($($case.Name))" `
+            ($res.Verdict -eq 'No slowdown' -and @($report | Where-Object { $_ -match '^Speedup not issued: .*steady A/A offset' }).Count -eq 1) `
+            "got $($res.Verdict); $($report -match 'not issued')"
+    }
+
+    # The triage's opposed references: baseline and control alternate 1.1/0.9 against a flat candidate.
+    $opposedLong = @{}
+    $swappedLong = @{}
+    for ($r = 1; $r -le 600; $r++) {
+        $m = if ($r % 2) { 1.1 } else { 0.9 }
+        $opposedLong[$r] = @{ baseline = $m; control = 2.0 - $m }
+        $swappedLong[$r] = @{ baseline = 2.0 - $m; control = $m }
+    }
+    foreach ($case in @(@{ Candidate = 1.00; Expect = 'No slowdown' }, @{ Candidate = 1.30; Expect = 'Speedup' })) {
+        $got = foreach ($noise in @($opposedLong, $swappedLong)) {
+            $runs = New-Series -Arms @('baseline', 'candidate', 'control') -RoundCount 600 -Speed @{ baseline = 1.0; candidate = $case.Candidate; control = 1.0 } -ArmJitter $noise
+            $res = Get-Comparison -Runs $runs -TolerancePct 0.5
+            $res.Verdict
+        }
+        Assert-Case "opposed references over 600 rounds, candidate $($case.Candidate) -> $($case.Expect), swapped or not" `
+            (@($got | Where-Object { $_ -eq $case.Expect }).Count -eq 2) "got $($got -join ', ')"
+    }
+    $report = @(Format-Report -Result $res -TolerancePct 0.5)
+    Assert-Case 'a Speedup with a wide A/A prints the warning' (@($report | Where-Object { $_ -match '^WARNING: A/A \[' }).Count -eq 1) ($report -join ' | ')
+
+    # Percent conversion of a known log contrast: alternating 0.01 / 0.03 over 12 rounds gives mean 0.02,
+    # sd sqrt(12e-4 / 11) and half-width t(11) 2.201 x sd / sqrt(12).
+    $known = @{}
+    for ($r = 1; $r -le 12; $r++) { $known[$r] = @{ candidate = [math]::Exp($(if ($r % 2) { 0.01 } else { 0.03 })) } }
+    $runs = New-Series -Arms @('baseline', 'candidate') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.0 } -ArmJitter $known
+    $res = Get-Comparison -Runs $runs -TolerancePct 0.5
+    $knownSd = [math]::Sqrt(12e-4 / 11)
+    $knownHalf = 2.201 * $knownSd / [math]::Sqrt(12)
+    $inv = [cultureinfo]::InvariantCulture
+    $expected = @((100 * ([math]::Exp(0.02) - 1)), (100 * $knownSd), (100 * ([math]::Exp(0.02 - $knownHalf) - 1)), (100 * ([math]::Exp(0.02 + $knownHalf) - 1))) |
+        ForEach-Object { $_.ToString('0.00', $inv) }
+    $knownLine = @(Format-Report -Result $res -TolerancePct 0.5 | Where-Object { $_ -match '^candidate vs baseline ' })[0]
+    $pattern = '\+{0}%\s+{1} \[\s*\+{2}%,\s+\+{3}%\]' -f @($expected | ForEach-Object { [regex]::Escape($_) })
+    Assert-Case 'the report prints a known log contrast as 100(e^v - 1) % and sd as 100 sd' ($knownLine -match $pattern) "got '$knownLine', want $($expected -join ' ')"
 
     # The refusals. Each one would otherwise average an invalid run into the verdict.
     $good = @(New-Series -Arms @('baseline', 'candidate') -RoundCount 2 -Speed @{ baseline = 1.0; candidate = 1.0 })
@@ -578,6 +726,7 @@ $metadata = [ordered]@{
     Affinity    = $Affinity
     MinTimeMs   = $MinTimeMs
     Tolerance   = $SlowdownTolerancePct
+    ControlBand = $ControlBandPct
     TrendOnly   = [bool]$TrendOnly
 }
 $metadata | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $outPath 'metadata.json')
