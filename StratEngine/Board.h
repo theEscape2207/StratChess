@@ -6,6 +6,7 @@
 #include "GameState.h"
 #include "PieceHelper.h"
 #include "PrefetchTarget.h"
+#include "MoveHelper.h"
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -125,6 +126,12 @@ class Board final {
 	// search binds it after copying its root and resets it after its helpers join.
 	void SetPrefetchTarget(const PrefetchTarget& target) noexcept { prefetch_target_ = target; }
 	const PrefetchTarget& prefetch_target() const noexcept { return prefetch_target_; }
+
+	// Prefetches the child's bucket before DoMove(m), so the miss overlaps the parent's per-move work
+	// (#825). KeyAfter(m) predicts the child's key; it is exact except for en-passant captures, where
+	// the captured pawn is left in, so no caller may treat it as the real key.
+	void PrefetchChild(const Move& m) const noexcept;
+	uint64_t KeyAfter(const Move& m) const noexcept;
 
 	std::span<const BITBOARD> GetBitBoards() const noexcept;
 
@@ -291,3 +298,48 @@ namespace zobrist {
 
 	void initialize() noexcept;
 } // namespace zobrist
+
+// Force-inlined, as is PrefetchChild: left to the inliner, clang-cl kept KeyAfter out of line in #776
+// and in #825's spike, and neither showed a gain. A lost inline costs the whole speedup silently.
+// The en-passant miss is deliberate: one more branch per move for a ~1-in-2,000 move, where a wrong
+// key only wastes a prefetch and DoMove's own prefetch still fetches the right bucket.
+STRAT_FORCEINLINE uint64_t Board::KeyAfter(const Move& m) const noexcept
+{
+	const ePiece moved = mailbox_[m.from()];
+	uint64_t key = zobrist_hash_ ^ zobrist::side_key ^ zobrist::piece_keys[moved][m.from()] ^
+	               zobrist::piece_keys[MoveHelper::IsPromote(m) ? GetEffectiveMovPiece(m) : moved][m.to()];
+	if (const ePiece captured = mailbox_[m.to()]; PieceHelper::IsActual(captured))
+		key ^= zobrist::piece_keys[captured][m.to()];
+	if (state_.ep_square != NO_SQUARE)
+		key ^= zobrist::ep_keys[state_.ep_square];
+	if (const eSquare ep = MoveHelper::GetEnPassantSquare(m, moved); ep != NO_SQUARE)
+		key ^= zobrist::ep_keys[ep];
+	if (const uint8_t rights = state_.castling_rights; rights != CastlingRights::NONE) [[unlikely]] {
+		static constexpr auto kept = [] {
+			using namespace CastlingRights;
+			std::array<uint8_t, NUM_SQUARES> t{};
+			t.fill(ALL);
+			t[a1] = ALL & ~WHITE_QUEENSIDE;
+			t[h1] = ALL & ~WHITE_KINGSIDE;
+			t[a8] = ALL & ~BLACK_QUEENSIDE;
+			t[h8] = ALL & ~BLACK_KINGSIDE;
+			t[e1] = ALL & ~WHITE_BOTH;
+			t[e8] = ALL & ~BLACK_BOTH;
+			return t;
+		}();
+		const uint8_t after = rights & kept[m.from()] & kept[m.to()];
+		if (after != rights)
+			key ^= zobrist::castling_keys[rights] ^ zobrist::castling_keys[after];
+		const ePiece rook = PieceHelper::AsPiece(ROOK, side_to_move_);
+		if (m.flags() == MoveFlags::KING_CASTLE)
+			key ^= zobrist::piece_keys[rook][m.to() + 1] ^ zobrist::piece_keys[rook][m.to() - 1];
+		else if (m.flags() == MoveFlags::QUEEN_CASTLE)
+			key ^= zobrist::piece_keys[rook][m.to() - 2] ^ zobrist::piece_keys[rook][m.to() + 1];
+	}
+	return key;
+}
+
+STRAT_FORCEINLINE void Board::PrefetchChild(const Move& m) const noexcept
+{
+	StratPrefetch(prefetch_target_.bucket_for(KeyAfter(m)));
+}

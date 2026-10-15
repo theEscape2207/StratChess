@@ -969,6 +969,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		if (is_exclusion_frame && move == td.excluded_move[ply])
 			continue;
 
+		// Ahead of the frontier guards so their work overlaps the child's bucket miss; a pruned
+		// quiet move wastes the prefetch.
+		td.board.PrefetchChild(move);
+
 		// The pre-move half of the frontier guards, tested while td.board still holds this node,
 		// so the evaluation read is the parent's. Only a move passing every cheap term pays for it.
 		// legal_moves_searched >= 1 keeps the first legal move searched, so a skip can never leave
@@ -1534,6 +1538,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 				td.telemetry.qsearch.delta++;
 			continue;
 		}
+
+		// After delta pruning, so a delta-pruned move never pays for it; before SEE, whose work it
+		// overlaps. A SEE-pruned capture wastes one.
+		td.board.PrefetchChild(move);
 
 		// Drop captures that lose more than the margin by static exchange. Three guards, all load-bearing:
 		// `material_bounds_hold` carries the `!in_check` test, and it must
