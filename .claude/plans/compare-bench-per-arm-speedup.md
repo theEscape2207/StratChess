@@ -59,9 +59,10 @@ delta line prints each round's `100 · (e^d − 1)`.
 
 For identically distributed arms the expected log contrast is exactly zero, and on a schedule that
 permutes the same values across arms (B1's fixture) the computed mean is zero. Percentage ratios
-cannot have that property. On real data the two agree within 0.01 percentage points: replaying
-#825's three runs from their raw CSVs moved no bound by more than 0.01, because per-round spread is
-0.5–1%, and the bias grows with its square.
+cannot have that property. On real data the aggregate contrasts agree within 0.01 percentage
+points: replaying #825's three runs from their raw CSVs moved no aggregate-comparison bound by more
+than 0.01 pp, because their per-round spread is 0.5–1% and the bias grows with its square.
+Per-position bounds, with wider spread, moved up to 0.07 pp; no verdict depends on them.
 
 Applied **everywhere**, not only to the Speedup gate: one estimator, so the report never shows two
 numbers that disagree, and the fallback verdicts lose the same bias. This supersedes the issue's
@@ -78,7 +79,14 @@ With `-Control`, the verdict is **Speedup** iff:
 
 1. the 95% lower bound is > 0 for candidate vs baseline **and** candidate vs control (strict `>`,
    as now); and
-2. when the A/A interval excludes zero, the smaller of those two lower bounds exceeds |A/A mean|.
+2. when the log A/A interval excludes zero,
+   `min(Low_log(candidate, baseline), Low_log(candidate, control)) > |Mean_log(control, baseline)|`.
+
+Every gate compares **raw log values**; percentages exist only for display. In log units the offset
+condition is symmetric under swapping which identical copy is called baseline, but a comparison of
+displayed percentages is not. The same threshold in percent is `100 · (e^|m| − 1)`, not
+`|100 · (e^m − 1)|`. The fallback thresholds are likewise tested in log space: No slowdown is
+`Low_log ≥ ln(1 − 0.005)`, Slowdown is `High_log < 0`.
 
 Otherwise it falls through to the existing No slowdown / Slowdown / Unresolved checks on the
 geometric-mean contrast. Without `-Control`, no Speedup, as now.
@@ -95,7 +103,8 @@ candidate. Under D1 those references have a geometric mean of 0.995, so their co
 Condition 2 covers a run whose identical binaries differ steadily, e.g. A/A −2.0% [−2.3, −1.7]: the
 run itself shows that arm identity moves nps by 2%, so a candidate +0.8% over the faster copy has not
 beaten it. It uses only the run's own measured offset, with a multiplier of 1, and is inert while
-the A/A interval spans zero (all four historical runs below).
+the A/A interval spans zero, as in the three replayed #825 runs below. #725's recorded A/A also
+spans zero, but it has not been replayed in log space.
 
 `Get-Verdict` takes the per-arm intervals and the A/A interval instead of `-AaInterval`. It returns
 the verdict and the failed Speedup conditions, so `Format-Report` prints e.g.
@@ -179,6 +188,9 @@ Self-tests: a boundary table over `Get-Verdict` plus end-to-end `New-Series` fix
 | synthetic #725 shape: +8% over both arms, A/A ±1% | Speedup + warning |
 | steady A/A offset −2% [−2.3, −1.7], candidate +0.8% over faster arm | not Speedup, offset condition named |
 | same offset, candidate +3% over faster arm | Speedup + warning |
+| flat 12 rounds, ms baseline 100000 / candidate 98058 / control 102000 (log offset > gain over faster arm) | not Speedup |
+| the same with baseline and control swapped | not Speedup (orientation-independent) |
+| a lower bound exactly at ln(0.995) | No slowdown (boundary inclusive) |
 | existing FALSIFY opposed noise, candidate 1.01, 12 rounds | not Speedup |
 | triage opposed noise, 600 rounds, candidate 1.00 | not Speedup (per-arm lower −0.31) |
 | same noise, candidate 1.30 | Speedup |
