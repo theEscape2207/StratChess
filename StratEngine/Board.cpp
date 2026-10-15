@@ -452,8 +452,10 @@ bool Board::DoMove(const Move& m)
 	current_ply_++;
 
 	// Every hash update is applied and only the side flip remains, so this is the child's exact key.
-	// Prefetching it here overlaps the bucket's miss with the legality check and the move ordering
-	// before the child's probe. A move the check rejects wastes one prefetch.
+	// The fallback prefetch: the search loops already issued one from PrefetchChild() before this
+	// call, so on their path this re-requests a line in flight. It still covers en-passant captures,
+	// where KeyAfter() is wrong, and every DoMove outside those loops. A move the legality check
+	// rejects wastes one prefetch.
 	const uint64_t child_key = zobrist_hash_ ^ zobrist::side_key;
 	StratPrefetch(prefetch_target_.bucket_for(child_key));
 
