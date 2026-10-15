@@ -9,14 +9,15 @@ legal, then score and sort all of them and let `Board::DoMove` reject the rest b
 #739 measured 32% of all `DoMove` calls as rejected in-check moves and put the waste at a ceiling of
 ~8.5-11% of runtime. Generating only the legal evasions removes it with no change to the search tree.
 
-**Ceiling after #822/#825, as a bounded estimate (not re-profiled).** #822 (PR #824, +1.57% nps)
-cheapened the legality `InCheck()`, so the spike's "legality check" row (1.0-1.9%) and part of the
-make/undo row shrink. The rows #822 cannot touch — quiescence in-check sort and scoring of illegal
-entries (~4.3%) and rejected make/undo self time (3.3-4.0%, of which `InCheck` is now a part) — still
-total ~6-8%, plus the uncounted generation of the illegal moves (`ComputeLegalMoves` 3.0-3.8% of
-runtime overall) and, since #825, one wasted TT prefetch per rejected move. Far above the spike's 2%
-park threshold, so a fresh profile would not change the decision; `Compare-Bench` measures the real
-gain.
+**The current ceiling is unmeasured; this is an experiment gated on measured speed.** The #739 shares
+predate #822 (PR #824: +1.57% nps on a plain pair, +2.41% on an ordered pair, both "No slowdown"),
+which cheapened the legality `InCheck()`, and #825, which added a TT prefetch per rejected move. On
+the old profile, the in-check ordering waste (~4.3%) plus rejected make/undo self time (3.3-4.0%)
+came to ~7.6-8.3%; how much of that survives is a planning estimate, not a bound — profile shares
+drift between sessions, and #824 realised a quarter of its profile forecast. The triage asked for a
+fresh A/A profile first; this doc departs from that deliberately. A profile would size the ceiling,
+but the decision rests on the ordered-pair `Compare-Bench` Speedup gate, which measures the benefit
+directly and parks the change if it does not confirm.
 
 ## Review focus
 
@@ -26,8 +27,8 @@ gain.
 - **D4, legality rules.** Exactly legal is what lets the Debug assert stand; the x-ray king retreat,
   en passant and the "pinned pieces have no evasions" proof are where a hand-written generator goes
   wrong.
-- **D6, the non-check path.** Mask parameters thread through helpers that the 98% non-check path also
-  runs; a code-layout nps loss there could cancel the gain.
+- **D6, the non-check path.** Mask parameters thread through helpers that the common non-check path
+  also runs; a code-layout nps loss there could cancel the gain.
 
 ## Scope
 
@@ -44,7 +45,8 @@ gain.
 **This change will not:**
 
 - skip `DoMove`'s legality check anywhere (D2);
-- change out-of-check generation, ordering or pruning — out-of-check rejections are ~0.2% (#739);
+- change out-of-check generation, ordering or pruning — out-of-check rejection overhead is ~0.2-0.3%
+  of runtime on the #739 estimate;
 - switch `IsCheckmated`, `PVIntegrity`, `UCIHandler`, `HumanPlayer` or the emergency-move fallback;
   they are cold paths and keep the pseudo-legal-plus-`DoMove` oracle the tests compare against;
 - add a precomputed between-squares table (D4).
@@ -103,7 +105,10 @@ With `k` the king square, `occ` all pieces, `them` the enemy pieces:
 - **En passant** is a candidate when the captured pawn is the checker or the en-passant square is in
   `between`, and is emitted only after an exact test: `k` not attacked with the capturing pawn moved
   and the captured pawn removed. It is at most two moves and catches the rank-pin case no pin set
-  describes.
+  describes. `AttackersTo` reads attackers from the unmodified piece bitboards, so the victim is
+  masked out of the result as well as the occupancy, with `cap` the victim's square:
+  `occAfter = (occ & ~bit(from) & ~bit(cap)) | bit(to)`, legal iff
+  `AttackersTo(boards, k, occAfter) & them & ~bit(cap)` is empty.
 
 ### D5: Perft uses it too
 
@@ -124,8 +129,9 @@ regression, this decision reopens.
 
 ## Assumptions I cannot verify from the code
 
-- **The post-#822 ceiling is still well above 2%.** Bounded from the spike's rows #822 could not
-  touch, not re-measured. Settled by the `Compare-Bench` result.
+- **There is still a worthwhile ceiling after #822/#825.** A planning estimate from the #739 profile,
+  not re-measured (Goal). Settled by the `Compare-Bench` Speedup gate, which parks the change if it
+  fails.
 
 Verified, not assumptions: `go perft` reaches `Perft::divide` (`UCIHandler.cpp:495`), so perftcheck
 exercises D5; the root is `pvs()` at ply 0, so no separate root generator needs the change.
@@ -148,21 +154,29 @@ Engine tier.
   at every in-check position, compare `ComputeEvasions` with the filtered `ComputeLegalMoves` as
   sequences. Plus named cases: double check, slider check with an x-ray retreat, capture of an
   undefended and of a defended checker, pinned would-be blocker, promotion block, en passant of a
-  checking pawn, en passant illegal by rank pin while in check. Falsified by reverting the
-  `occ ^ bit(k)` term and watching it fail.
-- **Generators unchanged:** the existing `MoveGenCaptureTests` and perft suite pass.
+  checking pawn (asserting the move is present, e.g. `e5d6` in `7k/8/8/3pP3/4K3/8/8/8 w - d6 0 1`),
+  and the same capture made illegal by a discovered diagonal (a black bishop on c6). Falsified by
+  reverting the `occ ^ bit(k)` term and watching it fail.
+- **Generators unchanged, independently of the shared helpers:** the evasion oracle shares helpers
+  with the code it checks, so an order change in a helper moves both sides. Pin exact, unsorted
+  `ComputeLegalMoves` and `ComputeCaptures` sequences (moves with flags) captured at `663e2c5`, over a
+  few positions covering both colours, both pawn capture directions, quiet and capture promotions,
+  pushes, every officer type and en passant. Falsified by swapping two emitted entries. The existing
+  `MoveGenCaptureTests` (which sort) and perft suite pass too.
 - **Debug build test run**, so the D2 assert runs across the search tests.
 - **`Run-PerftCheck.ps1`** full corpus: no failures outside the rejected-FEN bucket.
 - **`Compare-SearchEquivalence.ps1`**: identical nodes and best moves.
 - **`Compare-Bench.ps1 -Control`**, ordered pair against the merge base, under `measure-strength`'s
-  quiet window: a confirmed positive Speedup. Expected in the low single digits to ~8%.
+  quiet window: a confirmed positive Speedup, or the change is parked. Forecast, not a bound: low
+  single digits.
 - **No Elo match:** the tree is identical, so strength follows speed alone. A lab run only if the
   owner wants an Elo reading.
 
 ## Cost
 
-- **Size:** 150-250 lines across `MoveGenerator.h/.cpp`, `AIPerplex.cpp`, `Tools/Perft.cpp`; ~150
-  lines of tests in a new `StratChessTests/EvasionTests.cpp`.
+- **Size:** 150-250 lines across `MoveGenerator.h/.cpp`, `AIPerplex.cpp`, `Tools/Perft.cpp`; ~200
+  lines of tests in a new `StratChessTests/EvasionTests.cpp`, including the pinned generator
+  sequences.
 - **Blast radius:** engine tier; touches the move-generation contract.
   `Docs/EngineContracts.md`'s moves section gains one line.
 - **Review:** one code review (170-270k tokens), plus `search-reviewer` for the `AIPerplex.cpp` part.
