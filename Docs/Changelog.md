@@ -15,6 +15,24 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-15: Compare-Bench Speedup judged per arm, on log contrasts (#827)
+
+### Changed
+- `Compare-Bench.ps1` contrasts are now means of per-round log nps ratios, printed as
+  100 × (e^v − 1) %. Means of percentage ratios read above zero for identical arms (Jensen): three
+  equal arms at ±30% noise read +9.9% against each other, every lower bound positive. With
+  `-Control` the reference is the geometric mean of baseline and control.
+- **Speedup** needs both per-arm lower bounds (vs baseline, vs control) > 0 and, when the A/A
+  interval excludes zero, the lower one above the steady |A/A mean|. All gates compare log values.
+  The A/A ±0.5% band is now a WARNING (own constant `$ControlBandPct`, `ControlBand` in
+  `metadata.json`), not a veto; a clear gain no longer needs a 60-round rerun to earn the label.
+  The report names the failed condition when the reference's lower bound is > 0.
+- One predeclared Speedup on a `New-OrderedBuildPair.ps1` pair now confirms a speedup
+  (`regression-check.md`); the plain series is optional.
+- Replayed from raw CSVs: #825 spike (12 rounds) No slowdown → Speedup; #825 ordered 12 rounds
+  Speedup → No slowdown (vs baseline [−0.01, +1.44]); #825 ordered 24 rounds No slowdown → Speedup.
+  #725's raw data is gone. The other verdict thresholds are unchanged.
+
 ## 2026-10-15: Early TT prefetch from the predicted child key (#825)
 
 ### Changed
