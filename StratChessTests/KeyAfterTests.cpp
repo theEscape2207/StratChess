@@ -47,7 +47,7 @@ namespace {
 
 } // namespace
 
-// The InCheckTests.cpp corpus: the standard perft positions (castling both sides, promotions with
+// The InCheckTests.cpp corpus plus one position:the standard perft positions (castling both sides, promotions with
 // and without capture), plus en-passant captures that pin along a rank or a diagonal.
 static constexpr const char* KEY_AFTER_FENS[] = {
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
@@ -60,6 +60,8 @@ static constexpr const char* KEY_AFTER_FENS[] = {
     "8/8/8/KPp4r/8/8/8/4k3 w - c6 0 2",
     "8/8/4k3/8/2pP4/8/B7/4K3 b - d3 0 1",
     "4k3/8/8/8/8/8/3p4/5K1R b - - 0 1",
+    // Promotion-captures on both corner rooks while both castling rights are live.
+    "r3k2r/1P4P1/8/8/8/8/8/4K3 w kq - 0 1",
 };
 
 TEST_CASE("KeyAfter predicts DoMove's key for every legal move except en-passant", "[board][keyafter]")

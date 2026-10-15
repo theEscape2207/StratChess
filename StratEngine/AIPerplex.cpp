@@ -969,8 +969,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		if (is_exclusion_frame && move == td.excluded_move[ply])
 			continue;
 
-		// Ahead of the frontier guards so their work overlaps the child's bucket miss; a pruned
-		// quiet move wastes the prefetch.
+		// Ahead of the frontier guards so their work overlaps the child's bucket miss; a quiet move
+		// that futility or late-move pruning then skips wastes the prefetch.
 		td.board.PrefetchChild(move);
 
 		// The pre-move half of the frontier guards, tested while td.board still holds this node,

@@ -306,6 +306,7 @@ namespace zobrist {
 STRAT_FORCEINLINE uint64_t Board::KeyAfter(const Move& m) const noexcept
 {
 	const ePiece moved = mailbox_[m.from()];
+	assert(PieceHelper::IsActual(moved) && "an empty from-square indexes past piece_keys");
 	uint64_t key = zobrist_hash_ ^ zobrist::side_key ^ zobrist::piece_keys[moved][m.from()] ^
 	               zobrist::piece_keys[MoveHelper::IsPromote(m) ? GetEffectiveMovPiece(m) : moved][m.to()];
 	if (const ePiece captured = mailbox_[m.to()]; PieceHelper::IsActual(captured))
