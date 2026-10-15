@@ -262,7 +262,7 @@ namespace Testing {
 
 					// Check if it's checkmate
 					MoveList nextMoves;
-					MoveGenerator::ComputeLegalMoves(board, nextMoves);
+					GenerateMoves(board, nextMoves);
 					bool hasLegalMove = false;
 					for (const auto& nextMove : nextMoves) {
 						if (board.DoMove(nextMove)) {

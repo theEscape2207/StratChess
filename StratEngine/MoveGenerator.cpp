@@ -79,7 +79,6 @@ void MoveGenerator::ComputeEvasions(const Board& board, MoveList& moveList)
 	const BITBOARD occ = bb[ALL_PIECES];
 	const BITBOARD own = bb[ALL_FROM_COLOR + static_cast<int>(color)];
 	const BITBOARD them = bb[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)];
-	const eColor enemy = (color == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
 
 	BITBOARD kingTargets = 0;
 	const BITBOARD occWithoutKing = occ & ~g_bbMask[king];
@@ -101,8 +100,9 @@ void MoveGenerator::ComputeEvasions(const Board& board, MoveList& moveList)
 	const BITBOARD targets = checkers | blocks;
 
 	// Enemy sliders that see the king through our own pieces; one own piece between makes it pinned.
-	const BITBOARD rooksQueens = bb[ROOK + static_cast<int>(enemy)] | bb[QUEEN + static_cast<int>(enemy)];
-	const BITBOARD bishopsQueens = bb[BISHOP + static_cast<int>(enemy)] | bb[QUEEN + static_cast<int>(enemy)];
+	const BITBOARD queens = bb[ePiece::WHITE_QUEEN] | bb[ePiece::BLACK_QUEEN];
+	const BITBOARD rooksQueens = (bb[ePiece::WHITE_ROOK] | bb[ePiece::BLACK_ROOK] | queens) & them;
+	const BITBOARD bishopsQueens = (bb[ePiece::WHITE_BISHOP] | bb[ePiece::BLACK_BISHOP] | queens) & them;
 	BITBOARD pinned = 0;
 	for (BITBOARD snipers = (RookAttacks(king, them) & rooksQueens) | (BishopAttacks(king, them) & bishopsQueens);
 	     snipers; snipers = Bits::clearLsb(snipers)) {
@@ -431,7 +431,7 @@ void MoveGenerator::AddPawnCaptures([[maybe_unused]] const Board& board, MoveLis
 			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(KNIGHT, color), true));
 		}
 	}
-	// Otherwise it must be an en-passant capture
+	// Otherwise an en-passant capture, emitted only if `epFrom` allows this pawn
 	else if (Bits::isAnyBitSet(epFrom, g_bbMask[from])) {
 		[[maybe_unused]] const eSquare epWhere = SquareHelper::PreviousRow(to, color);
 		assert(Bits::isAnyBitSet(bbBitBoards[BLACK - color], g_bbMask[epWhere])); // There must be an opponent pawn here

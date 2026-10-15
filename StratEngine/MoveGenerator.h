@@ -15,7 +15,8 @@ class MoveGenerator final {
 	static void ComputeLegalMoves(const Board& board, MoveList& moveList);
 	// Every legal move of a side to move that is in check, and nothing else: exactly the moves of
 	// ComputeLegalMoves() that DoMove() accepts, in the same relative order, so the sorter's
-	// generation-index tie-break orders them as it did before. Precondition: board.InCheck().
+	// generation-index tie-break orders them as it orders ComputeLegalMoves(). Precondition:
+	// board.InCheck().
 	static void ComputeEvasions(const Board& board, MoveList& moveList);
 
 	// Returns BITBOARD with all squares attacked by 'Color'

@@ -846,8 +846,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			null_stats.record_failed(td.nodes_searched + td.qnodes_searched - null_start, null_start_fail);
 	}
 
-	// In check, only the legal evasions: about 4 of the ~35 pseudo-legal moves, in the same relative
-	// order, so the search is unchanged and skips scoring, sorting and rejecting the rest.
+	// In check, only the legal evasions, typically a handful of the pseudo-legal moves, in the same
+	// relative order: the tree is the same, without scoring, sorting and rejecting the rest.
 	MoveList move_list;
 	if (in_check)
 		MoveGenerator::ComputeEvasions(td.board, move_list);
@@ -997,8 +997,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		                           move != td.killers[ply][0] && move != td.killers[ply][1] && move != hash_move;
 
 		// In check the list is ComputeEvasions(), legal by construction, so DoMove() never rejects
-		// there. Its legality test stays: on ~4 moves per in-check node it costs too little to be worth
-		// a second, unchecked DoMove entry point.
+		// there. DoMove() tests legality regardless: on the few moves of an in-check node that costs too
+		// little to justify a second, unchecked DoMove entry point.
 		const bool played = td.board.DoMove(move);
 		assert(played || !in_check);
 		if (played) {
@@ -1571,7 +1571,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 			continue;
 		}
 
-		// An evasion is legal by construction; as in pvs(), DoMove() still tests it.
+		// An evasion is legal by construction; DoMove() tests it regardless, as in pvs().
 		const bool played = td.board.DoMove(move);
 		assert(played || !in_check);
 		if (!played)

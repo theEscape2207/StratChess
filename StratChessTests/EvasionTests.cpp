@@ -97,7 +97,7 @@ namespace {
 } // namespace
 
 // clang-format off
-// Captured from origin/main 663e2c5, before the generator helpers took masks.
+// The pinned emission order: a change here changes search node counts.
 TEST_CASE("Generators keep their emission order", "[movegen]")
 {
 	CHECK(Sequence(kWhiteFen, MoveGenerator::ComputeLegalMoves) == std::vector<std::string>{
