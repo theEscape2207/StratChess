@@ -15,6 +15,23 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-16: Legal-only move lists at in-check nodes (#823)
+
+### Changed
+- `MoveGenerator::ComputeEvasions()` generates exactly the legal moves of a side in check:
+  king moves to unattacked squares (king lifted out of the occupancy), and with one checker, captures
+  of it and blocks; pinned pieces are skipped, en passant is tested exactly. It emits them in
+  `ComputeLegalMoves()` order, so the search is node-identical. `pvs()`, `quiescence()` and perft
+  use it in check; before, ~35 pseudo-legal moves per in-check node were scored, sorted and mostly
+  rejected by `DoMove` (88% illegal, a third of all `DoMove` calls, #739).
+- The generator helpers take origin and destination masks in place of `onlyCaptures`. `[movegen]`
+  pins the exact emission order of both existing generators.
+- **Measured:** `Compare-Bench -Control`, 12 rounds, ordered pair against `663e2c5`: **Speedup,
+  +16.1% nps [+15.6%, +16.7%]**, nodes identical; per position +4.6% (piece-endgm) to +34.8%
+  (kiwipete). Above #739's 8.5-11% ceiling, which left out generating the illegal moves and, since
+  #825, their TT prefetches. `Compare-SearchEquivalence` identical (6 positions, depth 12);
+  perftcheck 561,568 of 561,641, every failure a rejected FEN. No Elo claim.
+
 ## 2026-10-15: Compare-Bench Speedup judged per arm, on log contrasts (#827)
 
 ### Changed
