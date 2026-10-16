@@ -284,6 +284,17 @@ struct KingPawnCover {
 	ScorePair files;
 };
 
+// eval_pawns for one colour minus its blockade adjustment: everything in it is a function of
+// the two pawn bitboards alone, which is what lets PawnCache store it under a pawn-only tag.
+struct PawnStructure {
+	int score = 0;     // doubled, isolated and backwards: phase-neutral
+	int passed_mg = 0; // passer bonus sums, every passer scored as if unblocked
+	int passed_eg = 0;
+	BITBOARD passers = 0;
+};
+
+class PawnCache;
+
 // Lazy SMP sharing contract: Evaluator holds no state that a search mutates.
 // Its one data member, dead_draw_score_, is written only by SetDrawScores()
 // before any helper thread exists and is read-only for the whole search, in
@@ -298,7 +309,9 @@ struct KingPawnCover {
 // which calls it once in Search(), beside root_color_, before it snapshots the
 // thread count. That is the whole of the write side; there is no other.
 // EvalContext does not change any of this: it is always a per-call stack local,
-// never a member. The same holds for Breakdown() and
+// never a member. The cached Evaluate(board, cache) keeps this true: the one mutable table is
+// the caller's, one per search thread (ThreadData::pawn_cache), never Evaluator's.
+// The same holds for Breakdown() and
 // its EvalBreakdown result: also `const`, also per-call stack locals — though
 // it is a debug path that no search thread calls.
 class Evaluator {
@@ -538,6 +551,16 @@ class Evaluator {
 	// wrong, not a claim that the term cannot decide a game.
 	static_assert(KING_SAFETY_MAX_PENALTY < 300, "King safety outweighs a piece per colour -- rescale the tables");
 
+	// PawnCache stores eval_pawns' parts and each cover sub-term as int16_t. Eight pawns a side
+	// bound every sum; each cover sub-term is bounded by its whole-cover extremum.
+	static_assert(8 * (DOUBLED_PAWN_PENALTY + ISOLATED_PAWN_PENALTY + BACKWARDS_PAWN_PENALTY) <= INT16_MAX &&
+	                  8 * std::max(PASSED_PAWN_BONUS, PASSED_PAWN_BONUS_EG) * std::ranges::max(PASSED_PAWN_RANK_SCALE) /
+	                          16 <=
+	                      INT16_MAX &&
+	                  std::ranges::min(PASSED_PAWN_RANK_SCALE) >= 0 && KING_PAWN_COVER_WORST <= INT16_MAX &&
+	                  KING_SAFETY_BEST_BONUS <= INT16_MAX,
+	              "a PawnCache field no longer fits int16_t");
+
 	// Mop-up evaluation for won pawnless endgames.
 	// Gated on: pawnless + decisive material lead. Rewards pushing the losing
 	// king to the edge/corner and closing the distance between the two kings.
@@ -771,8 +794,29 @@ class Evaluator {
 		return (scale == ENDGAME_SCALE_MAX) ? white_pov : (white_pov * scale) / ENDGAME_SCALE_MAX;
 	}
 
-	// Material plus every blended term, summed white-minus-black and unscaled.
-	static int RawWhitePov(const EvalContext& ctx) noexcept;
+	// Material plus every blended term, summed white-minus-black and unscaled. A null cache
+	// computes every term directly; otherwise the pawn terms come through it.
+	static int RawWhitePov(const EvalContext& ctx, PawnCache* cache = nullptr) noexcept;
+
+	// The shared body of both Evaluate() overloads.
+	int EvaluateImpl(const Board& board, PawnCache* cache) const noexcept;
+
+	// Both colours' pawn and pawn-cover terms through the cache: one probe, a miss refilling
+	// the pawn part, and a cover reused only while its king has not moved.
+	static void CachedPawnTerms(const EvalContext& ctx, PawnCache& cache, ScorePair (&pawns)[NUM_COLORS],
+	                            KingPawnCover (&cover)[NUM_COLORS]) noexcept;
+
+	// eval_pawns is these two: the pawn-only structure, then the blockade replay.
+	static PawnStructure eval_pawn_structure(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair ApplyBlockade(const PawnStructure& s, BITBOARD enemy_occupied, eColor color) noexcept;
+	// One passer's bonus at a rank scale, unblocked or blockaded. The one place either
+	// is computed, so the structure pass and the replay cannot drift apart.
+	static constexpr ScorePair PasserBonus(int scale, bool blockaded) noexcept
+	{
+		if (blockaded)
+			scale = scale * PASSED_PAWN_BLOCKADED_SCALE / 16;
+		return ScorePair{PASSED_PAWN_BONUS * scale / 16, PASSED_PAWN_BONUS_EG * scale / 16};
+	}
 
 	// Per-term evaluation functions. Each returns
 	// only the named term's contribution for one color; Evaluate() sums the
@@ -811,6 +855,9 @@ class Evaluator {
 
   public:
 	int Evaluate(const Board& board) const noexcept;
+	// Identical result for every position and any prior cache content; the pawn terms are
+	// served from `cache` where it holds them. The search's overload.
+	int Evaluate(const Board& board, PawnCache& cache) const noexcept;
 
   private:
 	friend class AIPerplex;

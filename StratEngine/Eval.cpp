@@ -6,6 +6,7 @@
 
 #include "Board.h"
 #include "Magic.h" // RookAttacks/BishopAttacks, for ComputePieceAggregates
+#include "PawnCache.h"
 
 #include <bit> // std::popcount
 
@@ -20,19 +21,59 @@ static constexpr BITBOARD DARK_SQUARES = 0x55AA55AA55AA55AAULL;
 //
 
 // eval_pawns — doubled, isolated, passed and backwards pawns for one color.
-// Loops that color's own pawn bitboard directly.
 //
 // The passer bonus is the only tapered part: it is worth more as the endgame
 // approaches, so this function returns unequal mg/eg endpoints. Everything else
 // here is phase-neutral.
+//
+// Split in two so PawnCache can store the first half under a pawn-only tag: the
+// structure pass reads nothing but pawns, and the blockade replay is the one part
+// that reads a non-pawn bitboard.
 ScorePair Evaluator::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 {
-	// Doubled, isolated and backwards are phase-neutral and accumulate here;
-	// the passer bonus is the one term in this function that tapers, so it is
-	// kept in its own pair of accumulators until the return.
-	int score = 0;
-	int passedMg = 0;
-	int passedEg = 0;
+	const eColor enemy = (color == WHITE) ? BLACK : WHITE;
+	return ApplyBlockade(eval_pawn_structure(ctx, color), ctx.occupied[enemy], color);
+}
+
+// ApplyBlockade — a passer whose stop square holds an enemy piece is scored at
+// PASSED_PAWN_BLOCKADED_SCALE of its bonus. The structure pass scored every passer
+// unblocked, so this adds, per blocked passer, the exact difference between its two
+// PasserBonus() values. eval_pawns has always summed per-passer integer divisions,
+// so replacing one passer's addend this way is bit-identical, not an approximation.
+//
+// The stop square only ever holds an enemy PIECE: an enemy pawn there would have
+// failed the passed test, since the stop square is inside the forward span.
+ScorePair Evaluator::ApplyBlockade(const PawnStructure& s, BITBOARD enemy_occupied, eColor color) noexcept
+{
+	// A pawn whose stop square is occupied: White's stop is one row lower in index.
+	BITBOARD blocked = s.passers & ((color == WHITE) ? (enemy_occupied << ONE_ROW) : (enemy_occupied >> ONE_ROW));
+	int passedMg = s.passed_mg;
+	int passedEg = s.passed_eg;
+	while (blocked) {
+		const eSquare square = Board::GetFirstPiece(blocked);
+		const int scale = PASSED_PAWN_RANK_SCALE[RelativeRank(square, color) - 1];
+		const ScorePair unblocked = PasserBonus(scale, false);
+		const ScorePair blockaded = PasserBonus(scale, true);
+		passedMg += blockaded.mg - unblocked.mg;
+		passedEg += blockaded.eg - unblocked.eg;
+		blocked = Bits::clearLsb(blocked);
+	}
+
+	// Doubled, isolated and backwards pawn structure matters equally throughout,
+	// so those go to both endpoints unchanged; only the passer bonus differs
+	// between them.
+	return ScorePair{s.score + passedMg, s.score + passedEg};
+}
+
+// eval_pawn_structure — eval_pawns without the blockade: a function of the two pawn
+// bitboards alone (pawn_attacks is derived from them). Loops that color's own pawn
+// bitboard directly.
+PawnStructure Evaluator::eval_pawn_structure(const EvalContext& ctx, eColor color) noexcept
+{
+	// Doubled, isolated and backwards are phase-neutral and accumulate in
+	// out.score; the passer bonus is the one term that tapers, so it is kept in
+	// its own pair of accumulators.
+	PawnStructure out{};
 	const BITBOARD ownPawns = ctx.pawns[color];
 	const eColor enemy = (color == WHITE) ? BLACK : WHITE;
 	const BITBOARD enemyPawns = ctx.pawns[enemy];
@@ -45,10 +86,9 @@ ScorePair Evaluator::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 		const int row = static_cast<int>(Rank(square)); // 0 = rank 8, 7 = rank 1
 		// Own file plus both adjacent files, ahead of this pawn only.
 		const BITBOARD forwardSpan = (color == WHITE) ? g_bbPassedMaskWhite[square] : g_bbPassedMaskBlack[square];
-		// The square directly ahead -- the one this pawn must pass through. Both the
-		// passer and the backwards term ask about it, and each only inside a branch
-		// most pawns do not enter, so it is computed on demand rather than once per
-		// pawn. Off-board only for a pawn on the promotion rank, which cannot occur
+		// The square directly ahead -- the one this pawn must pass through. The
+		// backwards term asks about it only inside a branch most pawns do not enter,
+		// so it is computed on demand rather than once per pawn. Off-board only for a pawn on the promotion rank, which cannot occur
 		// in a legal position.
 		const auto stop_square = [&]() -> BITBOARD {
 			const int idx = (color == WHITE) ? (squareIndex - ONE_ROW) : (squareIndex + ONE_ROW);
@@ -59,12 +99,12 @@ ScorePair Evaluator::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 		// pair pays, so each extra pawn on a file costs one penalty.
 		const BITBOARD ownFileAhead = (color == WHITE) ? g_bbFileUpMask[square] : g_bbFileDownMask[square];
 		if (ownPawns & ownFileAhead)
-			score -= DOUBLED_PAWN_PENALTY;
+			out.score -= DOUBLED_PAWN_PENALTY;
 
 		// Isolated: no friendly pawn on either adjacent file.
 		if ((file == eFileNames::LEFT_FILE || !(ownPawns & g_bbFileMask[file - 1])) &&
 		    (file == eFileNames::RIGHT_FILE || !(ownPawns & g_bbFileMask[file + 1])))
-			score -= ISOLATED_PAWN_PENALTY;
+			out.score -= ISOLATED_PAWN_PENALTY;
 
 		// Passed: no enemy pawn anywhere in the three-file span ahead, so nothing
 		// can block it or capture it on its way to promotion. Scaled by how far it
@@ -75,18 +115,14 @@ ScorePair Evaluator::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 		// the rear pawn of a doubled pair can never advance past its own partner,
 		// so paying it a full passer bonus would score a pawn that is going nowhere.
 		// Only the front pawn of such a pair is passed.
+		//
+		// Scored unblocked here; a blockaded passer is ApplyBlockade's business.
 		if (!(enemyPawns & forwardSpan) && !(ownPawns & ownFileAhead)) {
 			const int advanced = (color == WHITE) ? (7 - row) : row;
-			int scale = PASSED_PAWN_RANK_SCALE[advanced];
-			// Blockaded: an enemy piece sits on the stop square, so the pawn cannot
-			// advance at all until it is dislodged. In practice this means any enemy
-			// piece OTHER than a pawn -- the stop square is inside forwardSpan, so an
-			// enemy pawn there would already have failed the passed test above and this
-			// branch would never have been entered.
-			if (ctx.occupied[enemy] & stop_square())
-				scale = scale * PASSED_PAWN_BLOCKADED_SCALE / 16;
-			passedMg += PASSED_PAWN_BONUS * scale / 16;
-			passedEg += PASSED_PAWN_BONUS_EG * scale / 16;
+			const ScorePair bonus = PasserBonus(PASSED_PAWN_RANK_SCALE[advanced], false);
+			out.passed_mg += bonus.mg;
+			out.passed_eg += bonus.eg;
+			out.passers |= UNIT << square;
 		}
 
 		// Backwards: BOTH clauses required, per the definition on
@@ -112,16 +148,13 @@ ScorePair Evaluator::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 			// but a tuner should not try to fit a condition that never fires today.
 			const BITBOARD stopSquare = stop_square();
 			if ((ctx.pawn_attacks[enemy] & stopSquare) && !(ctx.pawn_attacks[color] & stopSquare))
-				score -= BACKWARDS_PAWN_PENALTY;
+				out.score -= BACKWARDS_PAWN_PENALTY;
 		}
 
 		remaining = Bits::clearLsb(remaining);
 	}
 
-	// Doubled, isolated and backwards pawn structure matters equally throughout,
-	// so those go to both endpoints unchanged; only the passer bonus differs
-	// between them.
-	return ScorePair{score + passedMg, score + passedEg};
+	return out;
 }
 
 // eval_rooks — 7th-rank, half-open/open-file and connected-rook bonuses for
@@ -1086,7 +1119,7 @@ int Evaluator::PawnlessRookScale(std::span<const BITBOARD> boards) noexcept
 //	Description: Material plus every blended term, summed white-minus-black.
 //	Returns:	 The unscaled score of the position in White's point of view.
 //
-int Evaluator::RawWhitePov(const EvalContext& ctx) noexcept
+int Evaluator::RawWhitePov(const EvalContext& ctx, PawnCache* cache) noexcept
 {
 	// Interpolate each term at this position's phase and sum the results.
 	// Material is not tapered and is added after — a piece is worth its value
@@ -1103,13 +1136,24 @@ int Evaluator::RawWhitePov(const EvalContext& ctx) noexcept
 	// pawn — which bounds the cost at one centipawn per tapered term.
 	// Deterministic, and far below anything this engine can measure; a
 	// breakdown whose rows do not add up is a debugging tool that lies.
+	ScorePair pawns[NUM_COLORS];
+	KingPawnCover covers[NUM_COLORS];
+	if (cache) {
+		CachedPawnTerms(ctx, *cache, pawns, covers);
+	} else {
+		for (const eColor c : {WHITE, BLACK}) {
+			pawns[c] = eval_pawns(ctx, c);
+			covers[c] = eval_king_pawn_cover(ctx, c);
+		}
+	}
+
 	int blended[NUM_COLORS] = {0, 0};
 	for (const eColor c : {WHITE, BLACK}) {
 		// Three rows out of one scan, blended separately so each stays the
 		// literal addend its breakdown row reports.
-		const KingPawnCover cover = eval_king_pawn_cover(ctx, c);
+		const KingPawnCover& cover = covers[c];
 
-		blended[c] = BlendPhase(eval_pawns(ctx, c), ctx.phase) + BlendPhase(eval_rooks(ctx, c), ctx.phase) +
+		blended[c] = BlendPhase(pawns[c], ctx.phase) + BlendPhase(eval_rooks(ctx, c), ctx.phase) +
 		             BlendPhase(eval_pst(ctx, c), ctx.phase) + BlendPhase(eval_mopup(ctx, c), ctx.phase) +
 		             BlendPhase(eval_bishops(ctx, c), ctx.phase) + BlendPhase(eval_castling(ctx, c), ctx.phase) +
 		             BlendPhase(eval_mobility(ctx, c), ctx.phase) + BlendPhase(eval_outposts(ctx, c), ctx.phase) +
@@ -1121,12 +1165,52 @@ int Evaluator::RawWhitePov(const EvalContext& ctx) noexcept
 }
 
 //
+//	CachedPawnTerms() :
+//	Description: eval_pawns and eval_king_pawn_cover for both colours, served
+//	             from `cache` where it holds them. Equal to the direct calls for
+//	             every position and every prior cache content.
+//
+void Evaluator::CachedPawnTerms(const EvalContext& ctx, PawnCache& cache, ScorePair (&pawns)[NUM_COLORS],
+                                KingPawnCover (&cover)[NUM_COLORS]) noexcept
+{
+	PawnCache::Entry& entry = cache.Slot(ctx.pawns[WHITE], ctx.pawns[BLACK]);
+	// A miss replaces the pawn part and empties both covers (StorePawns).
+	if (!entry.Matches(ctx.pawns[WHITE], ctx.pawns[BLACK])) {
+		const PawnStructure structure[NUM_COLORS] = {eval_pawn_structure(ctx, WHITE), eval_pawn_structure(ctx, BLACK)};
+		entry.StorePawns(ctx.pawns[WHITE], ctx.pawns[BLACK], structure);
+	}
+
+	for (const eColor c : {WHITE, BLACK}) {
+		const eColor enemy = (c == WHITE) ? BLACK : WHITE;
+		pawns[c] = ApplyBlockade(entry.Pawns(c), ctx.occupied[enemy], c);
+
+		// eval_king_pawn_cover's own guard, which must wrap only the cover: the pawn part
+		// above is valid at phase 0 and without a king. A guarded colour leaves its cover
+		// slot as it was. Otherwise kingSq is a real square, so it never matches the
+		// NO_SQUARE of an empty cover.
+		const eSquare kingSq = ctx.king_sq[c];
+		if (kingSq == NO_SQUARE || ctx.phase == 0) {
+			cover[c] = KingPawnCover{};
+		} else if (entry.king_sq[c] == kingSq) {
+			cover[c] = entry.Cover(c);
+		} else {
+			cover[c] = eval_king_pawn_cover(ctx, c);
+			entry.StoreCover(c, kingSq, cover[c]);
+		}
+	}
+}
+
+//
 //	Evaluate() :
 //	Description: Static evaluation: material plus every blended term, scaled for
 //	             drawish material. Mate and stalemate are the search's business.
 //	Returns:	 The score from the side to move's point of view.
 //
-int Evaluator::Evaluate(const Board& board) const noexcept
+int Evaluator::Evaluate(const Board& board) const noexcept { return EvaluateImpl(board, nullptr); }
+
+int Evaluator::Evaluate(const Board& board, PawnCache& cache) const noexcept { return EvaluateImpl(board, &cache); }
+
+int Evaluator::EvaluateImpl(const Board& board, PawnCache* cache) const noexcept
 {
 	const EvalContext ctx = BuildContext(board);
 
@@ -1150,7 +1234,7 @@ int Evaluator::Evaluate(const Board& board) const noexcept
 	// early-out above answers for it instead. Mate scores never reach
 	// here: this function only ever produces a static centipawn score, and
 	// search constructs mate values around it.
-	const int white_pov = ApplyEndgameScale(RawWhitePov(ctx), ctx.endgame_scale);
+	const int white_pov = ApplyEndgameScale(RawWhitePov(ctx, cache), ctx.endgame_scale);
 
 	// Side-to-move sign, applied in exactly one place.
 	return (board.GetCurrentColor() == WHITE) ? white_pov : -white_pov;

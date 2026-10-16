@@ -649,7 +649,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// another frame is building, and the clear is unconditional.
 	if (ply >= MAX_PLY - 1) {
 		td.pv_table.clear_ply(ply);
-		return evaluator_.Evaluate(td.board);
+		return evaluator_.Evaluate(td.board, *td.pawn_cache);
 	}
 
 	// This frame is a singular verification search when the slot is set: it re-enters pvs()
@@ -776,7 +776,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	const auto node_eval = [&] {
 		if (!static_eval_known) {
-			static_eval = evaluator_.Evaluate(td.board);
+			static_eval = evaluator_.Evaluate(td.board, *td.pawn_cache);
 			static_eval_known = true;
 			if constexpr (kTTStatsCompiled)
 				++td.telemetry.tt.eval_computed;
@@ -1421,7 +1421,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// the draw and backstop checks below, not material: a quiet evasion may itself give
 	// check, so two sides can go on checking each other without a capture between them.
 	if (qsearch_budget < 0 && !in_check) {
-		return evaluator_.Evaluate(td.board);
+		return evaluator_.Evaluate(td.board, *td.pawn_cache);
 	}
 
 	// Repetition and fifty-move draws. A capture or pawn move resets the fifty-move counter and
@@ -1445,7 +1445,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// positions can arise, and ply indexes fixed-size per-thread arrays elsewhere in the
 	// search. This is the one place a position is evaluated while still in check.
 	if (ply >= MAX_PLY - 1) {
-		return evaluator_.Evaluate(td.board);
+		return evaluator_.Evaluate(td.board, *td.pawn_cache);
 	}
 
 	const int original_alpha = alpha;
@@ -1529,7 +1529,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 			if constexpr (kTTStatsCompiled)
 				++td.telemetry.tt.eval_served;
 		} else {
-			stand_pat = evaluator_.Evaluate(td.board);
+			stand_pat = evaluator_.Evaluate(td.board, *td.pawn_cache);
 			if constexpr (kTTStatsCompiled)
 				++td.telemetry.tt.eval_computed;
 		}
