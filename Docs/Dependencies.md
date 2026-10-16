@@ -22,31 +22,85 @@ Read the release notes for every version you skip, not only the newest one.
 
 ## Bumping a version
 
-1. Copy `build/windows-clang-cl/StratChessEvolved.exe` aside as the baseline, and note the fast
+1. Build the current pin from the task branch before copying a baseline; an existing executable
+   may be from another revision. For Catch2, use the capture commands below and record the fast
    tier's test-case and assertion counts.
 2. Change the `GIT_TAG` in `CMakeLists.txt`. The first build afterwards checks out the new version
    in the shared `StratChessSupport/Deps` cache, which every worktree on the machine uses
-   ([`Workflow.md` → Dependency cache](Workflow.md#dependency-cache)).
+   ([`Workflow.md` → Dependency cache](Workflow.md#dependency-cache)). Coordinate with any other
+   local builds using that cache: different pins share the same source checkout. A new tag may
+   need network even when the cache already exists.
 3. Change the CI cache keys. The `actions/cache` keys for the dependencies spell every version
-   literally, across `build-and-test.yml`, `nightly.yml` and `strength.yml`. A key you miss keeps
-   restoring the old sources, and CI passes against a version the branch no longer pins. Find them
-   with `grep -rn "catch2-v" .github/workflows`.
+   literally, across `build-and-test.yml`, `nightly.yml` and `strength.yml`. Update both `cmake-deps-`
+   and `win-deps-` keys. CMake normally updates a restored checkout to the requested tag, but
+   caches are immutable: an unchanged key keeps restoring the old dependency tree. Find every
+   occurrence with `rg -n 'catch2-v' .github/workflows` and check that the old tag is gone.
 4. Run `build.ps1 all`.
 5. Validate according to what the dependency reaches (next section).
 6. Add a `Docs/Changelog.md` entry that names the versions and the evidence. This is a Build-tier
-   PR.
+   PR. Use skill `open-pull-request`; `New-PullRequest.ps1` runs the Build-tier gates before
+   pushing. Confirm the required `build-and-test-result` check is green before merge.
 
 ## What a bump must prove
 
 **Catch2 links only `StratChessTests`.** Compare the baseline `StratChessEvolved.exe` byte for byte
 with the one built afterwards. Release builds are reproducible, so the two must be identical. That
-proves more than a search-equivalence or nps run could. Then run the fast tier and confirm that the test-case and assertion counts have not changed. A drop in either means
-tests stopped registering.
+proves more than a search-equivalence or nps run could. Then run the fast tier and compare its
+test-case and assertion counts. Investigate any difference: fewer test cases can mean lost
+registration; assertion counts can also change with sections, generators or runtime-dependent
+paths. Do not accept a green exit alone as evidence that the same tests ran.
 
 **spdlog and nlohmann/json compile inside the engine's own translation units**, so a bump can change
 the engine binary. Run `Compare-SearchEquivalence.ps1` and a bench pass (skill `measure-strength`),
 and build on Linux/GCC: spdlog bundles `{fmt}`, and a `{fmt}` major-version jump is where the real
 risk sits.
+
+### Catch2 capture and verification
+
+Run these PowerShell commands from the repository root, **before editing the pin**. Keep the
+compiler, configuration, source revision and test filter the same on both sides. Stop if a build
+or test command fails. `build/dependency-update/` is ignored and keeps the baseline in this
+worktree.
+
+```powershell
+$repo = (Get-Location).Path
+pwsh -ExecutionPolicy Bypass -File "$repo/build.ps1" all
+if ($LASTEXITCODE -ne 0) { throw 'Baseline build failed' }
+New-Item -ItemType Directory -Force build/dependency-update | Out-Null
+Copy-Item build/windows-clang-cl/StratChessEvolved.exe build/dependency-update/engine-before.exe
+pwsh -ExecutionPolicy Bypass -File "$repo/Scripts/Run-Tests.ps1" |
+    Tee-Object build/dependency-update/tests-before.txt
+if ($LASTEXITCODE -ne 0) { throw 'Baseline tests failed' }
+```
+
+After changing the pin and every dependency cache key, rebuild and verify the version actually
+consumed. Read the source path from the build's cache rather than assuming a shared-cache location;
+CI and direct preset builds use `build/_deps` instead. Replace `<new-tag>` with the intended tag.
+
+```powershell
+$expectedTag = '<new-tag>'
+pwsh -ExecutionPolicy Bypass -File "$repo/build.ps1" all
+if ($LASTEXITCODE -ne 0) { throw 'Updated build failed' }
+$catchSource = ((Select-String -Path build/windows-clang-cl/CMakeCache.txt `
+    -Pattern '^Catch2_SOURCE_DIR:STATIC=').Line -split '=', 2)[1]
+$resolvedTag = git -C "$catchSource" describe --tags --exact-match
+if ($LASTEXITCODE -ne 0 -or $resolvedTag -ne $expectedTag) { throw 'Unexpected Catch2 checkout' }
+# The test runner's help must report the same version.
+& ./build/windows-clang-cl/StratChessTests.exe --help
+pwsh -ExecutionPolicy Bypass -File "$repo/Scripts/Run-Tests.ps1" |
+    Tee-Object build/dependency-update/tests-after.txt
+if ($LASTEXITCODE -ne 0) { throw 'Updated tests failed' }
+$before = (Get-FileHash build/dependency-update/engine-before.exe -Algorithm SHA256).Hash
+$after = (Get-FileHash build/windows-clang-cl/StratChessEvolved.exe -Algorithm SHA256).Hash
+if ($before -ne $after) { throw 'Catch2-only update changed the engine binary' }
+Select-String -Path build/dependency-update/tests-*.txt -Pattern 'All tests passed'
+```
+
+Record the resolved tag, test totals and identical engine hashes in the PR. A hash mismatch needs
+investigation before claiming the engine is unchanged. Local Release checks cover unity batches
+and warning handling; CI's Linux Debug, ASan/UBSan with libstdc++ debug mode, and Windows Release
+and Debug builds cover the remaining compatibility settings. Nightly's extended and sanitizer
+extended jobs provide the longer test runs after merge; they do not run on a pull request.
 
 ## Tripwires per dependency
 
@@ -59,5 +113,8 @@ ones a new version can break:
   its include directories on another target, warnings in its headers break the `/WX` build.
 - **Catch2 sanitizer and libstdc++-debug settings.** They are applied to `Catch2` and
   `Catch2WithMain` by name. The Linux sanitizer jobs show whether they still apply.
+- **Catch2 reporter/listener callbacks.** `StratChessTests/StratChessTests.cpp` registers
+  `QuietConsoleLogListener`. Check reporter API changes and deprecations; exceptions must not
+  escape callbacks (reporter constructors may throw).
 - **spdlog and nlohmann/json system-include options** (`SPDLOG_SYSTEM_INCLUDES`,
   `JSON_SystemInclude`). If an option is renamed, the old name does nothing without any message.
