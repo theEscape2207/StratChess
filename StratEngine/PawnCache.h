@@ -20,8 +20,9 @@
 // Owned by the caller, one per search thread (ThreadData); Evaluator itself stays stateless.
 class PawnCache {
   public:
-	// Shipped size, in entries (64 bytes each). Set by the #837 size sweep.
-	static constexpr std::size_t kDefaultEntries = 4096;
+	// Shipped size, in entries (64 bytes each, so 64 KiB). The #837 sweep measured 1,024 / 4,096 /
+	// 16,384 at +4.60% / +4.64% / +3.97% nps; this is the smallest within A/A noise of the best.
+	static constexpr std::size_t kDefaultEntries = 1024;
 
 	struct alignas(64) Entry {
 		// The tag. ~0 in both is the empty slot: no legal position has a square holding a

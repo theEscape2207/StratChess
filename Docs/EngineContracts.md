@@ -64,11 +64,14 @@ repeats the aborted-frame tripwire; change both together.
   persistent write, so no TT store, PV row, killer or history write is reachable from a child that
   never finished. `best_value`, the best score over the children that *did* complete, is a valid
   lower bound and is what the root reports for an interrupted iteration. A write added above the
-  guard has to justify itself the way the two exemptions do in comments there:
+  guard has to justify itself the way the exemptions below do:
   - **Node counters** are incremented before the guard and stay incremented — they measure work
     done, not results kept.
   - **The quiescence stand-pat cutoff store** is reached before the node searches anything, so what
     it records owes nothing to a child.
+  - **The pawn-structure cache** (`PawnCache.h`, one per thread) memoises a pure function of its
+    key — the two pawn bitboards and a king square — so an entry written by an aborted frame is
+    exactly what a recompute would give. It is never cleared, for the same reason.
 - **A drawn score is context the Zobrist key does not carry.** With `contempt` non-zero, the score
   of a draw — repetition, fifty-move, stalemate, or a position the evaluator settles as drawn —
   depends on the root colour and the contempt value, and reaches parent entries through the terminal

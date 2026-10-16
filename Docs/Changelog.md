@@ -15,6 +15,25 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-17: Pawn-structure cache (#837)
+
+### Changed
+- `eval_pawns` and `eval_king_pawn_cover` are served from a per-thread, direct-mapped
+  `PawnCache` (`ThreadData::pawn_cache`) through a new `Evaluate(board, cache)`, used by the five
+  search call sites. `Evaluate(board)`, `Breakdown()` and UCI `eval` stay uncached. Node-identical.
+- One probe per evaluation. The tag is the two pawn bitboards; each colour's cover is stored in
+  the same 64-byte entry keyed on its king square, so a king move rewrites only that colour's
+  cover. Probe on `295fa5f` (bench, depth 13, 4,096 entries): pawn-only tag 87.8% hit, embedded
+  cover 72.5%, against 74.5% for a pawns + both kings tag and 79.6% per colour with two probes.
+- `eval_pawns` is split into a pawn-only structure pass and an exact per-passer blockade replay,
+  the one part that reads non-pawn occupancy; both paths share `PasserBonus()`.
+- A pawn-tag replacement empties both covers; the phase-0 and missing-king guards wrap only the
+  cover. Cache writes are a documented aborted-frame exemption (`Docs/EngineContracts.md`).
+- **Measured:** both terms priced at 7.37% nps [6.50, 8.23] (computed twice). `Compare-Bench
+  -Control`, 12 rounds, depth 13, ordered pairs against `295fa5f`: **Speedup, +4.60% nps [+4.29%,
+  +4.90%] at 1,024 entries (shipped)**; 4,096 +4.64% [+4.53, +4.76]; 16,384 +3.97% [+3.76, +4.18].
+  `Compare-SearchEquivalence` identical (6 positions, depth 12).
+
 ## 2026-10-16: Static evaluation in the TT entry (#832)
 
 ### Changed
