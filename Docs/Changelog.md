@@ -15,6 +15,18 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-16: Catch2 3.16.1 and dependency-update procedure
+
+### Changed
+- Bumped Catch2 from 3.16.0 to 3.16.1 in `CMakeLists.txt` and all 14 dependency cache keys
+  across the PR, nightly and strength workflows.
+- Expanded `Docs/Dependencies.md` with baseline capture, fetched-tag and runner-version checks,
+  engine SHA-256 comparison, test-total comparison, shared-cache coordination and CI coverage.
+  Corrected the cache-refresh explanation and added the reporter/listener callback tripwire.
+- Verified Catch2 3.16.1 builds with the existing unity and SYSTEM-include settings; the fast
+  tier passes with the same 813 test cases and 3,936,116 assertions as 3.16.0. The shipping
+  engine's SHA-256 is identical before and after the update.
+
 ## 2026-10-16: Legal-only move lists at in-check nodes (#823)
 
 ### Changed
