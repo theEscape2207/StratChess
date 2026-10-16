@@ -15,6 +15,20 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-16: Weekly dependency and fastchess release checks (#836)
+
+### Added
+- A weekly and manually dispatched GitHub Action checks spdlog, nlohmann/json, Catch2 and
+  fastchess using their committed pins. It maintains one tracking issue, leaves unchanged reports
+  alone, and follows fastchess's established alpha release channel. Updates and validation remain
+  manual; the checker changes no dependency versions.
+- Report comparisons ignore newline formatting and prose-only edits, preventing deferred issues
+  from reopening without changed dependency findings. New reports carry dependency, build-tooling,
+  test and human-readiness labels; lookups filter by `dependencies` before matching the hidden marker.
+- Offline fixtures cover numeric release ordering, prerelease filtering, pagination, issue reuse,
+  read-only previews and failures before publication; they also run in the Linux Release PR gate.
+  `Docs/Dependencies.md` and `Docs/CI.md` describe operation and issue lifecycle.
+
 ## 2026-10-16: Catch2 3.16.1 and dependency-update procedure
 
 ### Changed
