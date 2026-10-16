@@ -36,6 +36,32 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   nodes, Hash 192): **24.7%** of evaluations, against the bench spike's 19.1% of repeat
   opportunities. Below the design's ~+10% equal-average-cost estimate. Lab Elo: pending.
 
+## 2026-10-16: Weekly dependency and fastchess release checks (#836)
+
+### Added
+- A weekly and manually dispatched GitHub Action checks spdlog, nlohmann/json, Catch2 and
+  fastchess using their committed pins. It maintains one tracking issue, leaves unchanged reports
+  alone, and follows fastchess's established alpha release channel. Updates and validation remain
+  manual; the checker changes no dependency versions.
+- Report comparisons ignore newline formatting and prose-only edits, preventing deferred issues
+  from reopening without changed dependency findings. New reports carry dependency, build-tooling,
+  test and human-readiness labels; lookups filter by `dependencies` before matching the hidden marker.
+- Offline fixtures cover numeric release ordering, prerelease filtering, pagination, issue reuse,
+  read-only previews and failures before publication; they also run in the Linux Release PR gate.
+  `Docs/Dependencies.md` and `Docs/CI.md` describe operation and issue lifecycle.
+
+## 2026-10-16: Catch2 3.16.1 and dependency-update procedure
+
+### Changed
+- Bumped Catch2 from 3.16.0 to 3.16.1 in `CMakeLists.txt` and all 14 dependency cache keys
+  across the PR, nightly and strength workflows.
+- Expanded `Docs/Dependencies.md` with baseline capture, fetched-tag and runner-version checks,
+  engine SHA-256 comparison, test-total comparison, shared-cache coordination and CI coverage.
+  Corrected the cache-refresh explanation and added the reporter/listener callback tripwire.
+- Verified Catch2 3.16.1 builds with the existing unity and SYSTEM-include settings; the fast
+  tier passes with the same 813 test cases and 3,936,116 assertions as 3.16.0. The shipping
+  engine's SHA-256 is identical before and after the update.
+
 ## 2026-10-16: Legal-only move lists at in-check nodes (#823)
 
 ### Changed

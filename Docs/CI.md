@@ -12,6 +12,7 @@ the mechanics.
 | measure strength in CI | [Strength lab](#strength-lab-strengthyml) |
 | know why validation is split across platforms | `Workflow.md` → Standing decisions |
 | know what else scans the repo | [Repository services](#repository-services) |
+| check upstream library and fastchess releases | [Dependency release checks](#dependency-release-checks-dependency-releasesyml) |
 
 ---
 
@@ -467,13 +468,29 @@ the lab is not wired to trigger automatically.
 
 ---
 
+## Dependency release checks (`dependency-releases.yml`)
+
+Runs every Monday at 07:37 UTC and on manual dispatch on `main`. One Ubuntu job uses the bundled
+Python and GitHub CLI to compare `CMakeLists.txt`'s library pins and the strength workflow's
+fastchess pin against upstream releases. It runs offline fixtures first, then creates or updates
+one tracking issue only when findings change. It changes no pins and opens no PRs.
+
+The job has a ten-minute timeout, a shared concurrency group, `contents: read` and `issues: write`.
+It runs only in `theEscape2207/StratChess` on `main`; fork and other-ref dispatches skip publication.
+The checker fixtures also run in the PR gate's Linux Release job. API/pin failures fail this
+workflow before issue writes, and its result does not gate engine PRs. Issue lifecycle, channel
+policy and manual commands: [`Dependencies.md`](Dependencies.md#automated-release-checks).
+
+---
+
 ## Repository services
 
 These are configured outside the workflows, and none of them uses a runner slot.
 
 - **Dependabot** (`.github/dependabot.yml`) opens one grouped PR a month that bumps the workflow
   actions. It covers nothing else, because it can't read the C++ dependencies pinned by
-  `FetchContent`. Bump those by hand: [`Dependencies.md`](Dependencies.md).
+  `FetchContent`. The scheduled dependency checker above reports newer library/tool releases;
+  version updates still follow [`Dependencies.md`](Dependencies.md).
 - **Secret scanning and push protection** are enabled in the repo settings.
 - **CodeQL is off.** Its default setup took runner slots ahead of `classify`, which delayed the
   whole gate, and it found nothing the threat model cares about.
