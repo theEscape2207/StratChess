@@ -476,8 +476,8 @@ TEST_CASE("TT - repeated clear reports no work after the table is empty", "[tt]"
 
 // ── Lock-free slots ───────────────────────────────────────────────────────────
 //
-// A slot is two atomic words, (key48 | eval) ^ payload * K and payload. Racing stores can leave one word from
-// each; these pin what such a slot decodes to.
+// A slot is two atomic words, (key48 | eval) ^ payload * K and payload. Racing stores can leave
+// one word from each; these pin what such a slot decodes to.
 
 namespace {
 	using SlotEntry = TranspositionTableTestFixture::Entry;

@@ -92,15 +92,15 @@ repeats the aborted-frame tripwire; change both together.
   answers `GameValues::Draw`. Guarding each `Evaluate()` call instead costs ~1% nps.
 - **At `contempt > 0` a static evaluation depends on `root_color_`, not on the position alone.** Its
   consumers — reverse futility, frontier futility and the quiescence stand-pat — shift by at most
-  `contempt`. The TT entry caches a static eval (#832), and serves it to pvs()'s `node_eval` and the
-  stand-pat, but never a dead-draw one, the only result that reads contempt: `tt_static_eval()`
-  stores `kNoStaticEval` whenever the eval equals `draw_score(td)`. The TT clear fires on every
+  `contempt`. The TT entry caches a static eval, and serves it to pvs()'s `node_eval` and the
+  stand-pat, but never a dead-draw one, the only result that reads contempt:
+  `storable_static_eval()` stores `kNoStaticEval` whenever the eval equals `draw_score(td)`. The TT clear fires on every
   root-colour flip as well, so a GUI analysing both sides, or the tactical runner sweeping colours,
   discards the table each search: the guard working, not a TT bug.
 - **A probed TT entry may belong to another position** — through a key collision, or a slot whose
   two words racing Lazy SMP stores mixed. Its `best_move` is only a hint, matched against moves the
-  engine generated; its `static_eval` is trusted like its value, at the same collision rate. The key
-  check covers bits 16-63 plus the bucket index, all 64 bits from `Hash` = 4 MiB. A change that searches the hash move before generating (a staged move generator)
+  engine generated; its `static_eval` is trusted like its value, at the same collision rate. The
+  key check covers bits 16-63 plus the bucket index, all 64 bits from `Hash` = 4 MiB. A change that searches the hash move before generating (a staged move generator)
   must check it is pseudo-legal in this position first.
 - **TT clearing is a lifecycle operation.** `TranspositionTable::clear()` takes a table-wide mutex
   to serialize clears. Probes and stores are lock-free and do not take that mutex; callers must

@@ -206,7 +206,7 @@ class AIPerplex final {
 	// contempt sign is expressed; draw_score() is a thin caller of it.
 	int draw_score_for(eColor side_to_move) const noexcept;
 	// The static_eval a TT store carries: the frame's evaluation if it has one, else kNoStaticEval.
-	int16_t tt_static_eval(const ThreadData& td, bool eval_known, int eval) const noexcept;
+	int16_t storable_static_eval(const ThreadData& td, bool eval_known, int eval) const noexcept;
 	// Hands the evaluator the drawn value for each side to move. Search() is the only production
 	// caller and calls it before any helper thread exists, which is the whole of the argument that
 	// Evaluator stays safe to share unsynchronized — see the contract in Eval.h.
