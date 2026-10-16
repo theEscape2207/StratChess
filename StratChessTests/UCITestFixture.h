@@ -171,7 +171,8 @@ class UciHandlerTestFixture {
 	{
 		REQUIRE(handler.ai_ != nullptr);
 		AIPerlexTestFixture::tt(*handler.ai_)
-		    .store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+		    .store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN,
+		           kNoStaticEval);
 	}
 
 	bool has_tt_marker() const

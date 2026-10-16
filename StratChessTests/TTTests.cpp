@@ -11,10 +11,14 @@
 #include "AIPerplex.h" // DEFAULT_HASH_MB, for the equal-capacity invariant only
 #include "defines.h"
 
+#include <algorithm>
 #include <array>
+#include <bit>
+#include <cstdlib>
 #include <latch>
 #include <random>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #if defined(__linux__)
@@ -32,6 +36,8 @@ class TranspositionTableTestFixture {
 	}
 
 	static Words encode(const Entry& entry) { return TranspositionTable::encode(entry); }
+	static std::uint64_t payload_word(const Entry& entry) { return std::bit_cast<Words>(entry)[1]; }
+	static constexpr std::uint64_t slot_mix() { return TranspositionTable::SLOT_MIX; }
 
 	// Writes one word of the table's first slot, as one half of a store would.
 	static void write_word(TranspositionTable& table, size_t word, std::uint64_t value)
@@ -45,7 +51,7 @@ class TranspositionTableTestFixture {
 	{
 		for (const auto& bucket : table.table) {
 			for (const auto& slot : bucket.slots) {
-				if (TranspositionTable::load(slot).key == key) {
+				if (TranspositionTable::load(slot).matches(key)) {
 					return reinterpret_cast<const char*>(&bucket);
 				}
 			}
@@ -61,12 +67,16 @@ static Move no_move() { return Move::EmptyMove(); }
 // Convenience wrapper: stores a value at the given key with sensible defaults.
 static void do_store(TranspositionTable& tt, uint64_t key, int16_t value, int16_t depth = 5, int16_t ply = 0)
 {
-	tt.store(key, value, depth, ply, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(key, value, depth, ply, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
 }
 
-static constexpr uint64_t KEY_A = 1'000'001;
-static constexpr uint64_t KEY_B = 2'000'002;
-static constexpr uint64_t KEY_MISS = 9'876'543;
+// The table keeps key bits 16-63 and lets the bucket index stand in for the rest, so distinct test
+// keys must differ above bit 15 -- in a one-bucket table they would otherwise be one position.
+static constexpr uint64_t KEY_A = 1'000'001ULL << 16;
+static constexpr uint64_t KEY_B = 2'000'002ULL << 16;
+static constexpr uint64_t KEY_C = 3'000'003ULL << 16;
+static constexpr uint64_t KEY_D = 4'000'004ULL << 16;
+static constexpr uint64_t KEY_MISS = 9'876'543ULL << 16;
 
 // ── Packed storage ────────────────────────────────────────────────────────────
 
@@ -119,7 +129,8 @@ TEST_CASE("TT - packed entry defaults and table clear reset reserved metadata", 
 {
 	using Entry = TranspositionTableTestFixture::Entry;
 	const Entry initial;
-	CHECK(initial.key == 0);
+	CHECK(initial.empty());
+	CHECK(initial.static_eval() == kNoStaticEval);
 	CHECK(initial.value == 0);
 	CHECK(initial.depth == 0);
 	CHECK(initial.best_move.is_null());
@@ -128,7 +139,8 @@ TEST_CASE("TT - packed entry defaults and table clear reset reserved metadata", 
 
 	TranspositionTable tt(0);
 	const Entry fresh = TranspositionTableTestFixture::first_entry(tt);
-	CHECK(fresh.key == 0);
+	CHECK(fresh.empty());
+	CHECK(fresh.static_eval() == kNoStaticEval);
 	CHECK(fresh.value == 0);
 	CHECK(fresh.depth == 0);
 	CHECK(fresh.best_move.is_null());
@@ -137,11 +149,12 @@ TEST_CASE("TT - packed entry defaults and table clear reset reserved metadata", 
 
 	tt.newSearch();
 	tt.store(KEY_A, 123, 4, 0, Move(e2, e4, MoveFlags::QUIET), BoundType::UPPER, NodeType::PV_NODE,
-	         SearchPhase::QUIESCENCE);
+	         SearchPhase::QUIESCENCE, kNoStaticEval);
 	REQUIRE(tt.clear());
 
 	const Entry cleared = TranspositionTableTestFixture::first_entry(tt);
-	CHECK(cleared.key == 0);
+	CHECK(cleared.empty());
+	CHECK(cleared.static_eval() == kNoStaticEval);
 	CHECK(cleared.value == 0);
 	CHECK(cleared.depth == 0);
 	CHECK(cleared.best_move.is_null());
@@ -162,12 +175,12 @@ TEST_CASE("TT - packed entry preserves every age and wraps from 255 to 0", "[tt]
 	TranspositionTable tt(0);
 	for (int search = 0; search < 255; ++search)
 		tt.newSearch();
-	tt.store(KEY_A, 1, 1, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 1, 1, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, kNoStaticEval);
 	REQUIRE(tt.probe(KEY_A, 0).has_value());
 	CHECK(tt.probe(KEY_A, 0)->age == 255);
 
 	tt.newSearch();
-	tt.store(KEY_B, 2, 1, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	tt.store(KEY_B, 2, 1, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, kNoStaticEval);
 	REQUIRE(tt.probe(KEY_B, 0).has_value());
 	CHECK(tt.probe(KEY_B, 0)->age == 0);
 }
@@ -175,7 +188,7 @@ TEST_CASE("TT - packed entry preserves every age and wraps from 255 to 0", "[tt]
 TEST_CASE("TT - hashfull counts the current search's generation and not the previous one", "[tt]")
 {
 	// Fills one quarter of the fixed sample the way Search() brackets a search: snapshot the age,
-	// then advance it once. Bucket zero needs a nonzero key that still maps there.
+	// then advance it once. Each key maps to its bucket and carries a nonzero key48.
 	const auto hashfull_after_search = [](int searches_before) {
 		TranspositionTable tt(1);
 		for (int i = 0; i < searches_before; ++i)
@@ -184,7 +197,7 @@ TEST_CASE("TT - hashfull counts the current search's generation and not the prev
 		CHECK(tt.hashfull(search_start_age) == 0);
 		tt.newSearch();
 		for (uint64_t bucket = 0; bucket < 250; ++bucket)
-			do_store(tt, (bucket == 0) ? tt.bucket_count() : bucket, 1);
+			do_store(tt, bucket | (uint64_t{1} << 32), 1);
 		CHECK(tt.hashfull(search_start_age) == 250);
 
 		// The same entries are stale from the next search's starting age.
@@ -204,7 +217,8 @@ TEST_CASE("TT - store reports its outcome, splitting evictions at the search sta
 
 	TranspositionTable tt(0); // one bucket: every key competes for the same four slots
 	const auto store_at_depth = [&tt](uint64_t key, int16_t depth) {
-		return tt.store(key, 1, depth, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+		return tt.store(key << 16, 1, depth, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN,
+		                kNoStaticEval);
 	};
 
 	tt.setStatsSearchStartAge(tt.currentAge());
@@ -231,9 +245,9 @@ TEST_CASE("TT - an age wrap does not change same-key replacement", "[tt]")
 		TranspositionTable tt(0);
 		for (int i = 0; i < searches_before; ++i)
 			tt.newSearch();
-		tt.store(KEY_A, 1, 4, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+		tt.store(KEY_A, 1, 4, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
 		tt.newSearch();
-		tt.store(KEY_A, 42, 4, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+		tt.store(KEY_A, 42, 4, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
 		const auto result = tt.probe(KEY_A, 0);
 		REQUIRE(result.has_value());
 		return result->value == 42;
@@ -248,7 +262,7 @@ TEST_CASE("TT - a store carries all three packed metadata fields through the tab
 	// The setters are exercised directly elsewhere; this pins that store() writes and probe() reads
 	// all three fields at once, so a mask overlapping a neighbour cannot pass unnoticed.
 	TranspositionTable tt(0);
-	tt.store(KEY_A, 17, 3, 0, no_move(), BoundType::UPPER, NodeType::CUT_NODE, SearchPhase::QUIESCENCE);
+	tt.store(KEY_A, 17, 3, 0, no_move(), BoundType::UPPER, NodeType::CUT_NODE, SearchPhase::QUIESCENCE, kNoStaticEval);
 
 	const auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
@@ -261,11 +275,90 @@ TEST_CASE("TT - store and probe preserve all Move encoding bits", "[tt]")
 {
 	TranspositionTable tt(0);
 	const Move move(h7, g8, MoveFlags::PROMOTION_QUEEN_CAPTURE);
-	tt.store(KEY_A, 321, 7, 0, move, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 321, 7, 0, move, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	const auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
 	CHECK(result->best_move == move);
+}
+
+// ── Static evaluation ─────────────────────────────────────────────────────────
+
+TEST_CASE("TT - the static eval round-trips through store and probe", "[tt]")
+{
+	for (const int16_t eval : {int16_t{0}, int16_t{1}, int16_t{-1}, int16_t{-29899}, int16_t{29899}, kNoStaticEval}) {
+		TranspositionTable tt(0);
+		tt.store(KEY_A, -250, 6, 0, no_move(), BoundType::UPPER, NodeType::ALL_NODE, SearchPhase::MAIN, eval);
+		const auto result = tt.probe(KEY_A, 0);
+		INFO("eval " << eval);
+		REQUIRE(result.has_value());
+		CHECK(result->static_eval == eval);
+		CHECK(result->value == -250); // the eval's bits do not leak into the payload
+		CHECK(result->depth == 6);
+	}
+}
+
+TEST_CASE("TT - an accepted same-key store without an eval keeps the stored one", "[tt]")
+{
+	TranspositionTable tt(0);
+	tt.newSearch();
+	tt.store(KEY_A, 10, 4, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE, -321);
+	tt.store(KEY_A, 60, 8, 0, no_move(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
+
+	auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->depth == 8); // the store was accepted
+	CHECK(result->static_eval == -321);
+
+	// One that carries an eval writes it.
+	tt.store(KEY_A, 60, 9, 0, no_move(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN, 55);
+	result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->static_eval == 55);
+}
+
+TEST_CASE("TT - a declined same-key store keeps the stored eval", "[tt]")
+{
+	TranspositionTable tt(0);
+	tt.newSearch();
+	tt.store(KEY_A, 500, 12, 0, Move(e2, e4, MoveFlags::QUIET), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN,
+	         kNoStaticEval);
+	REQUIRE(tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE, 77) ==
+	        TTStoreOutcome::Declined);
+
+	const auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->static_eval == kNoStaticEval);
+	CHECK(result->value == 500);
+}
+
+TEST_CASE("TT - an evicting store without an eval does not inherit the evicted one", "[tt]")
+{
+	TranspositionTable tt(0); // one bucket, so every key collides
+	tt.newSearch();
+	tt.store(KEY_A, 10, 1, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, 99);
+	tt.store(KEY_B, 20, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, 1);
+	tt.store(KEY_C, 30, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, 2);
+	tt.store(KEY_D, 40, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, 3);
+	tt.store(KEY_MISS, 50, 12, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
+
+	CHECK_FALSE(tt.probe(KEY_A, 0).has_value());
+	const auto result = tt.probe(KEY_MISS, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->static_eval == kNoStaticEval);
+}
+
+TEST_CASE("TT - a probe matches key bits 16-63 and ignores the rest", "[tt]")
+{
+	// In a one-bucket table the index implies no bits, so the low 16 are the ones the table gave up.
+	TranspositionTable tt(0);
+	tt.store(KEY_A, 42, 3, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, 7);
+
+	CHECK(tt.probe(KEY_A ^ 0xFFFF, 0).has_value());
+	for (unsigned bit = 16; bit < 64; ++bit) {
+		INFO("bit " << bit);
+		CHECK_FALSE(tt.probe(KEY_A ^ (std::uint64_t{1} << bit), 0).has_value());
+	}
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -389,10 +482,10 @@ TEST_CASE("TT - repeated clear reports no work after the table is empty", "[tt]"
 namespace {
 	using SlotEntry = TranspositionTableTestFixture::Entry;
 
-	SlotEntry make_entry(uint64_t key, int16_t value, int16_t depth, Move move)
+	SlotEntry make_entry(uint64_t key, int16_t value, int16_t depth, Move move, int16_t static_eval = 37)
 	{
 		SlotEntry entry;
-		entry.key = key;
+		entry.set_key_eval(key, static_eval);
 		entry.value = value;
 		entry.depth = depth;
 		entry.best_move = move;
@@ -404,6 +497,8 @@ namespace {
 	SlotEntry entry_a() { return make_entry(KEY_A, 100, 5, Move(e2, e4, MoveFlags::QUIET)); }
 	SlotEntry entry_b() { return make_entry(KEY_B, 200, 7, Move(d2, d4, MoveFlags::QUIET)); }
 
+	uint64_t key_of(const SlotEntry& entry) { return entry.key48() << SlotEntry::KEY_SHIFT; }
+
 	// Writes one word of the entry's encoding into the table's first slot.
 	void write_word_of(TranspositionTable& tt, size_t word, const SlotEntry& entry)
 	{
@@ -414,20 +509,114 @@ namespace {
 	// that the two words decode to, carrying the payload of word 1's entry.
 	void check_mixed_slot(const TranspositionTable& tt, const SlotEntry& word0_entry, const SlotEntry& word1_entry)
 	{
-		CHECK_FALSE(tt.probe(word0_entry.key, 0).has_value());
-		CHECK_FALSE(tt.probe(word1_entry.key, 0).has_value());
+		CHECK_FALSE(tt.probe(key_of(word0_entry), 0).has_value());
+		CHECK_FALSE(tt.probe(key_of(word1_entry), 0).has_value());
 
-		const uint64_t pseudo_key = TranspositionTableTestFixture::encode(word0_entry)[0] ^
-		                            TranspositionTableTestFixture::encode(word1_entry)[1];
-		REQUIRE(pseudo_key != word0_entry.key);
-		REQUIRE(pseudo_key != word1_entry.key);
+		const uint64_t pseudo_key =
+		    TranspositionTableTestFixture::encode(word0_entry)[0] ^
+		    TranspositionTableTestFixture::payload_word(word1_entry) * TranspositionTableTestFixture::slot_mix();
+		REQUIRE(pseudo_key >> SlotEntry::KEY_SHIFT != word0_entry.key48());
+		REQUIRE(pseudo_key >> SlotEntry::KEY_SHIFT != word1_entry.key48());
 		const auto result = tt.probe(pseudo_key, 0);
 		REQUIRE(result.has_value());
 		CHECK(result->value == word1_entry.value);
 		CHECK(result->depth == word1_entry.depth);
 		CHECK(result->best_move == word1_entry.best_move);
 	}
+
+	// The payload fields as (shift, width) within word 1: value, depth, move, metadata, age.
+	constexpr std::array<std::pair<unsigned, unsigned>, 5> PAYLOAD_FIELDS{
+	    {{0, 16}, {16, 16}, {32, 16}, {48, 8}, {56, 8}}};
+
+	// The fewest payload fields whose per-field differences d_i, |d_i| < 2^width_i, sum to `delta`
+	// modulo 2^64; returns `cap` when it takes at least that many.
+	int min_fields_for(uint64_t delta, size_t field, int used, int cap)
+	{
+		if (used >= cap)
+			return cap;
+		if (delta == 0)
+			return used;
+		if (field == PAYLOAD_FIELDS.size())
+			return cap;
+		const auto [shift, width] = PAYLOAD_FIELDS[field];
+		if (delta & ((uint64_t{1} << shift) - 1))
+			return cap; // a lower bit no later field can reach
+		const unsigned span =
+		    (field + 1 == PAYLOAD_FIELDS.size()) ? 64 - shift : PAYLOAD_FIELDS[field + 1].first - shift;
+		const int64_t residue = static_cast<int64_t>((delta >> shift) & ((uint64_t{1} << span) - 1));
+		int best = cap;
+		// This field's difference is the residue, or the residue less one span (a borrow upwards).
+		for (const int64_t d : {residue, residue - (int64_t{1} << span)}) {
+			if (std::abs(d) >= (int64_t{1} << width))
+				continue;
+			const uint64_t rest = delta - (static_cast<uint64_t>(d) << shift);
+			best = std::min(best, min_fields_for(rest, field + 1, used + (d != 0), best));
+		}
+		return best;
+	}
+
+	constexpr uint64_t inverse_mod_2_64(uint64_t k)
+	{
+		uint64_t x = k; // correct to 3 bits for odd k; each Newton step doubles that
+		for (int i = 0; i < 5; ++i)
+			x *= 2 - k * x;
+		return x;
+	}
 } // namespace
+
+TEST_CASE("TT - no torn pair differing in two or fewer payload fields decodes to a stored key", "[tt][tt_torn]")
+{
+	// A pair (A0, B1) passes the key check only if (A1 - B1) * K lands within 2^16 of zero, so the
+	// payload difference must be j * K^-1 for some 0 < |j| < 2^16. j runs over both signs, which is
+	// the other mixing direction (B0, A1). None of these may be a change in two or fewer fields.
+	constexpr uint64_t k = TranspositionTableTestFixture::slot_mix();
+	static_assert(k % 2 == 1);
+	constexpr uint64_t k_inverse = inverse_mod_2_64(k);
+	static_assert(k * k_inverse == 1);
+
+	int fewest = 3;
+	int64_t worst_j = 0;
+	for (int64_t j = -(int64_t{1} << 16) + 1; j < (int64_t{1} << 16); ++j) {
+		if (j == 0)
+			continue;
+		const int fields = min_fields_for(static_cast<uint64_t>(j) * k_inverse, 0, 0, fewest);
+		if (fields < fewest) {
+			fewest = fields;
+			worst_j = j;
+		}
+	}
+	INFO("fewest fields " << fewest << " at j = " << worst_j);
+	CHECK(fewest >= 3);
+}
+
+TEST_CASE("TT - a torn pair whose payloads differ only in value is rejected", "[tt][tt_torn]")
+{
+	// The hole plain XOR leaves: B's value sits under A's eval bits in word 0. The second pair is a
+	// multiplier counterexample: with K = 3 its two payload words, 0x0110000000050064 and ...65,
+	// multiply to products differing only in the low two bits.
+	const auto check_rejected = [](const SlotEntry& a, const SlotEntry& b) {
+		TranspositionTable tt(0);
+		write_word_of(tt, 0, a);
+		write_word_of(tt, 1, b);
+		CHECK_FALSE(tt.probe(key_of(a), 0).has_value());
+		write_word_of(tt, 0, b);
+		write_word_of(tt, 1, a);
+		CHECK_FALSE(tt.probe(key_of(b), 0).has_value());
+	};
+
+	check_rejected(make_entry(KEY_A, 100, 5, Move(e2, e4, MoveFlags::QUIET)),
+	               make_entry(KEY_A, 900, 5, Move(e2, e4, MoveFlags::QUIET)));
+
+	auto value_100 = make_entry(KEY_A, 100, 5, Move(uint16_t{0}));
+	value_100.set_bound(BoundType::EXACT);
+	value_100.set_node_type(NodeType::ALL_NODE);
+	value_100.age = 1;
+	auto value_101 = value_100;
+	value_101.value = 101;
+	REQUIRE(TranspositionTableTestFixture::payload_word(value_100) == 0x0110'0000'0005'0064);
+	REQUIRE(TranspositionTableTestFixture::payload_word(value_101) == 0x0110'0000'0005'0065);
+	check_rejected(value_100, value_101);
+}
 
 TEST_CASE("TT - a slot holding words from two entries decodes to a pseudo-key", "[tt]")
 {
@@ -507,7 +696,8 @@ TEST_CASE("TT - concurrent probes return only the probed key's payload", "[tt][s
 				for (int i = 0; i < ITERATIONS; ++i) {
 					const uint64_t stored = keys[rng() % keys.size()];
 					const Payload p = payload_of(stored);
-					tt.store(stored, p.value, p.depth, 0, p.move, p.bound, p.node_type, SearchPhase::MAIN);
+					tt.store(stored, p.value, p.depth, 0, p.move, p.bound, p.node_type, SearchPhase::MAIN,
+					         kNoStaticEval);
 
 					const uint64_t probed = (rng() & 1) ? stored : keys[rng() % keys.size()];
 					const auto result = tt.probe(probed, 0);
@@ -697,17 +887,18 @@ TEST_CASE("TT - an empty slot is filled before any occupied entry is evicted", "
 	tt.newSearch(); // matches the search: age is never 0 at store time
 
 	// An exhausted quiescence entry: the most evictable thing the engine can produce.
-	tt.store(KEY_A, 10, /*depth=*/-5, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
+	tt.store(KEY_A, 10, /*depth=*/-5, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE,
+	         kNoStaticEval);
 
 	// Three more distinct keys. A four-entry bucket holds all four without evicting anything.
-	tt.store(KEY_B, 20, 4, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
-	tt.store(KEY_MISS, 30, 6, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
-	tt.store(KEY_A + 1, 40, 8, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_B, 20, 4, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(KEY_MISS, 30, 6, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(KEY_C, 40, 8, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	CHECK(tt.probe(KEY_A, 0).has_value());
 	CHECK(tt.probe(KEY_B, 0).has_value());
 	CHECK(tt.probe(KEY_MISS, 0).has_value());
-	CHECK(tt.probe(KEY_A + 1, 0).has_value());
+	CHECK(tt.probe(KEY_C, 0).has_value());
 }
 
 TEST_CASE("TT - a quiescence store evicts the weakest main entry, not an arbitrary one", "[tt]")
@@ -723,15 +914,15 @@ TEST_CASE("TT - a quiescence store evicts the weakest main entry, not an arbitra
 	const uint64_t deep = KEY_A;
 	const uint64_t middling = KEY_B;
 	const uint64_t shallow = KEY_MISS;
-	const uint64_t shallowest = KEY_A + 1;
+	const uint64_t shallowest = KEY_C;
 
-	tt.store(deep, 10, 12, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
-	tt.store(middling, 20, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
-	tt.store(shallow, 30, 4, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
-	tt.store(shallowest, 40, 1, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	tt.store(deep, 10, 12, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(middling, 20, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(shallow, 30, 4, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(shallowest, 40, 1, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	// Bucket is full; this one has to displace something.
-	tt.store(KEY_A + 2, 50, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
+	tt.store(KEY_D, 50, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE, kNoStaticEval);
 
 	CHECK_FALSE(tt.probe(shallowest, 0).has_value());
 	CHECK(tt.probe(deep, 0).has_value());
@@ -758,8 +949,8 @@ TEST_CASE("TT - a same-key quiescence store does not displace a main entry", "[t
 	TranspositionTable tt(0);
 	tt.newSearch();
 
-	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
-	tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
+	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE, kNoStaticEval);
 
 	// Every field, not just the two that name the failure: a store that wrote part of the
 	// entry before deciding to decline would pass a narrower check.
@@ -778,8 +969,8 @@ TEST_CASE("TT - a shallower same-key main store does not displace a deeper one",
 	TranspositionTable tt(0);
 	tt.newSearch();
 
-	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
-	tt.store(KEY_A, 60, 4, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(KEY_A, 60, 4, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	const auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
@@ -799,8 +990,9 @@ TEST_CASE("TT - a deeper same-key store displaces a PV entry within one search",
 	auto stored_then = [](SearchPhase phase, int16_t stored_depth, int16_t incoming_depth, Move incoming_move) {
 		TranspositionTable tt(0);
 		tt.newSearch();
-		tt.store(KEY_A, 500, stored_depth, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, phase);
-		tt.store(KEY_A, 60, incoming_depth, 0, incoming_move, BoundType::LOWER, NodeType::CUT_NODE, phase);
+		tt.store(KEY_A, 500, stored_depth, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, phase, kNoStaticEval);
+		tt.store(KEY_A, 60, incoming_depth, 0, incoming_move, BoundType::LOWER, NodeType::CUT_NODE, phase,
+		         kNoStaticEval);
 		return tt.probe(KEY_A, 0).value();
 	};
 
@@ -831,16 +1023,16 @@ TEST_CASE("TT - an evicting store with no move does not inherit the evicted entr
 	tt.newSearch();
 
 	// The weakest of the four, and the only one carrying a move.
-	tt.store(KEY_A, 10, 1, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
-	tt.store(KEY_B, 20, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
-	tt.store(KEY_MISS, 30, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
-	tt.store(KEY_A + 1, 40, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 10, 1, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(KEY_B, 20, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(KEY_MISS, 30, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(KEY_C, 40, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	// Bucket is full; this displaces the depth-1 entry.
-	tt.store(KEY_A + 2, 50, 12, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_D, 50, 12, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	CHECK_FALSE(tt.probe(KEY_A, 0).has_value()); // it really was an eviction
-	const auto result = tt.probe(KEY_A + 2, 0);
+	const auto result = tt.probe(KEY_D, 0);
 	REQUIRE(result.has_value());
 	CHECK(result->best_move.is_null());
 }
@@ -876,8 +1068,8 @@ TEST_CASE("TT - a same-key store at equal depth wins", "[tt]")
 	TranspositionTable tt(0);
 	tt.newSearch();
 
-	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
-	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::EXACT, NodeType::CUT_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::EXACT, NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	const auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
@@ -896,8 +1088,8 @@ TEST_CASE("TT - an accepted same-key store with no move keeps the stored hash mo
 	TranspositionTable tt(0);
 	tt.newSearch();
 
-	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
-	tt.store(KEY_A, 60, 10, 0, no_move(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(KEY_A, 60, 10, 0, no_move(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	const auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
@@ -911,8 +1103,8 @@ TEST_CASE("TT - an accepted same-key store with a move replaces the stored one",
 	TranspositionTable tt(0);
 	tt.newSearch();
 
-	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
-	tt.store(KEY_A, 60, 10, 0, OTHER_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(KEY_A, 60, 10, 0, OTHER_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	const auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
@@ -924,9 +1116,9 @@ TEST_CASE("TT - a declined same-key store leaves the stored entry whole", "[tt]"
 	TranspositionTable tt(0);
 	tt.newSearch();
 
-	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
-	REQUIRE(tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE) ==
-	        TTStoreOutcome::Declined);
+	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
+	REQUIRE(tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE,
+	                 kNoStaticEval) == TTStoreOutcome::Declined);
 
 	const auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
@@ -945,11 +1137,11 @@ TEST_CASE("TT - a same-key store still wins once the stored entry is generations
 	TranspositionTable tt(0);
 	tt.newSearch();
 
-	tt.store(KEY_A, 500, 4, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 500, 4, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, kNoStaticEval);
 	for (int i = 0; i < 8; ++i)
 		tt.newSearch();
 
-	tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
+	tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE, kNoStaticEval);
 
 	const auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
@@ -989,9 +1181,11 @@ TEST_CASE("TT - the prefetch target names the bucket store() writes", "[tt][tt_p
 {
 	TranspositionTable tt(1);
 	const std::uint64_t last = tt.bucket_count() - 1;
-	const std::vector<std::uint64_t> keys{1,
-	                                      last,
-	                                      last + 1,
+	// High bits give the small keys distinct, nonzero key48s without moving their buckets.
+	constexpr std::uint64_t high = std::uint64_t{1} << 40;
+	const std::vector<std::uint64_t> keys{1 | high,
+	                                      last | (2 * high),
+	                                      (last + 1) | (3 * high),
 	                                      ~std::uint64_t{0},
 	                                      std::uint64_t{1} << 63,
 	                                      0x9E37'79B9'7F4A'7C15,
@@ -1034,8 +1228,8 @@ TEST_CASE("TT - a shallower same-key PV store does not displace a deeper entry",
 	TranspositionTable tt(0);
 	tt.newSearch();
 
-	tt.store(KEY_A, 500, 10, 0, HASH_MOVE, BoundType::EXACT, NodeType::CUT_NODE, SearchPhase::MAIN);
-	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 500, 10, 0, HASH_MOVE, BoundType::EXACT, NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	const auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
@@ -1055,9 +1249,10 @@ TEST_CASE("TT - a shallower same-key quiescence store does not displace a deeper
 	auto kept_depth = [](int16_t stored_depth, int16_t incoming_depth) {
 		TranspositionTable tt(0);
 		tt.newSearch();
-		tt.store(KEY_A, 500, stored_depth, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
+		tt.store(KEY_A, 500, stored_depth, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE,
+		         kNoStaticEval);
 		tt.store(KEY_A, 60, incoming_depth, 0, OTHER_MOVE, BoundType::EXACT, NodeType::ALL_NODE,
-		         SearchPhase::QUIESCENCE);
+		         SearchPhase::QUIESCENCE, kNoStaticEval);
 		return tt.probe(KEY_A, 0).value().depth;
 	};
 
@@ -1076,8 +1271,8 @@ TEST_CASE("TT - a same-key bound does not overwrite an exact score of the same d
 	TranspositionTable tt(0);
 	tt.newSearch();
 
-	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::CUT_NODE, SearchPhase::MAIN);
-	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	const auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
@@ -1085,7 +1280,7 @@ TEST_CASE("TT - a same-key bound does not overwrite an exact score of the same d
 	CHECK(result->value == 500);
 
 	// Deeper still wins: exactness settles a tie, it does not outrank search.
-	tt.store(KEY_A, 60, 9, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 60, 9, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
 	CHECK(tt.probe(KEY_A, 0).value().value == 60);
 }
 
@@ -1099,8 +1294,8 @@ TEST_CASE("TT - a same-key store that nothing separates from the stored entry wi
 	TranspositionTable tt(0);
 	tt.newSearch();
 
-	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
-	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
+	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	const auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
@@ -1117,11 +1312,11 @@ TEST_CASE("TT - a tie across phases leaves the main entry in the slot", "[tt]")
 	TranspositionTable tt(0);
 	tt.newSearch();
 
-	tt.store(KEY_A, 500, 1, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 500, 1, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN, kNoStaticEval);
 	tt.newSearch();
 	tt.newSearch();
 
-	tt.store(KEY_A, 60, 10, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::QUIESCENCE);
+	tt.store(KEY_A, 60, 10, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::QUIESCENCE, kNoStaticEval);
 
 	const auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
@@ -1139,9 +1334,9 @@ TEST_CASE("TT - a same-key bound does not downgrade the previous search's exact 
 	TranspositionTable tt(0);
 	tt.newSearch();
 
-	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN, kNoStaticEval);
 	tt.newSearch();
-	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
@@ -1151,7 +1346,7 @@ TEST_CASE("TT - a same-key bound does not downgrade the previous search's exact 
 	// The stickiness is bounded to that one generation: at two the stored score falls to
 	// 2048 - 512 and the bound wins outright, on the score rather than on any tie-break.
 	tt.newSearch();
-	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
 
 	result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());

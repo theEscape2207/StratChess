@@ -20,7 +20,8 @@ allocated, not what was asked for (192 allocates 128).
 Reading it: `cut%` is main-search cutoffs per probe, the counter a larger table would move; `cur%`
 is stores that evicted an entry written in the same search, the pressure a larger table would
 relieve. If `cut%` and `depth` are flat across sizes and `cur%` is small, capacity does not
-matter at the node budget.
+matter at the node budget. `evalsrv%` is the share of static evaluations served from the probed
+entry rather than computed.
 """
 import argparse
 import io
@@ -33,7 +34,8 @@ import chess
 import chess.pgn
 
 COUNTERS = ('mainprobes', 'mainhits', 'maincutoffs', 'qsprobes', 'qshits', 'qscutoffs',
-            'stores', 'declined', 'filled', 'refreshed', 'evictstale', 'evictcurrent')
+            'stores', 'declined', 'filled', 'refreshed', 'evictstale', 'evictcurrent',
+            'evalserved', 'evalcomputed')
 
 INFO_DEPTH = re.compile(r'^info depth (\d+) .*?\bhashfull (\d+)')
 
@@ -148,7 +150,7 @@ def pct(num, den):
 def report(results, sizes, nodes, games, out=sys.stdout):
     print(f'{games} games, go nodes {nodes}, Threads=1', file=out)
     header = (f'{"Hash":>5} {"MiB":>5} {"search":>7} {"depth":>6} {"full‰":>6} {"hit%":>6} {"cut%":>6} '
-              f'{"qscut%":>7} {"cur%":>6} {"stale%":>7} {"decl%":>6}')
+              f'{"qscut%":>7} {"cur%":>6} {"stale%":>7} {"decl%":>6} {"evalsrv%":>8}')
     print(header, file=out)
     for size in sizes:
         t = results[size]
@@ -156,7 +158,8 @@ def report(results, sizes, nodes, games, out=sys.stdout):
         print(f'{size:>5} {allocated_mib(size):>5} {n:>7} {t["depth"] / n:>6.2f} {t["hashfull"] / n:>6.0f} '
               f'{pct(t["mainhits"], t["mainprobes"]):>6.2f} {pct(t["maincutoffs"], t["mainprobes"]):>6.2f} '
               f'{pct(t["qscutoffs"], t["qsprobes"]):>7.2f} {pct(t["evictcurrent"], t["stores"]):>6.2f} '
-              f'{pct(t["evictstale"], t["stores"]):>7.2f} {pct(t["declined"], t["stores"]):>6.2f}', file=out)
+              f'{pct(t["evictstale"], t["stores"]):>7.2f} {pct(t["declined"], t["stores"]):>6.2f} '
+              f'{pct(t["evalserved"], t["evalserved"] + t["evalcomputed"]):>8.2f}', file=out)
 
 
 def self_test():
@@ -170,7 +173,7 @@ def self_test():
     check('192 allocates 128', allocated_mib(192) == 128)
     check('256 allocates 256', allocated_mib(256) == 256)
     line = 'info string ttstats ' + ' '.join(f'{c} {i}' for i, c in enumerate(COUNTERS))
-    check('ttstats parses every counter', parse_ttstats(line)['evictcurrent'] == 11)
+    check('ttstats parses every counter', parse_ttstats(line)['evalcomputed'] == 13)
     try:
         parse_ttstats('info string ttstats mainprobes 1')
         check('truncated ttstats rejected', False)

@@ -133,7 +133,9 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	            .stores_filled = 8,
 	            .stores_refreshed = 9,
 	            .evicted_stale = 10,
-	            .evicted_current = 11};
+	            .evicted_current = 11,
+	            .eval_served = 12,
+	            .eval_computed = 13};
 	fired.ordering = {.cuts = 1,
 	                  .index = {2, 3, 4, 5, 6},
 	                  .late_cut = {7, 8, 9, 10},
@@ -157,7 +159,8 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	fired.qsearch = {.roots = 1, .delta = 2, .see = 3, .max_depth = 4};
 
 	const std::string fired_tt = "ttstats mainprobes 1 mainhits 2 maincutoffs 3 qsprobes 4 qshits 5 qscutoffs 6 "
-	                             "stores 45 declined 7 filled 8 refreshed 9 evictstale 10 evictcurrent 11";
+	                             "stores 45 declined 7 filled 8 refreshed 9 evictstale 10 evictcurrent 11 "
+	                             "evalserved 12 evalcomputed 13";
 	const std::string fired_ordering = "ordering cuts 1 index 2/3/4/5/6 latecut 7/8/9/10 hashnodes 11 hashcuts 12 "
 	                                   "latenodes 13 latebands 14/15/16";
 	const std::string fired_nodetypes = "nodetypes pv 1/2/3 cut 4/5/6 all 7/8/9 cutfaillow 10/11/12";
@@ -172,7 +175,8 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 
 	// Singular, frontier and lmp stay silent when they did not fire; ttstats prints whenever compiled.
 	const std::string zero_tt = "ttstats mainprobes 0 mainhits 0 maincutoffs 0 qsprobes 0 qshits 0 qscutoffs 0 "
-	                            "stores 0 declined 0 filled 0 refreshed 0 evictstale 0 evictcurrent 0";
+	                            "stores 0 declined 0 filled 0 refreshed 0 evictstale 0 evictcurrent 0 "
+	                            "evalserved 0 evalcomputed 0";
 	CHECK(payloads_of(SearchTelemetry{}) == std::vector<std::string>{zero_tt});
 
 	// Each line keys off its own counter: one feature firing alone prints only its line.

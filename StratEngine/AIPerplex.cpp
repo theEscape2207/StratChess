@@ -708,6 +708,14 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	bool tt_usable_for_singular = false;
 	int tt_value_for_singular = 0;
 
+	// This node's static evaluation, computed at most once and shared by both futility guards, or
+	// served by the probe below from an entry of either phase. Only ever call node_eval() while
+	// td.board holds THIS position: after DoMove() it holds a child, whose evaluation is a different
+	// number from the other side's point of view.
+	int static_eval = 0;
+	bool static_eval_known = false;
+	[[maybe_unused]] bool static_eval_served = false; // stats only: served and not yet counted
+
 	// TT probe. Skipped entirely for a verification search: this key describes the position
 	// with every legal move available, and an exclusion search is asking about a strictly
 	// smaller move set. Taking a cutoff from it would answer the wrong question, and the
@@ -718,6 +726,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		if (auto entry = tt.probe(key, ply)) {
 			if constexpr (kTTStatsCompiled)
 				++td.telemetry.tt.main_hits;
+			if (entry->static_eval != kNoStaticEval) {
+				static_eval = entry->static_eval;
+				static_eval_known = true;
+				if constexpr (kTTStatsCompiled)
+					static_eval_served = true;
+			}
 			// Quiescence entries carry a different depth unit and are not trusted here.
 			if (entry->phase == SearchPhase::MAIN) {
 				hash_move = entry->best_move;
@@ -761,15 +775,17 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// null-move child -- still pays the popcount.
 	const bool zugzwang_safe = !is_pv_node && !in_check && has_two_non_pawn_pieces(td.board);
 
-	// This node's static evaluation, computed at most once and shared by both futility guards.
-	// Only ever call it while td.board holds THIS position: after DoMove() it holds a child, whose
-	// evaluation is a different number from the other side's point of view.
-	int static_eval = 0;
-	bool static_eval_known = false;
 	const auto node_eval = [&] {
 		if (!static_eval_known) {
 			static_eval = evaluator_.Evaluate(td.board);
 			static_eval_known = true;
+			if constexpr (kTTStatsCompiled)
+				++td.telemetry.tt.eval_computed;
+		} else if constexpr (kTTStatsCompiled) {
+			if (static_eval_served) {
+				++td.telemetry.tt.eval_served;
+				static_eval_served = false;
+			}
 		}
 		return static_eval;
 	};
@@ -836,9 +852,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		if (null_score >= beta) {
 			if constexpr (kSearchProfileCompiled)
 				null_stats.cutoffs++;
-			record_tt_store(td, tt.store(key, static_cast<int16_t>(null_score), static_cast<int16_t>(depth),
-			                             static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::LOWER,
-			                             NodeType::CUT_NODE, SearchPhase::MAIN));
+			record_tt_store(td,
+			                tt.store(key, static_cast<int16_t>(null_score), static_cast<int16_t>(depth),
+			                         static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::LOWER, NodeType::CUT_NODE,
+			                         SearchPhase::MAIN, tt_static_eval(td, static_eval_known, static_eval)));
 			return null_score;
 		}
 
@@ -1213,7 +1230,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		const int terminal_value = adjust_score_for_game_state(td, move_found, ply, best_value);
 		record_tt_store(td, tt.store(key, static_cast<int16_t>(terminal_value), static_cast<int16_t>(depth),
 		                             static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::EXACT,
-		                             is_pv_node ? NodeType::PV_NODE : NodeType::ALL_NODE, SearchPhase::MAIN));
+		                             is_pv_node ? NodeType::PV_NODE : NodeType::ALL_NODE, SearchPhase::MAIN,
+		                             tt_static_eval(td, static_eval_known, static_eval)));
 		return terminal_value;
 	}
 
@@ -1249,7 +1267,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// would cache a partial move set as if it were the whole.
 	if (!is_exclusion_frame) {
 		record_tt_store(td, tt.store(key, static_cast<int16_t>(best_value), static_cast<int16_t>(depth),
-		                             static_cast<int16_t>(ply), best_move, bound, node_type, SearchPhase::MAIN));
+		                             static_cast<int16_t>(ply), best_move, bound, node_type, SearchPhase::MAIN,
+		                             tt_static_eval(td, static_eval_known, static_eval)));
 	}
 
 	return adjust_score_for_game_state(td, move_found, ply, best_value);
@@ -1268,6 +1287,18 @@ void AIPerplex::publish_draw_scores() noexcept
 int AIPerplex::draw_score_for(eColor side_to_move) const noexcept
 {
 	return side_to_move == root_color_ ? GameValues::Draw - tuning_.contempt : GameValues::Draw + tuning_.contempt;
+}
+
+// A served eval must equal what Evaluate() would return, and everything Evaluate() reads is in the
+// Zobrist key except the dead-draw score: contempt, set per Search() from the root colour. Search()
+// and SetTuning() already clear the table when that changes, but the eval's exactness should not
+// rest on those clears, so a dead-draw eval is never stored. Every one equals draw_score(td); a real
+// eval that happens to equal it only loses a hit.
+int16_t AIPerplex::tt_static_eval(const ThreadData& td, bool eval_known, int eval) const noexcept
+{
+	if (!eval_known || eval == draw_score(td))
+		return kNoStaticEval;
+	return static_cast<int16_t>(eval);
 }
 
 int AIPerplex::adjust_score_for_game_state(ThreadData& td, bool move_found, int ply, int score)
@@ -1445,7 +1476,8 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// reads as an ordinary score; MAX_PLY keeps that out of reach.
 	if constexpr (kTTStatsCompiled)
 		++td.telemetry.tt.qs_probes;
-	if (auto entry = tt.probe(key, ply)) {
+	const std::optional<TTEntry> entry = tt.probe(key, ply);
+	if (entry) {
 		if constexpr (kTTStatsCompiled)
 			++td.telemetry.tt.qs_hits;
 		const bool usable =
@@ -1475,7 +1507,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		const int stalemate_value = draw_score(td);
 		record_tt_store(td, tt.store(key, static_cast<int16_t>(stalemate_value), static_cast<int16_t>(qsearch_budget),
 		                             static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
-		                             SearchPhase::QUIESCENCE));
+		                             SearchPhase::QUIESCENCE, kNoStaticEval));
 		return stalemate_value;
 	}
 
@@ -1493,12 +1525,22 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	int stand_pat = 0;
 
 	if (!in_check) {
-		stand_pat = evaluator_.Evaluate(td.board);
+		// The probed entry's eval, from either phase, is the one Evaluate() would return here.
+		if (entry && entry->static_eval != kNoStaticEval) {
+			stand_pat = entry->static_eval;
+			if constexpr (kTTStatsCompiled)
+				++td.telemetry.tt.eval_served;
+		} else {
+			stand_pat = evaluator_.Evaluate(td.board);
+			if constexpr (kTTStatsCompiled)
+				++td.telemetry.tt.eval_computed;
+		}
 		if (stand_pat >= beta) {
 			// Store and cutoff
-			record_tt_store(td, tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_budget),
-			                             static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::LOWER,
-			                             NodeType::CUT_NODE, SearchPhase::QUIESCENCE));
+			record_tt_store(td,
+			                tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_budget),
+			                         static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::LOWER, NodeType::CUT_NODE,
+			                         SearchPhase::QUIESCENCE, tt_static_eval(td, true, stand_pat)));
 			return beta;
 		}
 		// stand-pat is the baseline (valid option: don't capture)
@@ -1596,7 +1638,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		if (score >= beta) {
 			record_tt_store(td, tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_budget),
 			                             static_cast<int16_t>(ply), move, BoundType::LOWER, NodeType::CUT_NODE,
-			                             SearchPhase::QUIESCENCE));
+			                             SearchPhase::QUIESCENCE, tt_static_eval(td, !in_check, stand_pat)));
 			return beta;
 		}
 		if (score > best_value) {
@@ -1618,7 +1660,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		const int mate_value = -GameValues::Mate + ply;
 		record_tt_store(td, tt.store(key, static_cast<int16_t>(mate_value), static_cast<int16_t>(qsearch_budget),
 		                             static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
-		                             SearchPhase::QUIESCENCE));
+		                             SearchPhase::QUIESCENCE, kNoStaticEval));
 		return mate_value;
 	}
 
@@ -1652,7 +1694,8 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	}
 
 	record_tt_store(td, tt.store(key, static_cast<int16_t>(best_value), static_cast<int16_t>(qsearch_budget),
-	                             static_cast<int16_t>(ply), best_move, bound, node_type, SearchPhase::QUIESCENCE));
+	                             static_cast<int16_t>(ply), best_move, bound, node_type, SearchPhase::QUIESCENCE,
+	                             tt_static_eval(td, !in_check, stand_pat)));
 	return best_value;
 }
 

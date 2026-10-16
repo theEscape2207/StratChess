@@ -47,6 +47,11 @@ struct TTStats {
 	int64_t evicted_stale = 0;
 	int64_t evicted_current = 0;
 
+	// Static evaluations at pvs()'s node_eval and quiescence()'s stand-pat: served from the probed
+	// entry, or computed. Only the first use of a served eval counts.
+	int64_t eval_served = 0;
+	int64_t eval_computed = 0;
+
 	void record(TTStoreOutcome outcome) noexcept
 	{
 		switch (outcome) {
@@ -86,6 +91,8 @@ struct TTStats {
 		stores_refreshed += other.stores_refreshed;
 		evicted_stale += other.evicted_stale;
 		evicted_current += other.evicted_current;
+		eval_served += other.eval_served;
+		eval_computed += other.eval_computed;
 	}
 
 	// Emitted after every search whenever compiled. Scripts/measure_tt_capacity.py parses `ttstats`.
@@ -97,7 +104,8 @@ struct TTStats {
 		    {"qshits", qs_hits},           {"qscutoffs", qs_cutoffs},
 		    {"stores", stores()},          {"declined", stores_declined},
 		    {"filled", stores_filled},     {"refreshed", stores_refreshed},
-		    {"evictstale", evicted_stale}, {"evictcurrent", evicted_current}};
+		    {"evictstale", evicted_stale}, {"evictcurrent", evicted_current},
+		    {"evalserved", eval_served},   {"evalcomputed", eval_computed}};
 		std::string line = "ttstats";
 		for (const auto& [name, value] : fields)
 			line.append(" ").append(name).append(" ").append(std::to_string(value));
