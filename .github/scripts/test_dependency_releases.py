@@ -72,6 +72,7 @@ class ReleaseChecks(unittest.TestCase):
 
         def fake_gh(*args):
             if args[0] == 'api':
+                self.assertIn('labels=dependencies', args[-1])
                 return json.dumps([issues])
             if '--body-file' in args:
                 path = Path(args[args.index('--body-file') + 1])
@@ -79,7 +80,7 @@ class ReleaseChecks(unittest.TestCase):
                 self.assertNotIn('--body', args)
             if args[:2] == ('issue', 'create'):
                 labels = [args[index + 1] for index, arg in enumerate(args) if arg == '--label']
-                self.assertEqual(labels, ['category:build-tooling', 'category:test', 'ready-for-human'])
+                self.assertEqual(labels, ['dependencies', 'category:build-tooling', 'category:test', 'ready-for-human'])
             writes.append(args[:3])
             return ''
 

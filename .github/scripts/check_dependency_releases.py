@@ -101,7 +101,7 @@ def report_findings(body):
 
 
 def sync_issue(repository, body, has_updates, publish):
-    issues = [issue for issue in api_items(f'repos/{repository}/issues?state=all&per_page=100')
+    issues = [issue for issue in api_items(f'repos/{repository}/issues?state=all&labels=dependencies&per_page=100')
               if 'pull_request' not in issue and MARKER in (issue['body'] or '').strip().splitlines()]
     if len(issues) > 1:
         raise ValueError('Multiple dependency tracking issues found; consolidate them first')
@@ -122,6 +122,7 @@ def sync_issue(repository, body, has_updates, publish):
             gh('issue', 'edit', str(issue['number']), '--repo', repository, '--body-file', str(path))
         else:
             gh('issue', 'create', '--repo', repository, '--title', TITLE, '--body-file', str(path),
+               '--label', 'dependencies',
                '--label', 'category:build-tooling', '--label', 'category:test', '--label', 'ready-for-human')
     return f'{action}.'
 

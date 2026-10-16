@@ -23,8 +23,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   alone, and follows fastchess's established alpha release channel. Updates and validation remain
   manual; the checker changes no dependency versions.
 - Report comparisons ignore newline formatting and prose-only edits, preventing deferred issues
-  from reopening without changed dependency findings. New reports carry build-tooling, test and
-  human-readiness labels.
+  from reopening without changed dependency findings. New reports carry dependency, build-tooling,
+  test and human-readiness labels; lookups filter by `dependencies` before matching the hidden marker.
 - Offline fixtures cover numeric release ordering, prerelease filtering, pagination, issue reuse,
   read-only previews and failures before publication; they also run in the Linux Release PR gate.
   `Docs/Dependencies.md` and `Docs/CI.md` describe operation and issue lifecycle.

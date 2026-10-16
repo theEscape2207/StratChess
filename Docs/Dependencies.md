@@ -30,10 +30,11 @@ releases, ignoring drafts and library prereleases. fastchess's normal releases u
 tags, so its established alpha channel is included along with final releases. Tags without a
 release are not checked. This checks the committed fastchess pin, not the locally installed tool.
 
-Newer releases create one **Dependency releases available** issue with `category:build-tooling`,
-`category:test` and `ready-for-human` labels. It is identified by a hidden body marker, so keep that
-marker intact. The lookup scans issues in all states, allowing title and label edits without losing
-the report. Later runs compare the dependency rows, ignoring line endings, surrounding whitespace
+Newer releases create one **Dependency releases available** issue with `dependencies`,
+`category:build-tooling`, `category:test` and `ready-for-human` labels. The lookup filters by
+`dependencies` across open and closed issues, then checks a hidden body marker. Keep that label and
+marker intact; the issue title and other labels may be changed. Later runs compare the dependency
+rows, ignoring line endings, surrounding whitespace
 and prose edits; they add no weekly comments or timestamps. When everything is current, no issue
 is created, and an existing open report is updated
 to say so. Close the issue when addressed or deferred. An unchanged closed report stays closed;
