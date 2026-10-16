@@ -1,4 +1,4 @@
-// EvalPawnCacheTests.cpp — the pawn-structure cache (#837) never changes a score.
+// EvalPawnCacheTests.cpp — the pawn-structure cache never changes a score.
 //
 // Evaluate(board, cache) must equal Evaluate(board) for every position and every prior cache
 // content. The corpus walk is the broad check; the directed cases pin the state transitions it
