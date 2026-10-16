@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-16 | 83b4cf9, static evaluation in the TT entry (#832; node-identical, a speed change only) | 0fb63d0 | 19980 | 10+0.1 | **+14.82 +/- 3.53** | gain |
 | 2026-10-16 | cced4d1, legal-only move lists at in-check nodes (#823; node-identical, a speed change only) | 663e2c5 | 23976 | 10+0.1 | **+30.36 +/- 3.23** | gain |
 | 2026-10-15 | 8218d61, early TT prefetch from the predicted child key (#825; 17 of 18 shards) | f551ad2 | 24548 | 10+0.1 | **-0.08 +/- 3.18** | discarded |
 | 2026-10-13 | cd97a1f, SCREEN arm B: `LmrHistoryDivisor=32` (#816; best of three by 0.0 sigma, not confirmed) | cd97a1f (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+0.52 +/- 6.18** | inconclusive @ 6660 |
@@ -91,6 +92,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-16 -- 83b4cf9, static evaluation in the TT entry (#832) (19980 games)
+
+**Gating run for PR #834, dispatched once CI was green.** [Run `38906169058`](https://github.com/theEscape2207/StratChess/actions/runs/38906169058), about 3 h 16 min, 18 shards x 555 pairs, reference the merge base `0fb63d0`. The aggregate passed its integrity checks (18 shards, 555 pairs each). Pooled Ptnml(0-2) [671, 2091, 3801, 2569, 858], score 52.13%, interval [+11.29, +18.36]; 18 of 18 shards favour the candidate by score. The search is node-identical (`Compare-SearchEquivalence.ps1`), so the whole gain is speed: local clang-cl nps +5.73% [+5.65%, +5.82%] on an ordered pair, with 24.7% of evaluations served from the table under game load. On the lab's GCC build the speed-up is unmeasured.
 
 ### 2026-10-16 -- cced4d1, legal-only move lists at in-check nodes (#823) (23976 games)
 

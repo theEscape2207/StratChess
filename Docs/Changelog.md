@@ -34,7 +34,9 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   +5.73% nps [+5.65%, +5.82%]**, nodes identical; `Compare-SearchEquivalence` identical (6
   positions, depth 12). Served rate under game load (`measure_tt_capacity.py`, 20 lab games, 1.2M
   nodes, Hash 192): **24.7%** of evaluations, against the bench spike's 19.1% of repeat
-  opportunities. Below the design's ~+10% equal-average-cost estimate. Lab Elo: pending.
+  opportunities. Below the design's ~+10% equal-average-cost estimate. Strength lab against the
+  merge base (run `38906169058`, 19980 games): **+14.82 +/- 3.53 Elo**, 18 of 18 shards favour
+  the candidate.
 
 ## 2026-10-16: Weekly dependency and fastchess release checks (#836)
 
