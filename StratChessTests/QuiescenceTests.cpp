@@ -744,3 +744,43 @@ TEST_CASE("Qsearch - a depth-1 search does not play into stalemate", "[search][q
 	INFO("depth-1 best move = " << MoveFormatter::ToUCI(best));
 	CHECK((after.InCheck() || has_legal_move(after)));
 }
+
+// ============================================================================
+// Static evaluation in the TT entry
+// ============================================================================
+
+TEST_CASE("Qsearch - a stand-pat node stores its static eval", "[search][qsearch][tt]")
+{
+	AIPerlexTestFixture fix("7k/8/8/8/8/8/8/1Q4K1 w - - 0 1");
+
+	fix.quiesce_via_pvs(-GameValues::Search_Init, GameValues::Search_Init, /*ply=*/0);
+
+	const auto entry = fix.probe_tt(/*ply=*/0);
+	REQUIRE(entry.has_value());
+	CHECK(entry->static_eval == fix.evaluate());
+}
+
+TEST_CASE("Qsearch - a dead-draw node stores no static eval", "[search][qsearch][tt]")
+{
+	// The dead-draw score is contempt, which the key does not carry, so it is never stored.
+	AIPerlexTestFixture fix("7k/8/8/8/8/8/8/1N4K1 w - - 0 1");
+	REQUIRE(fix.evaluate() == GameValues::Draw);
+
+	fix.quiesce_via_pvs(-GameValues::Search_Init, GameValues::Search_Init, /*ply=*/0);
+
+	const auto entry = fix.probe_tt(/*ply=*/0);
+	REQUIRE(entry.has_value());
+	CHECK(entry->static_eval == kNoStaticEval);
+}
+
+TEST_CASE("Qsearch - stand-pat is served from the probed entry's eval", "[search][qsearch][tt]")
+{
+	// No captures, so the node returns its stand-pat; a value no evaluation of this position gives
+	// proves it came from the entry. The entry's budget is too low for its bound to be used.
+	constexpr int16_t planted = 1'234;
+	AIPerlexTestFixture fix("7k/8/8/8/8/8/8/1Q4K1 w - - 0 1");
+	REQUIRE(fix.evaluate() != planted);
+	fix.store_eval_only_entry(planted);
+
+	CHECK(fix.quiesce_via_pvs(-GameValues::Search_Init, GameValues::Search_Init, /*ply=*/0) == planted);
+}

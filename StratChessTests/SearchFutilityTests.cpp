@@ -234,6 +234,24 @@ TEST_CASE("Reverse futility: a cut null-move child cannot fail high", "[search][
 	CHECK(null_score < kParentBeta);
 }
 
+TEST_CASE("Reverse futility: a probed entry's static eval stands in for Evaluate()", "[search][futility][tt]")
+{
+	// A beta no search of this position reaches, so only an eval served from the table can cut it.
+	constexpr int kBeta = 3000;
+	const auto score_with = [](bool plant) {
+		AIPerlexTestFixture fix(kBaselineFen);
+		fix.set_reverse_futility(true);
+		fix.arm_clock();
+		REQUIRE(fix.evaluate() < kBeta - 1000);
+		if (plant)
+			fix.store_eval_only_entry(5000);
+		return fix.search_node(/*depth=*/1, /*ply=*/1, kBeta - 1, kBeta, /*is_pv_node=*/false);
+	};
+
+	CHECK(score_with(false) < kBeta);
+	CHECK(score_with(true) == kBeta);
+}
+
 TEST_CASE("Reverse futility: cut children leave no killer or history behind", "[search][futility]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);

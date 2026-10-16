@@ -70,7 +70,7 @@ tools box is a collection of consumers: perft does not invoke evaluation or the 
 | `ThreadData` | Per-worker position, PV, counters, history and recursion scratch | Includes several lifetimes: per-node, per-search and state retained between moves. Not a purely temporary search record. |
 | `SearchLimits` / `Engine::resolve_limits` | Express per-search constraints and resolve them against configured defaults | Declared in `SearchLimits.h`, implemented in `SearchLimits.cpp`; returns depth, soft/hard time budgets and node limit. |
 | `SearchControl` | Apply resolved limits, manage the stop latch and expose time/node checks | Soft time is checked at iteration boundaries; hard time and node limits can abort search. [Polling flow](#limit-observations). |
-| `TranspositionTable` | Cache searched scores/bounds and ordering hints | Lock-free probes/stores; clearing is a lifecycle operation. Exposes an opaque `PrefetchTarget` for Board; receives keys, not Boards. |
+| `TranspositionTable` | Cache searched scores/bounds, static evals and ordering hints | Lock-free probes/stores; clearing is a lifecycle operation. Exposes an opaque `PrefetchTarget` for Board; receives keys, not Boards. |
 | `Evaluator` | Static score and explanatory breakdown | Pure per-position term calculations plus a draw-score pair configured before search workers start. |
 | `SearchTuningSchema` | Validate and bind configuration | `SearchTuning.def` is the catalogue; JSON and UCI exposure are deliberately not identical. |
 | `UciHandler` / `UciWriter` | Protocol parsing, lifecycle coordination and serialized output | Owns a Board, concrete search instance and a separate unconfigured evaluator for `eval`. |

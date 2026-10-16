@@ -315,7 +315,7 @@ class AIPerlexTestFixture {
 		const Move move = MoveFormatter::FromUCI(uci, board_);
 		REQUIRE_FALSE(move.is_null());
 		ai->tt_->store(board_.get_zobrist_hash(), value, depth, static_cast<int16_t>(ply), move, bound,
-		               NodeType::CUT_NODE, SearchPhase::MAIN);
+		               NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
 	}
 
 	// The first move ScoreMoves would put in front of the search. Eligibility requires the
@@ -368,7 +368,7 @@ class AIPerlexTestFixture {
 	void store_tt_marker() const
 	{
 		ai->tt_->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
-		               SearchPhase::MAIN);
+		               SearchPhase::MAIN, kNoStaticEval);
 	}
 
 	bool has_tt_marker() const { return ai->tt_->probe(TT_MARKER_KEY, 0).has_value(); }
@@ -599,7 +599,15 @@ class AIPerlexTestFixture {
 	void store_qsearch_entry(int16_t value, int16_t qsearch_budget, int ply) const
 	{
 		ai->tt_->store(board_.get_zobrist_hash(), value, qsearch_budget, static_cast<int16_t>(ply), Move::EmptyMove(),
-		               BoundType::EXACT, NodeType::PV_NODE, SearchPhase::QUIESCENCE);
+		               BoundType::EXACT, NodeType::PV_NODE, SearchPhase::QUIESCENCE, kNoStaticEval);
+	}
+
+	// Plants an entry for the fixture's board whose only usable content is its static eval: a
+	// quiescence budget no node has, so no probe can take its bound.
+	void store_eval_only_entry(int16_t static_eval) const
+	{
+		ai->tt_->store(board_.get_zobrist_hash(), 0, -100, 0, Move::EmptyMove(), BoundType::UPPER, NodeType::ALL_NODE,
+		               SearchPhase::QUIESCENCE, static_eval);
 	}
 
 	// Plants a MAIN entry for the fixture's board, so a test can prove what quiescence() will
@@ -607,7 +615,7 @@ class AIPerlexTestFixture {
 	void store_main_entry(int16_t value, int16_t depth, int ply, BoundType bound) const
 	{
 		ai->tt_->store(board_.get_zobrist_hash(), value, depth, static_cast<int16_t>(ply), Move::EmptyMove(), bound,
-		               NodeType::CUT_NODE, SearchPhase::MAIN);
+		               NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
 	}
 
 	// Replays a UCI move list onto td_.board, then runs one quiescence() node at the

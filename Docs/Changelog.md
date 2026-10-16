@@ -15,6 +15,29 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-16: Static evaluation in the TT entry (#832)
+
+### Changed
+- Each TT entry carries the side-to-move `Evaluate()` of its position in 16 bits taken from the key:
+  word 0 is key bits 16-63 above the eval, the bucket index implying the low bits, so from
+  `Hash` = 4 MiB a probe still checks all 64. `pvs()` seeds `node_eval` from a probed entry of
+  either phase, and `quiescence()` takes its stand-pat from it out of check. Node-identical.
+- Stores pass the frame's eval or `kNoStaticEval` (no default; all 8 sites). A same-key store
+  without one inherits the stored eval; a declined store writes nothing. Dead-draw evals, the one
+  `Evaluate()` result that reads contempt rather than the key, are never stored.
+- Slot word 0 is now XORed with the payload word times `0x9E3779B97F4A7C15`, not the payload
+  itself: plain XOR would accept a torn pair differing only in `value`, which sits under the eval
+  bits. An exhaustive `[tt_torn]` test proves no torn pair differing in two or fewer payload fields
+  decodes to a stored key; it fails for K = 3 and for plain XOR.
+- `ttstats` gains `evalserved` / `evalcomputed`; `measure_tt_capacity.py` prints `evalsrv%`.
+- **Measured:** `Compare-Bench -Control`, 12 rounds, ordered pair against `0fb63d0`: **Speedup,
+  +5.73% nps [+5.65%, +5.82%]**, nodes identical; `Compare-SearchEquivalence` identical (6
+  positions, depth 12). Served rate under game load (`measure_tt_capacity.py`, 20 lab games, 1.2M
+  nodes, Hash 192): **24.7%** of evaluations, against the bench spike's 19.1% of repeat
+  opportunities. Below the design's ~+10% equal-average-cost estimate. Strength lab against the
+  merge base (run `38906169058`, 19980 games): **+14.82 +/- 3.53 Elo**, 18 of 18 shards favour
+  the candidate.
+
 ## 2026-10-16: Weekly dependency and fastchess release checks (#836)
 
 ### Added

@@ -48,10 +48,15 @@ enum class NodeType : uint8_t {
 // Which search produced an entry: pvs() (MAIN) or quiescence().
 enum class SearchPhase : uint8_t { MAIN, QUIESCENCE };
 
+// The static_eval of an entry whose writer did not evaluate. Evaluate() never returns it: static
+// scores stay below Mate_Threshold.
+inline constexpr int16_t kNoStaticEval = std::numeric_limits<int16_t>::min();
+
 // A decoded transposition-table entry, as probe() returns it. Node type and age feed the
 // replacement ranking; the best move is a move-ordering hint.
 struct TTEntry {
-	std::uint64_t key = 0;
+	std::uint64_t key = 0;               // Bits 16-63 only; the bucket index stands in for the rest.
+	int16_t static_eval = kNoStaticEval; // Side-to-move Evaluate() of the position, if its writer had one.
 	int16_t value = 0;
 	int16_t depth = 0; // Search remaining when the entry was produced: main-search depth, or
 	                   // quiescence budget. Larger always means more search, in both phases.
@@ -78,8 +83,21 @@ class TranspositionTable {
 	static constexpr size_t BUCKET_SIZE = 4;
 
 	// Only storage is packed; callers receive a decoded value independent of this layout.
+	//
+	// Word 0 holds key bits 16-63 above a 16-bit static eval. The key's low bits are implied by the
+	// bucket index (21 of them at the default Hash, 24 at the cap), so from Hash = 4 MiB a probe still
+	// checks all 64 key bits; below it, 48 instead of up to 50. An all-zero key48 reads as empty,
+	// which a key hits 2^-48 of the time and which costs that one entry.
+	//
+	// The 16 bits come from the key because every alternative changes something else: narrowing the
+	// payload needs a 5-bit age that wraps after 32 searches instead of 256, plus a range argument for
+	// a 14-bit eval; 20-byte entries cost a quarter of the capacity and the two-word Slot; a parallel
+	// eval array costs a second cache line per probe.
 	struct PackedEntry {
-		std::uint64_t key{0};
+		static constexpr unsigned KEY_SHIFT = 16;
+		static constexpr std::uint64_t EVAL_MASK = 0xFFFF;
+
+		std::uint64_t key_eval{static_cast<uint16_t>(kNoStaticEval)};
 		int16_t value{0};
 		int16_t depth{0};
 		Move best_move;
@@ -94,6 +112,15 @@ class TranspositionTable {
 		static constexpr uint8_t NODE_MASK = 0x18;
 		static constexpr unsigned BOUND_SHIFT = 1;
 		static constexpr unsigned NODE_SHIFT = 3;
+
+		constexpr std::uint64_t key48() const noexcept { return key_eval >> KEY_SHIFT; }
+		constexpr bool matches(std::uint64_t key) const noexcept { return key48() == key >> KEY_SHIFT; }
+		constexpr bool empty() const noexcept { return key48() == 0; }
+		constexpr int16_t static_eval() const noexcept { return static_cast<int16_t>(key_eval & EVAL_MASK); }
+		constexpr void set_key_eval(std::uint64_t key, int16_t eval) noexcept
+		{
+			key_eval = (key >> KEY_SHIFT << KEY_SHIFT) | static_cast<uint16_t>(eval);
+		}
 
 		constexpr SearchPhase phase() const noexcept { return static_cast<SearchPhase>(metadata & PHASE_MASK); }
 		constexpr BoundType bound() const noexcept
@@ -125,7 +152,8 @@ class TranspositionTable {
 		TTEntry unpack() const noexcept
 		{
 			TTEntry result;
-			result.key = key;
+			result.key = key48() << KEY_SHIFT;
+			result.static_eval = static_eval();
 			result.value = value;
 			result.depth = depth;
 			result.best_move = best_move;
@@ -153,23 +181,32 @@ class TranspositionTable {
 	static_assert(sizeof(PackedEntry) == 16, "PackedEntry size change alters capacity and search behaviour; "
 	                                         "a new field must also be set in unpack()");
 	static_assert(alignof(PackedEntry) == 8 && std::is_standard_layout_v<PackedEntry>);
-	static_assert(offsetof(PackedEntry, key) == 0 && offsetof(PackedEntry, value) == 8 &&
+	static_assert(offsetof(PackedEntry, key_eval) == 0 && offsetof(PackedEntry, value) == 8 &&
 	              offsetof(PackedEntry, depth) == 10 && offsetof(PackedEntry, best_move) == 12 &&
 	              offsetof(PackedEntry, metadata) == 14 && offsetof(PackedEntry, age) == 15);
 
 	static_assert(std::is_trivially_copyable_v<PackedEntry>, "a Slot converts with std::bit_cast");
 	static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
 
-	// One entry as two relaxed atomic words: the key XOR the payload, and the payload, where the
-	// payload is everything after the key. A probe accepts the slot only if the words decode to its
-	// key. Nothing is published through an entry, so per-word atomicity is all that is needed.
+	// One entry as two relaxed atomic words: word 0 (key48 and eval) XOR the payload word times
+	// SLOT_MIX, and the payload, which is everything after word 0. A probe accepts the slot only if
+	// the words decode to its key. Nothing is published through an entry, so per-word atomicity is
+	// all that is needed.
 	//
 	// Two stores into one slot can interleave and leave one word from each, transiently or until the
-	// slot is next written. Such a pair decodes to neither key but to a pseudo-key, which under the
-	// random-Zobrist model matches a probe no more often than any stored key does: it costs a lost
-	// entry and keeps the ordinary collision rate. That rests on a model, not a measurement. The
-	// payload is one word, so it is always one store's whole payload: a false match is a collision,
-	// never a torn entry.
+	// slot is next written. A pair (A0, B1) decodes to A's key only if the top 48 bits of A1 * K and
+	// B1 * K agree, which needs A1 - B1 to be one of the 2^17 - 2 values j * K^-1, 0 < |j| < 2^16.
+	// - Deterministic: none of those is a difference in two or fewer of the payload's five fields, so
+	//   a pair whose payloads differ in at most two fields -- value-only, depth-only, the value and
+	//   depth a re-search changes -- is always rejected. A unit test enumerates them.
+	// - Modelled: a pair differing in three or more fields is rejected unless its difference happens
+	//   to be one of those values. That assumes real payload differences are uncorrelated with
+	//   multiples of K^-1, the same kind of assumption as the random-Zobrist model; it is not a
+	//   measured or unconditional probability.
+	// A rejected pair decodes to a pseudo-key and costs a lost entry. Plain XOR would not do: B's
+	// value lies under A's eval bits, so a value-only difference would decode to A's key.
+	static constexpr std::uint64_t SLOT_MIX = 0x9E37'79B9'7F4A'7C15;
+
 	struct Slot {
 		std::atomic<std::uint64_t> key_xor_data{encode(PackedEntry{})[0]};
 		std::atomic<std::uint64_t> data{encode(PackedEntry{})[1]};
@@ -185,11 +222,11 @@ class TranspositionTable {
 	              "Bucket must be exactly BUCKET_SIZE entries with no padding");
 	static_assert(sizeof(Bucket) == 64 && alignof(Bucket) == 64);
 
-	// Word 0 is the key on either endianness, because the key is a whole uint64_t at offset 0.
+	// Word 0 is key_eval on either endianness, because it is a whole uint64_t at offset 0.
 	static constexpr std::array<std::uint64_t, 2> encode(const PackedEntry& entry) noexcept
 	{
 		auto words = std::bit_cast<std::array<std::uint64_t, 2>>(entry);
-		words[0] ^= words[1];
+		words[0] ^= words[1] * SLOT_MIX;
 		return words;
 	}
 
@@ -197,7 +234,7 @@ class TranspositionTable {
 	{
 		std::array<std::uint64_t, 2> words{slot.key_xor_data.load(std::memory_order_relaxed),
 		                                   slot.data.load(std::memory_order_relaxed)};
-		words[0] ^= words[1];
+		words[0] ^= words[1] * SLOT_MIX;
 		return std::bit_cast<PackedEntry>(words);
 	}
 
@@ -324,7 +361,7 @@ class TranspositionTable {
 		for (size_t idx = 0; idx < buckets_to_sample; ++idx) {
 			for (const auto& slot : table[idx].slots) {
 				const PackedEntry entry = load(slot);
-				occupied += entry.key != 0 && writtenThisSearch(entry.age, search_start_age, search_age_span);
+				occupied += !entry.empty() && writtenThisSearch(entry.age, search_start_age, search_age_span);
 			}
 		}
 
@@ -343,7 +380,7 @@ class TranspositionTable {
 
 		for (const auto& slot : bucket.slots) {
 			const PackedEntry entry = load(slot);
-			if (entry.key == key) {
+			if (entry.matches(key)) {
 				TTEntry result = entry.unpack();
 				// Denormalize mate scores for current ply
 				if (is_mate_score(result.value)) {
@@ -358,9 +395,13 @@ class TranspositionTable {
 	// Decides on one snapshot of each slot. Under Lazy SMP two stores can pick the same slot and lose
 	// an entry, put one key in two slots (probes then find the first), or interleave and leave a mixed
 	// slot (see Slot). At one thread every snapshot is exact.
+	//
+	// static_eval is the writer's Evaluate() of this position, or kNoStaticEval. It has no default so
+	// that no call site can forget it.
 	TTStoreOutcome store(std::uint64_t key, int16_t value, int16_t depth, int16_t ply, Move best_move, BoundType bound,
-	                     NodeType node_type, SearchPhase phase)
+	                     NodeType node_type, SearchPhase phase, int16_t static_eval)
 	{
+		assert(static_eval == kNoStaticEval || std::abs(static_eval) < GameValues::Mate_Threshold);
 		const size_t index = bucket_index(key);
 		auto& bucket = table[index];
 
@@ -375,7 +416,7 @@ class TranspositionTable {
 			snapshots[i] = load(bucket.slots[i]);
 			const auto& entry = snapshots[i];
 
-			if (entry.key == key) {
+			if (entry.matches(key)) {
 				// Exact same position: this slot is the only candidate, but whether the
 				// incoming entry earns it is still a replacement decision -- see below.
 				replace_index = i;
@@ -387,7 +428,7 @@ class TranspositionTable {
 			// entry rather than competing on score. Scoring it would make the bucket's
 			// effective associativity depend on the replacement arithmetic: an entry whose
 			// score sits below an empty slot's is evicted while that slot stays empty.
-			if (entry.key == 0) {
+			if (entry.empty()) {
 				if (!found_empty) {
 					found_empty = true;
 					replace_index = i;
@@ -431,9 +472,15 @@ class TranspositionTable {
 			// different position, and no probe could tell such a hint from a real one.
 			if (best_move.is_null())
 				best_move = entry.best_move;
+
+			// The same key is the same position, and so the same static eval: everything Evaluate()
+			// reads is in the key, and the search never stores a dead-draw eval, the one input that
+			// is not. A declined store above merges no eval either, for the reason it merges nothing.
+			if (static_eval == kNoStaticEval)
+				static_eval = entry.static_eval();
 		}
 
-		const bool was_empty = (entry.key == 0);
+		const bool was_empty = entry.empty();
 		TTStoreOutcome outcome =
 		    same_key ? TTStoreOutcome::Refreshed : (was_empty ? TTStoreOutcome::Filled : TTStoreOutcome::Evicted);
 		if constexpr (kTTStatsCompiled) {
@@ -442,7 +489,7 @@ class TranspositionTable {
 				outcome = TTStoreOutcome::EvictedCurrentSearch;
 		}
 
-		entry.key = key;
+		entry.set_key_eval(key, static_eval);
 		entry.value = normalize_for_storage(value, ply);
 		entry.depth = depth;
 		entry.best_move = best_move;
