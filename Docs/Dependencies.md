@@ -9,8 +9,10 @@ the project owner's approval** (`CLAUDE.md`). This file covers keeping the three
 `FIND_PACKAGE_ARGS`. A system or vcpkg copy at another version would otherwise satisfy the pin
 silently. The comments around those declarations explain each consumption setting.
 
-**Nothing automates this.** Dependabot (`.github/dependabot.yml`) bumps only the workflow actions,
-because it cannot read `FetchContent` pins. To check for new releases by hand:
+The **Dependency releases** workflow (`.github/workflows/dependency-releases.yml`) checks these
+three pins and the strength lab's fastchess pin every Monday at 07:37 UTC. Dependabot
+(`.github/dependabot.yml`) separately bumps workflow actions; it cannot read `FetchContent` pins.
+To check for library releases by hand:
 
 ```bash
 for r in gabime/spdlog nlohmann/json catchorg/Catch2; do
@@ -19,6 +21,44 @@ done
 ```
 
 Read the release notes for every version you skip, not only the newest one.
+
+## Automated release checks
+
+The checker reads the three library pins from `CMakeLists.txt` and `FASTCHESS_VERSION` from
+`.github/workflows/strength.yml`. It compares versions numerically across published GitHub
+releases, ignoring drafts and library prereleases. fastchess's normal releases use `-alpha`
+tags, so its established alpha channel is included along with final releases. Tags without a
+release are not checked. This checks the committed fastchess pin, not the locally installed tool.
+
+Newer releases create one **Dependency releases available** issue, identified by a hidden body
+marker. Later runs update that issue only when findings change; they add no weekly comments or
+timestamps. When everything is current, no issue is created, and an existing open report is updated
+to say so. Close the issue when addressed or deferred. An unchanged closed report stays closed;
+different findings with pending updates reopen the same issue. Put discussion in comments because
+the generated body is replaced. Duplicate marked issues fail the check rather than creating more.
+
+Every dependency lookup must succeed before the checker can write an issue. API errors, missing
+pins and feeds without an eligible release fail the workflow, leaving the report alone. The run summary
+contains the current report. Updates remain manual and follow the validation below; fastchess
+updates follow [Measurements/README.md](../Measurements/README.md), including output-parser checks.
+
+Run **Dependency releases → Run workflow** on `main`, or use:
+
+```bash
+gh workflow run dependency-releases.yml --ref main
+```
+
+For a read-only local preview, with Python 3 and authenticated `gh` on PATH:
+
+```bash
+python .github/scripts/check_dependency_releases.py --repo theEscape2207/StratChess
+python .github/scripts/test_dependency_releases.py
+```
+
+The workflow uses only `contents: read` and `issues: write` from `GITHUB_TOKEN`; it needs no
+additional secret or service. Publication runs only on this repository's `main` branch, including
+manual dispatches. GitHub can delay schedules and disables scheduled workflows in public
+repositories after 60 days without activity; re-enable it in Actions if that happens.
 
 ## Bumping a version
 

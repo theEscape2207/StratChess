@@ -1,0 +1,30 @@
+name: Dependency releases
+
+on:
+  schedule:
+    - cron: '37 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: dependency-releases
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: github.repository == 'theEscape2207/StratChess' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Verify dependency release checker
+        run: python3 .github/scripts/test_dependency_releases.py
+      - name: Check releases and maintain tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/check_dependency_releases.py --publish
