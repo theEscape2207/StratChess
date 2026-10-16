@@ -2,7 +2,7 @@
 //
 // Tests the TT in complete isolation — no Board, no engine startup required.
 // Covers store/probe round-trips, same-key overwrite, mate-score normalization,
-// clear(), the XOR-validated slot encoding and concurrent probe/store.
+// clear(), the static eval, the multiply-mixed slot encoding and concurrent probe/store.
 //
 // See Docs/TestDesign.md for the rationale.
 
@@ -476,7 +476,7 @@ TEST_CASE("TT - repeated clear reports no work after the table is empty", "[tt]"
 
 // ── Lock-free slots ───────────────────────────────────────────────────────────
 //
-// A slot is two atomic words, key ^ payload and payload. Racing stores can leave one word from
+// A slot is two atomic words, (key48 | eval) ^ payload * K and payload. Racing stores can leave one word from
 // each; these pin what such a slot decodes to.
 
 namespace {
@@ -651,7 +651,7 @@ TEST_CASE("TT - two interleaved stores into one slot leave a mixed pair", "[tt]"
 
 TEST_CASE("TT - concurrent probes return only the probed key's payload", "[tt][smp]")
 {
-	// One bucket, so all four threads contend for four slots and every probe compares the full key.
+	// One bucket, so all four threads contend for four slots and every probe compares key bits 16-63.
 	TranspositionTable tt(0);
 	tt.newSearch();
 
