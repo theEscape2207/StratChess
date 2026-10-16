@@ -59,6 +59,8 @@ addresses). `Compare-Bench.ps1 -Control` ran 12 rounds at depth 13, with identic
 
 - Result: **−7.37% [−8.23, −6.50]**; A/A control +0.36% [−0.15, +0.88].
 - Every position cost 6.9-8.7%.
+- Raw data and the probe source are kept in
+  `StratChessSupport\DesignRecords\837-probe-data\`.
 - The split between the terms was not re-measured. Spike #833's ratio (pawns 62.6%, cover 37.4%)
   gives pawns ≈ 4.6% and cover ≈ 2.8%.
 
@@ -66,20 +68,28 @@ addresses). `Compare-Bench.ps1 -Control` ran 12 rounds at depth 13, with identic
 
 ### D1: one probe, with a pawn-only tag and king-keyed cover inside the entry
 
-Net at 4,096 entries, taking a probe at 1.1-1.65% (Assumption 1):
+These are planning scenarios at 4,096 entries, not cache-speed intervals. They subtract
+percentages linearly, though −7.37% nps is about +7.96% time at identical nodes. They take a
+probe at 1.1-1.65% of runtime, a historical heuristic (Assumption 1). They also leave out
+blockade replay and miss-fill costs. Slice 2's measurement of the whole implementation is the
+only speed figure.
 
-| key | removed work | probes | net |
+| key | removed work | probes | net (scenario) |
 |---|---:|---:|---:|
 | **pawn-only tag, embedded cover** | 0.878 × 4.6 + 0.725 × 2.8 ≈ **6.1%** [5.3, 6.8] | 1 | **+3.7% to +5.6%** |
 | pawns + both king squares | 0.745 × 7.37 ≈ 5.5% [4.8, 6.1] | 1 | +3.2% to +5.0% |
 | per colour (#131's layout) | 0.796 × 7.37 ≈ 5.9% [5.2, 6.6] | 2 | +1.9% to +4.4% |
 
-The embedded key wins on both counts. `eval_pawns` keeps the pawn-only hit rate (88%): a king
-move does not evict it. The cover gets nearly the combined key's rate, with no second probe.
+`eval_pawns` keeps the pawn-only hit rate (88%): a king move does not evict it. The cover gets
+nearly the combined key's rate (72.5% vs 74.5%), with no second probe.
 
-At the worst bench position (pawn 75%, cover 45%), the net is still ≈ +3.0%. #131 measured
-two probes at 2.2-3.3% before #832 cut the number of evaluations. That price is used here
-unscaled, so the probe cost is overstated rather than understated.
+At equal probe cost, the embedded key removes `0.133 × pawn_cost − 0.020 × cover_cost` more
+work than the combined key. So it wins only while pawns are more than ~13% of the two terms'
+combined cost. At the estimated 62.6% share, the advantage is ≈ 0.56 points. That condition
+holds comfortably, but the margin is small. If the measured cache misses the gate, the combined
+key is not ruled out by this table.
+
+At the worst bench position (pawn 75%, cover 45%), the scenario is ≈ +3.0%.
 
 Rejected:
 
@@ -102,10 +112,21 @@ A slot is chosen by multiply-mixing the two bitboards and keeping the top bits. 
 compare means a collision costs a miss, never a wrong score. There is no replacement policy: a
 miss overwrites.
 
+**Validity rules.** These are required state transitions; the tag compare alone does not give
+them:
+
+- **Empty slot:** `wp = bp = ~0ULL`. No legal position has a square holding both a white and a
+  black pawn, so no real tag matches it. An all-zero tag stays a valid pawnless structure.
+- **Empty cover:** `king_sq = NO_SQUARE`, since 0 is the real square a8. Construction sets every
+  slot empty, with both cover keys `NO_SQUARE`.
+- **Pawn-tag replacement** (a miss) writes the pawn part and resets **both** cover keys to
+  `NO_SQUARE`, before any cover fill. So a cover can never outlive the pawn structure it was
+  computed from, even when D5's guard skips the fill.
+
 `int16_t` holds every value with wide margin. Per colour, |score| ≤ 8 × 35 and the passer sums
 are ≤ 8 × 45 × 32/16 = 720. Cover is bounded by the existing `KING_PAWN_COVER_WORST` and
 `KING_SAFETY_BEST_BONUS`. These bounds become `static_assert`s next to the entry, not runtime
-checks.
+checks, beside `sizeof(Entry) == 64` and `alignof(Entry) == 64`.
 
 The table size is a constructor argument (a power of two). Slice 2 sets the shipped size by
 measurement: sweep 1,024 / 4,096 / 16,384 entries (64 KB / 256 KB / 1 MB per thread) and take
@@ -154,12 +175,19 @@ per-passer terms, so the result is bit-identical. It is not an approximation.
 Both the miss path and the uncached path use one helper that computes a passer's
 (`scale`, blocked-scale) contribution, so the two paths cannot drift apart.
 
-### D5: cover edge cases bypass the cache
+### D5: cover edge cases bypass the cover subentry only
 
-`eval_king_pawn_cover` returns `{}` for `phase == 0` or a missing king. Both checks stay ahead of
-the probe in the cached path, so the entry only holds values for a real king at a non-zero phase.
-A colour whose king square differs from the entry's is recomputed and written back into the
-entry, without touching the other colour or the pawn part.
+`eval_king_pawn_cover` returns `{}` for `phase == 0` or a missing king. The probe and the pawn
+part run unconditionally, including at phase zero. The guard wraps only cover reuse and fill:
+
+- a guarded colour returns `{}` and leaves its cover subentry untouched;
+- otherwise the stored cover is reused only if the stored king square equals the current one.
+  The current square is a real square here, so it never matches the `NO_SQUARE` sentinel;
+- on a mismatch, that colour's cover is recomputed and written back, without touching the other
+  colour or the pawn part.
+
+Because of D2's replacement rule, a cover skipped here can only be stale against the *same* pawn
+structure. Its king-square key still guards it.
 
 ### D6: a cache write is exempt from the aborted-frame rule
 
@@ -172,12 +200,21 @@ starts cold, which only costs it hits.
 
 ## Assumptions I cannot verify from the code
 
-1. **The one-probe cost is ~1.1-1.65% of runtime.** This is half of #131's measured two-probe
-   cost; the probe itself is not measured. It is settled by slice 2's bench, which is the gate.
-   If it is ≥ 3%, the net falls below +2%, and the gate closes the issue.
+1. **The cost of one probe is unknown.** 1.1-1.65% is a heuristic: half of #131's inferred
+   two-probe cost. #131 did not time that cost in isolation. It inferred it from a flat result
+   and estimated removed work, with a 24-byte per-colour entry (96 KiB at 4,096 entries).
+   This design differs in three ways:
+   - 64-byte entries (256 KiB);
+   - a different tag and update path;
+   - blockade replay on every call.
+
+   So the old figure does not bound the new cost in either direction. Slice 2's bench of the
+   whole implementation settles it; no isolated probe benchmark is needed. In the linear
+   scenario, the central net reaches +2% at a probe cost of ~4%. Merge or close follows the
+   measured thresholds in Validation, not this estimate.
 2. **The pawns/cover cost split** comes from spike #833 (pre-#832), not a re-measure. Only D1's
-   ranking depends on it. The embedded key stays ahead of the combined key for any split, because
-   its pawn hit rate is higher and its cover hit rate is within 2 points.
+   ranking depends on it. The embedded key stays ahead while pawns exceed ~13% of the combined
+   cost (D1), and #833 measured 62.6%.
 3. **The hit rates are bench-representative.** Bench positions at depth 13 are not games. #131
    saw the same 67-78% band, and the gate measures on the same bench, so this affects
    transfer to games, not the gate.
@@ -202,9 +239,14 @@ starts cold, which only costs it hits.
 - **Directed tests.** Same pawns, with an enemy piece moved onto and then off a passer's stop
   square: the cached score follows the blocker. Same pawns, with one king moved: only that colour's
   cover changes. Also cover `phase == 0` and a kingless board.
+- **Replacement sequence (1-entry cache, fixed kings).** Evaluate structure P at non-zero phase,
+  then structure Q at phase zero, then Q at non-zero phase (a queen added). The last result must
+  equal the uncached score, not P's cover. Also test a cold pawnless position, whose tag is all
+  zero.
 - **Falsify.** Break the replay (drop the blocked delta) and check that the directed and corpus
   tests fail.
-- `Compare-SearchEquivalence.ps1 -After <exe>`: node-identical.
+- `Compare-SearchEquivalence.ps1 -After <exe> -BaselineRef <merge-base>` (`295fa5f` unless the
+  branch is rebased): node-identical.
 - Lazy SMP races: the `tsan-linux` CI job (`Docs/CI.md`) drives multi-threaded search over the
   per-thread cache.
 - **Speed gate** (#837): build `New-OrderedBuildPair.ps1` against the merge base, then run
