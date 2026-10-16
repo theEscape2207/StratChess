@@ -552,7 +552,8 @@ class Evaluator {
 	static_assert(KING_SAFETY_MAX_PENALTY < 300, "King safety outweighs a piece per colour -- rescale the tables");
 
 	// PawnCache stores eval_pawns' parts and each cover sub-term as int16_t. Eight pawns a side
-	// bound every sum; each cover sub-term is bounded by its whole-cover extremum.
+	// bound every sum. The two cover bounds are magnitudes -- the worst penalty and the best
+	// bonus -- and each sub-term lies within them, so both signs fit.
 	static_assert(8 * (DOUBLED_PAWN_PENALTY + ISOLATED_PAWN_PENALTY + BACKWARDS_PAWN_PENALTY) <= INT16_MAX &&
 	                  8 * std::max(PASSED_PAWN_BONUS, PASSED_PAWN_BONUS_EG) * std::ranges::max(PASSED_PAWN_RANK_SCALE) /
 	                          16 <=
@@ -836,6 +837,13 @@ class Evaluator {
 	// rescanning them to keep three identical signatures cost measurable nps for
 	// nothing. They stay separate all the way to their own breakdown rows.
 	static KingPawnCover eval_king_pawn_cover(const EvalContext& ctx, eColor color) noexcept;
+	// False where eval_king_pawn_cover is exactly zero without a scan: a kingless board
+	// (default-constructed or failed-parse only) or phase 0, where its mg-only result blends
+	// to 0. Shared with the cached path, which must skip the cover on the same condition.
+	static constexpr bool HasKingPawnCover(const EvalContext& ctx, eColor color) noexcept
+	{
+		return ctx.king_sq[color] != NO_SQUARE && ctx.phase != 0;
+	}
 	static ScorePair eval_king_attack(const EvalContext& ctx, eColor color) noexcept;
 
 	// The danger curve as a pure function of the weighted count that feeds it,

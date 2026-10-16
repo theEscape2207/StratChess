@@ -38,8 +38,8 @@ ScorePair Evaluator::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 // ApplyBlockade — a passer whose stop square holds an enemy piece is scored at
 // PASSED_PAWN_BLOCKADED_SCALE of its bonus. The structure pass scored every passer
 // unblocked, so this adds, per blocked passer, the exact difference between its two
-// PasserBonus() values. eval_pawns has always summed per-passer integer divisions,
-// so replacing one passer's addend this way is bit-identical, not an approximation.
+// PasserBonus() values. eval_pawns sums per-passer integer divisions, so replacing
+// one passer's addend this way is bit-identical, not an approximation.
 //
 // The stop square only ever holds an enemy PIECE: an enemy pawn there would have
 // failed the passed test, since the stop square is inside the forward span.
@@ -82,18 +82,9 @@ PawnStructure Evaluator::eval_pawn_structure(const EvalContext& ctx, eColor colo
 	while (remaining) {
 		const eSquare square = Board::GetFirstPiece(remaining);
 		const int file = File(square);
-		const int squareIndex = static_cast<int>(square);
 		const int row = static_cast<int>(Rank(square)); // 0 = rank 8, 7 = rank 1
 		// Own file plus both adjacent files, ahead of this pawn only.
 		const BITBOARD forwardSpan = (color == WHITE) ? g_bbPassedMaskWhite[square] : g_bbPassedMaskBlack[square];
-		// The square directly ahead -- the one this pawn must pass through. The
-		// backwards term asks about it only inside a branch most pawns do not enter,
-		// so it is computed on demand rather than once per pawn. Off-board only for a pawn on the promotion rank, which cannot occur
-		// in a legal position.
-		const auto stop_square = [&]() -> BITBOARD {
-			const int idx = (color == WHITE) ? (squareIndex - ONE_ROW) : (squareIndex + ONE_ROW);
-			return (idx >= 0 && idx < ALL_SQUARES) ? (1ULL << idx) : 0ULL;
-		};
 
 		// Doubled: a friendly pawn ahead on the same file. Only the rear pawn of the
 		// pair pays, so each extra pawn on a file costs one penalty.
@@ -146,7 +137,12 @@ PawnStructure Evaluator::eval_pawn_structure(const EvalContext& ctx, eColor colo
 			// kept because it is half of the stated definition and would start
 			// mattering the moment clause (a) were relaxed to "strictly behind" --
 			// but a tuner should not try to fit a condition that never fires today.
-			const BITBOARD stopSquare = stop_square();
+			//
+			// The stop square is the one directly ahead. Off-board only for a pawn on
+			// the promotion rank, which cannot occur in a legal position.
+			const int squareIndex = static_cast<int>(square);
+			const int stopIndex = (color == WHITE) ? (squareIndex - ONE_ROW) : (squareIndex + ONE_ROW);
+			const BITBOARD stopSquare = (stopIndex >= 0 && stopIndex < ALL_SQUARES) ? (UNIT << stopIndex) : 0ULL;
 			if ((ctx.pawn_attacks[enemy] & stopSquare) && !(ctx.pawn_attacks[color] & stopSquare))
 				out.score -= BACKWARDS_PAWN_PENALTY;
 		}
@@ -476,7 +472,7 @@ KingPawnCover Evaluator::eval_king_pawn_cover(const EvalContext& ctx, eColor col
 	// Kingless board (default-constructed or failed-parse only) -- same guard as
 	// eval_pst, eval_mopup and eval_castling.
 	const eSquare kingSq = ctx.king_sq[color];
-	if (kingSq == NO_SQUARE || ctx.phase == 0)
+	if (!HasKingPawnCover(ctx, color))
 		return KingPawnCover{};
 
 	const eColor enemy = (color == WHITE) ? BLACK : WHITE;
@@ -1184,12 +1180,11 @@ void Evaluator::CachedPawnTerms(const EvalContext& ctx, PawnCache& cache, ScoreP
 		const eColor enemy = (c == WHITE) ? BLACK : WHITE;
 		pawns[c] = ApplyBlockade(entry.Pawns(c), ctx.occupied[enemy], c);
 
-		// eval_king_pawn_cover's own guard, which must wrap only the cover: the pawn part
-		// above is valid at phase 0 and without a king. A guarded colour leaves its cover
-		// slot as it was. Otherwise kingSq is a real square, so it never matches the
-		// NO_SQUARE of an empty cover.
+		// The guard wraps only the cover: the pawn part above is valid at phase 0 and
+		// without a king. A guarded colour leaves its cover slot as it was. Otherwise
+		// kingSq is a real square, so it never matches the NO_SQUARE of an empty cover.
 		const eSquare kingSq = ctx.king_sq[c];
-		if (kingSq == NO_SQUARE || ctx.phase == 0) {
+		if (!HasKingPawnCover(ctx, c)) {
 			cover[c] = KingPawnCover{};
 		} else if (entry.king_sq[c] == kingSq) {
 			cover[c] = entry.Cover(c);

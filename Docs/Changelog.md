@@ -32,6 +32,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - **Measured:** both terms priced at 7.37% nps [6.50, 8.23] (computed twice). `Compare-Bench
   -Control`, 12 rounds, depth 13, ordered pairs against `295fa5f`: **Speedup, +4.60% nps [+4.29%,
   +4.90%] at 1,024 entries (shipped)**; 4,096 +4.64% [+4.53, +4.76]; 16,384 +3.97% [+3.76, +4.18].
+  A/A controls: [-0.23, +0.78], [-0.50, +0.11], [-0.40, +0.18]. 1,024 sits 0.04 points below
+  4,096, inside either run's A/A interval, so the smaller table ships.
   `Compare-SearchEquivalence` identical (6 positions, depth 12).
 
 ## 2026-10-16: Static evaluation in the TT entry (#832)

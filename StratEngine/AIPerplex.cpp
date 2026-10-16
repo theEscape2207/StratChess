@@ -266,6 +266,8 @@ std::optional<SearchTuningSchema::TuningError> AIPerplex::SetTuning(const Search
 //   - the evaluator: its one member is the drawn score pair, which Search()
 //                    rewrites before every search, so nothing accumulates
 //                    across games (see the sharing contract in Eval.h).
+//   - each thread's pawn_cache: every entry is a pure function of its key, so
+//                    nothing in it can be stale across games (PawnCache.h).
 void AIPerplex::StartNewGame()
 {
 	assert_not_in_completion_handler();

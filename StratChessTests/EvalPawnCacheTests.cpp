@@ -49,6 +49,22 @@ namespace {
 		return fens;
 	}
 
+	// The walk above over every corpus root, at both sizes. 1 entry overwrites on every structure
+	// change, so the same walk also exercises replacement on nearly every node.
+	void CompareOverCorpus(int depth, int minPositions)
+	{
+		const std::size_t entries = GENERATE(std::size_t{4096}, std::size_t{1});
+		CAPTURE(entries);
+		const Evaluator eval;
+		PawnCache cache(entries);
+		int checked = 0;
+		for (const std::string& fen : PerftFens()) {
+			Board board(fen);
+			WalkAndCompare(board, depth, eval, cache, checked);
+		}
+		REQUIRE(checked > minPositions);
+	}
+
 	PawnCache::Entry& SlotOf(PawnCache& cache, const Board& board)
 	{
 		const auto boards = board.GetBitBoards();
@@ -59,33 +75,13 @@ namespace {
 
 TEST_CASE("PawnCache - cached equals uncached over the perft corpus at depth 3", "[eval][pawncache][slow]")
 {
-	// 4,096 is the shipped order of magnitude; 1 entry overwrites on every structure change, so
-	// the same walk also exercises replacement on nearly every node.
-	const std::size_t entries = GENERATE(std::size_t{4096}, std::size_t{1});
-	CAPTURE(entries);
-	const Evaluator eval;
-	PawnCache cache(entries);
-	int checked = 0;
-	for (const std::string& fen : PerftFens()) {
-		Board board(fen);
-		WalkAndCompare(board, 3, eval, cache, checked);
-	}
-	REQUIRE(checked > 600000);
+	CompareOverCorpus(3, 600000);
 }
 
 TEST_CASE("PawnCache - cached equals uncached over the perft corpus at depth 2", "[eval][pawncache]")
 {
 	// The fast-tier slice of the case above.
-	const std::size_t entries = GENERATE(std::size_t{4096}, std::size_t{1});
-	CAPTURE(entries);
-	const Evaluator eval;
-	PawnCache cache(entries);
-	int checked = 0;
-	for (const std::string& fen : PerftFens()) {
-		Board board(fen);
-		WalkAndCompare(board, 2, eval, cache, checked);
-	}
-	REQUIRE(checked > 10000);
+	CompareOverCorpus(2, 10000);
 }
 
 TEST_CASE("PawnCache - a blockader moving onto and off the stop square is followed under one tag", "[eval][pawncache]")
@@ -96,9 +92,16 @@ TEST_CASE("PawnCache - a blockader moving onto and off the stop square is follow
 	const Board free("4k3/p6p/n7/3P4/8/8/7P/R3K3 w - - 0 1");
 	REQUIRE(EvaluatorTestFixture::Pawns(blocked, WHITE) != EvaluatorTestFixture::Pawns(free, WHITE));
 
+	// The colour mirror pins Black's stop-square direction, which cached == uncached cannot:
+	// both paths share ApplyBlockade.
+	const Board blockedBlack("r3k3/7p/8/8/3p4/3N4/P6P/4K3 b - - 0 1");
+	const Board freeBlack("r3k3/7p/8/8/3p4/N7/P6P/4K3 b - - 0 1");
+	REQUIRE(EvaluatorTestFixture::Pawns(blockedBlack, BLACK) == EvaluatorTestFixture::Pawns(blocked, WHITE));
+	REQUIRE(EvaluatorTestFixture::Pawns(freeBlack, BLACK) == EvaluatorTestFixture::Pawns(free, WHITE));
+
 	const Evaluator eval;
 	PawnCache cache;
-	for (const Board* board : {&free, &blocked, &free, &blocked}) {
+	for (const Board* board : {&free, &blocked, &free, &blocked, &freeBlack, &blockedBlack, &freeBlack}) {
 		CAPTURE(board->ExtractFEN());
 		REQUIRE(eval.Evaluate(*board, cache) == eval.Evaluate(*board));
 	}
@@ -128,6 +131,12 @@ TEST_CASE("PawnCache - one king moving rewrites only that colour's cover", "[eva
 	REQUIRE(slot.Cover(BLACK).files.mg == black.files.mg);
 
 	REQUIRE(eval.Evaluate(before, cache) == eval.Evaluate(before));
+
+	// Same pawns and kings at another non-zero phase: the stored cover is reused as is.
+	const Board fewerPieces("6k1/5ppp/8/8/8/8/5PPP/3Q2K1 w - - 0 1");
+	REQUIRE(EvaluatorTestFixture::Phase(fewerPieces) != EvaluatorTestFixture::Phase(before));
+	REQUIRE(eval.Evaluate(fewerPieces, cache) == eval.Evaluate(fewerPieces));
+	REQUIRE(slot.king_sq[WHITE] == g1);
 }
 
 TEST_CASE("PawnCache - phase 0 serves the pawn part and leaves the covers empty", "[eval][pawncache]")

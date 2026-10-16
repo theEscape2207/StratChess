@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <memory>
 
-// Per-thread memo of the pawn-structure terms (#837): eval_pawns without its blockade
+// Per-thread memo of the pawn-structure terms: eval_pawns without its blockade
 // adjustment, keyed on the two pawn bitboards, and each colour's eval_king_pawn_cover keyed
 // additionally on that colour's king square. A full tag compare makes a collision cost a miss,
 // never a wrong score, and a miss simply overwrites the slot.
@@ -20,8 +20,8 @@
 // Owned by the caller, one per search thread (ThreadData); Evaluator itself stays stateless.
 class PawnCache {
   public:
-	// Shipped size, in entries (64 bytes each, so 64 KiB). The #837 sweep measured 1,024 / 4,096 /
-	// 16,384 at +4.60% / +4.64% / +3.97% nps; this is the smallest within A/A noise of the best.
+	// Shipped size, in entries (64 bytes each, so 64 KiB): the smallest size measured within
+	// noise of the best (Docs/Changelog.md).
 	static constexpr std::size_t kDefaultEntries = 1024;
 
 	struct alignas(64) Entry {
@@ -68,8 +68,10 @@ class PawnCache {
 			                     passers & (color == WHITE ? wp : bp)};
 		}
 
+		// Cover is middlegame-only, so only mg is stored; Cover() rebuilds eg as 0.
 		void StoreCover(eColor color, eSquare king, const KingPawnCover& c) noexcept
 		{
+			assert(c.shelter.eg == 0 && c.storm.eg == 0 && c.files.eg == 0);
 			cover[color][0] = static_cast<int16_t>(c.shelter.mg);
 			cover[color][1] = static_cast<int16_t>(c.storm.mg);
 			cover[color][2] = static_cast<int16_t>(c.files.mg);
