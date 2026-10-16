@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-16 | cced4d1, legal-only move lists at in-check nodes (#823; node-identical, a speed change only) | 663e2c5 | 23976 | 10+0.1 | **+30.36 +/- 3.23** | gain |
 | 2026-10-13 | cd97a1f, SCREEN arm B: `LmrHistoryDivisor=32` (#816; best of three by 0.0 sigma, not confirmed) | cd97a1f (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+0.52 +/- 6.18** | inconclusive @ 6660 |
 | 2026-10-13 | cd97a1f, SCREEN arm C: `LmrHistoryDivisor=128` (#816) | cd97a1f (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+0.42 +/- 6.27** | inconclusive @ 6660 |
 | 2026-10-13 | cd97a1f, SCREEN arm A: `LmrHistoryDivisor=16` (#816) | cd97a1f (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **-0.78 +/- 6.23** | inconclusive @ 6660 |
@@ -90,6 +91,9 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
 
+### 2026-10-16 -- cced4d1, legal-only move lists at in-check nodes (#823) (23976 games)
+
+**Shipped with #830 before this run; non-gating, run to size what a pure speed-up buys.** [Run `38825283241`](https://github.com/theEscape2207/StratChess/actions/runs/38825283241), about 3 h 55 min after queueing behind #825's run, 18 shards x 666 pairs, openings 1-11,988, reference the pre-merge `main`. All 21 jobs are green and the aggregate passed its integrity checks; the logs show PV-compliance warnings (#310), which are reporting-only. Resolved options: the run's `strength-38825283241-comparison` artifact. Pooled Ptnml(0-2) [681, 2213, 4665, 3193, 1236], score 54.36%, interval [+27.14, +33.59]; 18 of 18 shards favour the candidate by score. The search is node-identical (`Compare-SearchEquivalence.ps1`), so the whole gain is speed: local clang-cl nps +16.12% [+15.59%, +16.65%] on an ordered pair. On the lab's GCC build the speed-up is unmeasured.
 ### 2026-10-13 -- `LmrHistoryDivisor` re-screen under the log base (#816) (6660 games per arm)
 
 **Nothing to confirm; the default stays 64.** [Run `38312922668`](https://github.com/theEscape2207/StratChess/actions/runs/38312922668), about 3 h 15 min of matches after queueing behind the confirmation, 18 shards x 555 pairs, openings 70,000-79,989, each arm on 6 shards. All 21 jobs are green; the logs show no time losses, illegal moves or disconnects, only the PV-compliance warnings (#310), which are reporting-only. Resolved options: the run's `strength-38312922668-comparison` artifact. Ptnml(0-2): A (16) [274, 776, 1238, 775, 267], B (32) [272, 745, 1274, 779, 260], C (128) [276, 770, 1231, 776, 277]. All three sit within 1.3 Elo of each other and of 64, on both sides of it, so the history shift is flat across 16-128 under base 1.00 / 1.50. Under the sqrt base 16 had read +6.99 on the screen and +2.98 ± 3.23 on confirmation (#735).
