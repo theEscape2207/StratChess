@@ -93,13 +93,20 @@ def render_report(rows, repository):
     return '\n'.join(lines) + '\n', bool(updates)
 
 
+def report_findings(body):
+    normalized = body.replace('\r\n', '\n').strip()
+    # Only dependency rows determine whether a deferred update has changed.
+    rows = [line.strip() for line in normalized.splitlines() if line.lstrip().startswith('| [')]
+    return rows or normalized
+
+
 def sync_issue(repository, body, has_updates, publish):
     issues = [issue for issue in api_items(f'repos/{repository}/issues?state=all&per_page=100')
-              if 'pull_request' not in issue and (issue['body'] or '').startswith(MARKER)]
+              if 'pull_request' not in issue and MARKER in (issue['body'] or '').strip().splitlines()]
     if len(issues) > 1:
         raise ValueError('Multiple dependency tracking issues found; consolidate them first')
     issue = issues[0] if issues else None
-    if issue and issue['body'] == body:
+    if issue and report_findings(issue['body']) == report_findings(body):
         return 'Unchanged report; no issue writes.'
     if not has_updates and (not issue or issue['state'] == 'closed'):
         return 'No newer releases; no issue writes.'
@@ -114,7 +121,8 @@ def sync_issue(repository, body, has_updates, publish):
                 gh('issue', 'reopen', str(issue['number']), '--repo', repository)
             gh('issue', 'edit', str(issue['number']), '--repo', repository, '--body-file', str(path))
         else:
-            gh('issue', 'create', '--repo', repository, '--title', TITLE, '--body-file', str(path))
+            gh('issue', 'create', '--repo', repository, '--title', TITLE, '--body-file', str(path),
+               '--label', 'category:build-tooling', '--label', 'category:test', '--label', 'ready-for-human')
     return f'{action}.'
 
 

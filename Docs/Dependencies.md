@@ -30,9 +30,12 @@ releases, ignoring drafts and library prereleases. fastchess's normal releases u
 tags, so its established alpha channel is included along with final releases. Tags without a
 release are not checked. This checks the committed fastchess pin, not the locally installed tool.
 
-Newer releases create one **Dependency releases available** issue, identified by a hidden body
-marker. Later runs update that issue only when findings change; they add no weekly comments or
-timestamps. When everything is current, no issue is created, and an existing open report is updated
+Newer releases create one **Dependency releases available** issue with `category:build-tooling`,
+`category:test` and `ready-for-human` labels. It is identified by a hidden body marker, so keep that
+marker intact. The lookup scans issues in all states, allowing title and label edits without losing
+the report. Later runs compare the dependency rows, ignoring line endings, surrounding whitespace
+and prose edits; they add no weekly comments or timestamps. When everything is current, no issue
+is created, and an existing open report is updated
 to say so. Close the issue when addressed or deferred. An unchanged closed report stays closed;
 different findings with pending updates reopen the same issue. Put discussion in comments because
 the generated body is replaced. Duplicate marked issues fail the check rather than creating more.
@@ -52,7 +55,7 @@ For a read-only local preview, with Python 3 and authenticated `gh` on PATH:
 
 ```bash
 python .github/scripts/check_dependency_releases.py --repo theEscape2207/StratChess
-python .github/scripts/test_dependency_releases.py
+python .github/scripts/test_dependency_releases.py --self-test
 ```
 
 The workflow uses only `contents: read` and `issues: write` from `GITHUB_TOKEN`; it needs no

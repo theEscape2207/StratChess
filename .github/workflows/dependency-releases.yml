@@ -23,7 +23,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Verify dependency release checker
-        run: python3 .github/scripts/test_dependency_releases.py
+        run: python3 .github/scripts/test_dependency_releases.py --self-test
       - name: Check releases and maintain tracking issue
         env:
           GH_TOKEN: ${{ github.token }}

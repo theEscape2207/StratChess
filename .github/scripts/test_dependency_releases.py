@@ -1,9 +1,11 @@
 """Offline release-check fixtures: ordering, channel policy and issue-write lifecycle."""
 
+import argparse
 import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -75,6 +77,9 @@ class ReleaseChecks(unittest.TestCase):
                 path = Path(args[args.index('--body-file') + 1])
                 self.assertEqual(path.read_text(encoding='utf-8'), body)
                 self.assertNotIn('--body', args)
+            if args[:2] == ('issue', 'create'):
+                labels = [args[index + 1] for index, arg in enumerate(args) if arg == '--label']
+                self.assertEqual(labels, ['category:build-tooling', 'category:test', 'ready-for-human'])
             writes.append(args[:3])
             return ''
 
@@ -89,6 +94,24 @@ class ReleaseChecks(unittest.TestCase):
         self.assertEqual(self.run_sync([]), [('issue', 'create', '--repo')])
         body = checker.MARKER + '\nnew report\n'
         self.assertEqual(self.run_sync([self.issue(body=body)], body=body), [])
+
+    def test_body_formatting_does_not_update_or_reopen_reports(self):
+        body = checker.MARKER + '\nnew report\n'
+        for state in ('open', 'closed'):
+            for stored in (body.replace('\n', '\r\n'), body.rstrip(), '\n' + body + '\n'):
+                with self.subTest(state=state, stored=stored):
+                    self.assertEqual(self.run_sync([self.issue(state, stored)], body=body), [])
+
+    def test_prose_edits_do_not_reopen_deferred_findings(self):
+        rows = [('lib', 'owner/lib', 'v1.0.0', 'v1.1.0', 'https://example.com/release')]
+        body, _ = checker.render_report(rows, 'owner/repo')
+        stored = 'Maintainer note: deferred until next month.\n\n' + body.replace(
+            'Newer dependency/tool releases are available.', 'Deferred until next month.')
+        self.assertEqual(self.run_sync([self.issue('closed', stored)], body=body), [])
+        newer, _ = checker.render_report(
+            [('lib', 'owner/lib', 'v1.0.0', 'v1.2.0', 'https://example.com/new-release')], 'owner/repo')
+        self.assertEqual(self.run_sync([self.issue('closed', stored)], body=newer),
+                         [('issue', 'reopen', '42'), ('issue', 'edit', '42')])
 
     def test_update_existing_and_reuse_closed_issue(self):
         self.assertEqual(self.run_sync([self.issue()]), [('issue', 'edit', '42')])
@@ -121,4 +144,7 @@ class ReleaseChecks(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--self-test', action='store_true', help='Run the offline checker fixtures')
+    _, test_arguments = parser.parse_known_args()
+    unittest.main(argv=[sys.argv[0], *test_arguments])

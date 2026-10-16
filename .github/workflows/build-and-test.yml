@@ -139,7 +139,7 @@ jobs:
           python3 .github/scripts/pool_pentanomial.py --self-test
           python3 .github/scripts/summarize_cpu.py --self-test
           python3 .github/scripts/test_strength_workflow.py --self-test
-          python3 .github/scripts/test_dependency_releases.py
+          python3 .github/scripts/test_dependency_releases.py --self-test
 
       # Keyed on the pinned dependency tags, matching the Windows job's approach.
       # Not matrix-scoped: FetchContent sources have no per-configuration content,
