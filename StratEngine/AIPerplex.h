@@ -271,6 +271,9 @@ class AIPerplex final {
 	// guards live in the move loop.
 	bool late_move_pruning_eligible(int depth, int alpha, int beta, bool is_pv_node, bool in_check,
 	                                bool is_exclusion_frame) const;
+	// Whether pvs() generates captures first and quiets only when its loop reaches them. Bounded so the
+	// deferred quiet scores equal frame-start ones; see the definition.
+	bool staged_generation_eligible(int depth, bool in_check, const Move& hash_move) const;
 
 	// Logging helpers
 	void log_iteration_eval(const Engine::IterationMetrics& metrics, const PVTable& pv_table) const;

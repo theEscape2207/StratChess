@@ -865,9 +865,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	// In check, only the legal evasions, typically a handful of the pseudo-legal moves, in the same
 	// relative order: the tree is the same, without scoring, sorting and rejecting the rest.
+	// A staged frame starts with the captures and promotions alone; the loop appends the quiets.
 	MoveList move_list;
+	bool quiets_pending = staged_generation_eligible(depth, in_check, hash_move);
 	if (in_check)
 		MoveGenerator::ComputeEvasions(td.board, move_list);
+	else if (quiets_pending)
+		MoveGenerator::ComputeCaptures(td.board, move_list);
 	else
 		MoveGenerator::ComputeLegalMoves(td.board, move_list);
 
@@ -875,7 +879,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	// Stack-allocated scored index array — zero heap allocation per call.
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	const int n = static_cast<int>(move_list.size());
+	int n = static_cast<int>(move_list.size());
 	const eColor side = td.board.GetCurrentColor();
 
 	const ContinuationRows cont_rows = td.continuation_rows(ply, tuning_.continuation_history_plies);
@@ -980,10 +984,30 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	ThreadData::SearchedMoves searched;
 
 	// Iterate by sorted index — no rebuild of move_list needed
-	for (int si = 0; si < n; ++si) {
+	for (int si = 0; si < n || quiets_pending; ++si) {
 		// First, before any continue: nothing may read scored_idx beyond [0] until the tail is ordered.
 		if (si == 1)
 			MoveSorter::OrderRemaining(move_list, scored_idx, 1, n);
+
+		// A staged frame appends its quiets once the next entry is no longer a good capture or
+		// promotion. Those outrank both killers and every quiet, so the moves already taken are the
+		// unstaged order's prefix; sorting the losing captures together with the quiets gives its
+		// suffix, with ties only inside one generator's run, which keeps its relative order.
+		if (quiets_pending && (si == n || scored_idx[si].first < MoveSorter::kGoodCaptureTier)) {
+			quiets_pending = false;
+			const int first_quiet = n;
+			MoveGenerator::ComputeQuiets(td.board, move_list);
+			n = static_cast<int>(move_list.size());
+			MoveSorter::ScoreAppended(move_list, first_quiet, n, td.board, side, td.killers[ply][0], td.killers[ply][1],
+			                          td.history, scored_idx, cont_rows);
+			// At si == 0 only the front needs ordering; the si == 1 sort above orders the rest.
+			if (si == 0)
+				MoveSorter::SelectBest(move_list, scored_idx, 0, n);
+			else
+				MoveSorter::OrderRemaining(move_list, scored_idx, si, n);
+			if (si == n)
+				break;
+		}
 		const Move& move = move_list[scored_idx[si].second];
 
 		// The move a verification search is proving the alternatives against is not one of
@@ -1909,6 +1933,22 @@ bool AIPerplex::late_move_pruning_eligible(int depth, int alpha, int beta, bool 
 	if (beta != alpha + 1)
 		return false;
 	return std::abs(alpha) < GameValues::Mate_Threshold && std::abs(beta) < GameValues::Mate_Threshold;
+}
+
+// Staging must not change the tree, and it delays reading the quiets' scores -- history, continuation
+// history, killers -- until the loop reaches them. Those tables change only at a pvs() cut, so the
+// delay is safe while no same-side pvs() frame can run below this one before the quiets are scored:
+// an opposite-side child writes only the opponent's history and continuation columns. From depth 1
+// every child is quiescence; from depth 2 every grandchild is, unless a singular extension keeps a
+// depth-1 child's child at depth 1, which singular_min_depth >= 2 rules out. Depth 3 would let a
+// grandchild cut and update this frame's quiet scores mid-loop.
+//
+// No hash move, because a frame with one would have to search it before generating anything, and
+// validating a hash move without generation is #741's unsolved cost.
+bool AIPerplex::staged_generation_eligible(int depth, bool in_check, const Move& hash_move) const
+{
+	return tuning_.staged_generation_enabled && !in_check && hash_move.is_null() &&
+	       (depth == 1 || (depth == 2 && tuning_.singular_min_depth >= 2));
 }
 
 bool AIPerplex::singular_multicut_eligible(int verify_value, int singular_beta, int beta, bool is_pv_node) const

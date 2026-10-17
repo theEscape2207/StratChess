@@ -54,6 +54,7 @@ namespace {
 		bool frontier_futility_enabled;
 		int frontier_futility_margin;
 		bool late_move_pruning_enabled;
+		bool staged_generation_enabled;
 		int continuation_history_plies;
 		int contempt;
 	};
@@ -90,6 +91,7 @@ namespace {
 	SAME_MEMBER(frontier_futility_enabled)
 	SAME_MEMBER(frontier_futility_margin)
 	SAME_MEMBER(late_move_pruning_enabled)
+	SAME_MEMBER(staged_generation_enabled)
 	SAME_MEMBER(continuation_history_plies)
 	SAME_MEMBER(contempt)
 #undef SAME_MEMBER
@@ -147,6 +149,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.frontier_futility_enabled);
 	CHECK(tuning.frontier_futility_margin == 200);
 	CHECK(tuning.late_move_pruning_enabled);
+	CHECK(tuning.staged_generation_enabled);
 	CHECK(tuning.continuation_history_plies == 2);
 	CHECK(tuning.contempt == 0);
 
