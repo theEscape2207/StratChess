@@ -15,6 +15,23 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-17: Staged move generation in pvs() (#839)
+
+### Changed
+- No-hash, out-of-check `pvs()` frames at depth 1, and at depth 2 while `singular_min_depth >= 2`,
+  generate `ComputeCaptures` first and append the new `MoveGenerator::ComputeQuiets` only when the
+  loop reaches the first entry below `MoveSorter::kGoodCaptureTier`. Frames that cut on a good
+  capture never generate or score their quiets. Behind the non-UCI tuning bool
+  `staged_generation_enabled`, default on.
+- Node-identical: the quiets' history, continuation and killer scores are read late, which equals
+  frame-start only inside that depth band (`Docs/EngineContracts.md` → Search internals). An in-binary
+  on/off test (13 positions, depth 7, default and `singular_min_depth = 1`) fails when depth 3 is
+  admitted; it does not see a broken singular bound. `Compare-SearchEquivalence` identical
+  (6 positions, depth 12).
+- **Measured:** `Compare-Bench -Control`, 12 rounds, depth 13, ordered pair against `12bf7d1`:
+  **Speedup, +3.10% nps [+2.86%, +3.34%]**; A/A control -0.15% [-0.44%, +0.14%]. Every bench
+  position gained (+2.30% to +4.09%).
+
 ## 2026-10-17: Pawn-structure cache (#837)
 
 ### Changed
