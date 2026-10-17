@@ -94,6 +94,7 @@ Nightly's `coverage` job publishes the same report for `main` (`Docs/CI.md` → 
 | **MoveFormatter** | `[formatter]` | `MoveFormatterTests.cpp` |
 | **TranspositionTable** | `[tt]` | `TTTests.cpp` |
 | **Evaluation (Evaluator)** | `[eval]` | `EvalBasicTests.cpp`, `EvalSymmetryTests.cpp`, `EvalTermTests.cpp`, `EvalPawnAndTaperTests.cpp`, `EvalEndgameTests.cpp`, `EvalKingSafetyTests.cpp` |
+| **Pawn-structure cache** | `[pawncache]` | `EvalPawnCacheTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
 | **Search regression (slow tier)** | `[tactical_full][slow]` | `TacticalFullTests.cpp` |
 | Concrete search service, lifecycle and factory | `[search]` | `SearchServiceTests.cpp` |
@@ -277,6 +278,13 @@ nonzero score in one of those classes *is* the defect.
   a defender pawn, three pawns, an added knight and a second bishop each keep full value
 - The #129 honesty invariant extended: on a scaled position, the printed rows plus the endgame
   adjustment still reproduce `total` exactly
+
+**Pawn-structure cache (`[pawncache]`, issue #837, `EvalPawnCacheTests.cpp`)**. One invariant: `Evaluate(board, cache) == Evaluate(board)` for every position and prior cache content. A walk of
+every node to depth 3 under each `Tests/perft_test_cases.json` root ([slow]; depth 2 in the fast
+tier) checks it through one shared cache, at 4,096 entries and at 1, where nearly every structure
+change overwrites. Directed cases pin what the walk reaches only by luck: a blockader on and off
+under one tag, one king moving, phase 0, the empty board, a cold pawnless tag, and a replacement
+at phase 0 that must not let the old structure's cover survive.
 
 **King safety (`[eval]`, issue #97, `EvalKingSafetyTests.cpp`)**. Shelter, storm, king-file
 openness and attack pressure. Every case keeps a queen on each side: all four contributions are

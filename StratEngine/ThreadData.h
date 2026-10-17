@@ -2,6 +2,7 @@
 #include "Board.h"
 #include "PVTable.h"
 #include "MoveHelper.h"
+#include "PawnCache.h"
 #include "SearchTelemetry.h"
 #include "Sort.h"
 #include <algorithm>
@@ -89,6 +90,11 @@ struct ThreadData {
 	// history. On the heap because 1.18 MB inline would overflow the stack of an AIPerplex
 	// constructed as a local, as tests do. make_unique value-initialises it to zero.
 	std::unique_ptr<ContinuationHistory> cont_history = std::make_unique<ContinuationHistory>();
+
+	// This thread's pawn-structure memo, for Evaluator::Evaluate(board, cache). On the heap like
+	// cont_history, so a ThreadData stays cheap to move. Never cleared: every entry is a pure
+	// function of its key, so a stale one cannot exist (PawnCache.h).
+	std::unique_ptr<PawnCache> pawn_cache = std::make_unique<PawnCache>();
 
 	// --- Cold tail: singular exclusion and telemetry ---
 	// Deliberately LAST. Everything above is touched on the hot path; these are not, and

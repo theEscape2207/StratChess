@@ -13,6 +13,7 @@
 #include <catch2/generators/catch_generators_range.hpp>
 #include "Board.h"
 #include "Eval.h"
+#include "PawnCache.h"
 
 #include <algorithm>
 #include <limits>
@@ -563,6 +564,12 @@ struct EvaluatorTestFixture {
 	// without the classifier. Lets a scaled case assert the discount reached the
 	// returned score, rather than only that it was reported in the breakdown.
 	static int RawWhitePov(const Board& board) { return Evaluator::RawWhitePov(BuildContext(board)); }
+	// The same through a pawn cache. Reaches the pawn terms even where Evaluate() would settle
+	// the position as drawn first -- a kingless board, say.
+	static int RawWhitePov(const Board& board, PawnCache& cache)
+	{
+		return Evaluator::RawWhitePov(BuildContext(board), &cache);
+	}
 
 	static ScorePair BishopsPair(const Board& board, eColor color)
 	{

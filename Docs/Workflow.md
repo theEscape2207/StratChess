@@ -463,6 +463,10 @@ than L1 cost about what the scan they replaced cost (~2-3% of runtime). Our term
 bitboard loops of a few dozen cycles, so the payload has to be much larger than one term before a
 probe amortises. Price the term first; propose the cache second.
 
+#837 then cleared that bar: both pawn terms priced at 7.37% together, cached under one probe of a
+pawn-only tag with each colour's cover keyed on its king square inside the same 64-byte entry, for
+**+4.60% nps** [+4.29%, +4.90%] at 1,024 entries per thread (4,096: +4.64%; 16,384: +3.97%).
+
 **Building the "before" binary.** A bench comparison needs two binaries, and two builds of the same
 worktree cannot coexist — the second overwrites the first in `build/<preset>/`. `Run-EloMatch.ps1`
 solves this internally for tag-resolved references; by hand, for `origin/main` or any other ref:

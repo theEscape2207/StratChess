@@ -438,9 +438,11 @@ if(STRAT_COVERAGE)
         /clang:-fprofile-instr-generate /clang:-fcoverage-mapping)
 endif()
 # STRAT_TT_STATS and STRAT_SEARCH_PROFILE are unconditional here, so the tests exercise the
-# counting; neither changes a search decision.
+# counting; neither changes a search decision. STRAT_TESTS_DATA_DIR lets a test read Tests/*.json
+# whatever its working directory.
 target_compile_definitions(StratChessTests PRIVATE
-    STRAT_ENABLE_TEST_ACCESS STRAT_TT_STATS=1 STRAT_SEARCH_PROFILE=1)
+    STRAT_ENABLE_TEST_ACCESS STRAT_TT_STATS=1 STRAT_SEARCH_PROFILE=1
+    STRAT_TESTS_DATA_DIR="${CMAKE_SOURCE_DIR}/Tests")
 target_link_libraries(StratChessTests PRIVATE Catch2::Catch2WithMain)
 
 # The depfile override above sets CMake variables; this asserts what CMake generated from

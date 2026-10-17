@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-17 | df34ce5, per-thread pawn-structure cache (#837; node-identical, a speed change only) | 295fa5f | 19980 | 10+0.1 | **+10.78 +/- 3.50** | gain |
 | 2026-10-16 | 83b4cf9, static evaluation in the TT entry (#832; node-identical, a speed change only) | 0fb63d0 | 19980 | 10+0.1 | **+14.82 +/- 3.53** | gain |
 | 2026-10-16 | cced4d1, legal-only move lists at in-check nodes (#823; node-identical, a speed change only) | 663e2c5 | 23976 | 10+0.1 | **+30.36 +/- 3.23** | gain |
 | 2026-10-15 | 8218d61, early TT prefetch from the predicted child key (#825; 17 of 18 shards) | f551ad2 | 24548 | 10+0.1 | **-0.08 +/- 3.18** | discarded |
@@ -92,6 +93,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-17 -- df34ce5, per-thread pawn-structure cache (#837) (19980 games)
+
+**Informational run for PR #838 at the owner's request, dispatched once CI was green.** [Run `38981207653`](https://github.com/theEscape2207/StratChess/actions/runs/38981207653), about 3 h 15 min, 18 shards x 555 pairs, reference the merge base `295fa5f`. All jobs are green and the aggregate passed its integrity checks (18 shards, 555 pairs each); the logs show PV-compliance warnings (#310), which are reporting-only. Pooled Ptnml(0-2) [656, 2161, 3912, 2429, 832], score 51.55%, interval [+7.29, +14.28]; 16 of 18 shards favour the candidate by score. The search is node-identical (`Compare-SearchEquivalence.ps1`), so the whole gain is speed: local clang-cl nps +4.60% [+4.29%, +4.90%] on an ordered pair at 1,024 entries. On the lab's GCC build the speed-up is unmeasured.
 
 ### 2026-10-16 -- 83b4cf9, static evaluation in the TT entry (#832) (19980 games)
 
