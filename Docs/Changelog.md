@@ -34,7 +34,9 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   +4.90%] at 1,024 entries (shipped)**; 4,096 +4.64% [+4.53, +4.76]; 16,384 +3.97% [+3.76, +4.18].
   A/A controls: [-0.23, +0.78], [-0.50, +0.11], [-0.40, +0.18]. 1,024 sits 0.04 points below
   4,096, inside either run's A/A interval, so the smaller table ships.
-  `Compare-SearchEquivalence` identical (6 positions, depth 12).
+  `Compare-SearchEquivalence` identical (6 positions, depth 12). Informational CI strength lab
+  against the merge base: **+10.78 +/- 3.50 Elo** (19,980 games, 10+0.1;
+  `Measurements/ci-per-change.md`).
 
 ## 2026-10-16: Static evaluation in the TT entry (#832)
 
