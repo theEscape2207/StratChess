@@ -321,6 +321,25 @@ void MoveGenerator::ComputeCaptures(const Board& board, MoveList& moveList)
 	GenerateOfficerMoves(board, boards.data(), moveList, KING, color, kAllSquares, them);
 }
 
+void MoveGenerator::ComputeQuiets(const Board& board, MoveList& moveList)
+{
+	const auto color = board.GetCurrentColor();
+
+	const auto boards = board.GetBitBoards();
+
+	const BITBOARD empty = ~boards[ALL_PIECES];
+
+	GeneratePawnNormalMoves(boards.data(), color, moveList, kAllSquares, kAllSquares);
+
+	GenerateOfficerMoves(board, boards.data(), moveList, KNIGHT, color, kAllSquares, empty);
+	GenerateOfficerMoves(board, boards.data(), moveList, BISHOP, color, kAllSquares, empty);
+	GenerateOfficerMoves(board, boards.data(), moveList, ROOK, color, kAllSquares, empty);
+	GenerateOfficerMoves(board, boards.data(), moveList, QUEEN, color, kAllSquares, empty);
+	GenerateOfficerMoves(board, boards.data(), moveList, KING, color, kAllSquares, empty);
+
+	AddCastleMoves(board, moveList, color, boards.data());
+}
+
 // Adds all moves in the given attack bitboard to the move list
 void MoveGenerator::AddOfficerMoves(const Board& board, MoveList& moveList, BITBOARD bbAttack, eSquare from)
 {

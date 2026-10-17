@@ -276,6 +276,13 @@ class AIPerlexTestFixture {
 		return ai->late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
 	}
 
+	// --- Staged generation pokes ---
+	void set_staged_generation(bool enabled) const { ai->tuning_.staged_generation_enabled = enabled; }
+	bool staged_generation_eligible(int depth, bool in_check, const Move& hash_move) const
+	{
+		return ai->staged_generation_eligible(depth, in_check, hash_move);
+	}
+
 	// The fixture's board after a UCI move list, carrying the repetition history the moves built.
 	Board board_after(std::initializer_list<const char*> moves) const
 	{

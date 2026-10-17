@@ -28,7 +28,9 @@ repeats the aborted-frame tripwire; change both together.
   legal subsequence of `ComputeLegalMoves` (pseudo-legal), in the same order, and the sorter breaks
   score ties by that order, so search is node-identical whichever list a node uses. Both come from the
   same masked helpers; a change to one helper's order changes nodes, which
-  `[movegen]`'s pinned sequences catch.
+  `[movegen]`'s pinned sequences catch. `ComputeCaptures` followed by `ComputeQuiets` is
+  `ComputeLegalMoves` stably partitioned by capture-or-promotion, which staged `pvs()` frames rely on;
+  `[movegen]` walks the perft suite to check it.
 
 ## The search service
 
@@ -119,6 +121,13 @@ repeats the aborted-frame tripwire; change both together.
   before any `continue`. Until then nothing may read `scored_idx[i]` for `i ≥ 1` — a new reader before
   the loop, or above that call, sees an unordered tail and changes the tree silently. Every entry
   point shares one comparator, so the order equals `ScoreMoves`' full sort.
+- **Staged `pvs()` frames score their quiets late, and that is safe only at depth ≤ 2.** A no-hash,
+  out-of-check frame at depth 1, or 2 while `singular_min_depth ≥ 2`, generates captures first and
+  appends the quiets when the next entry falls below `MoveSorter::kGoodCaptureTier` (good captures and
+  promotions outrank both killers and every quiet, so the order is unchanged). The quiets' history,
+  continuation and killer scores are read then, not at frame start; they are equal only because no
+  same-side `pvs()` frame can cut below this one in between. Widening the depth band, or letting a
+  singular extension reach depth 1, changes nodes — `[search]`'s on/off test catches the depth-3 case.
 
 ## Configuration
 

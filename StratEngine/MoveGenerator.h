@@ -11,6 +11,10 @@ class MoveGenerator final {
   public:
 	// Computes all the pseudo legal piece capturing moves on the current board - no check for Check here!
 	static void ComputeCaptures(const Board& board, MoveList& moveList);
+	// Appends the pseudo-legal moves ComputeCaptures() leaves out -- pushes, officer moves to empty
+	// squares and castling -- in their ComputeLegalMoves() order, so ComputeCaptures() followed by
+	// ComputeQuiets() is ComputeLegalMoves() stably partitioned by capture-or-promotion.
+	static void ComputeQuiets(const Board& board, MoveList& moveList);
 	// Computes all the pseudo legal moves on the current board - no check for Check here!
 	static void ComputeLegalMoves(const Board& board, MoveList& moveList);
 	// Every legal move of a side to move that is in check, and nothing else: exactly the moves of

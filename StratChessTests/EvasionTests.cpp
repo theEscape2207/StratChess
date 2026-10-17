@@ -9,6 +9,7 @@
 #include "Board.h"
 #include "MoveFormatter.h"
 #include "MoveGenerator.h"
+#include "MoveHelper.h"
 #include "Tools/Perft.h"
 #include <algorithm>
 #include <string>
@@ -64,6 +65,35 @@ namespace {
 			if (!board.DoMove(move))
 				continue;
 			CompareInCheckPositions(board, depth - 1, compared, mismatches);
+			board.UndoMove(move);
+		}
+	}
+
+	// Every position within `depth` plies of the board, in check or not: ComputeCaptures() then
+	// ComputeQuiets() must be ComputeLegalMoves() stably partitioned by capture-or-promotion.
+	void ComparePartitions(Board& board, int depth, int& compared, int& mismatches)
+	{
+		MoveList moves;
+		MoveGenerator::ComputeLegalMoves(board, moves);
+		MoveList expected;
+		for (const auto& move : moves)
+			if (MoveHelper::IsCapture(move) || MoveHelper::IsPromote(move))
+				expected.push(move);
+		for (const auto& move : moves)
+			if (!MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move))
+				expected.push(move);
+		MoveList staged;
+		MoveGenerator::ComputeCaptures(board, staged);
+		MoveGenerator::ComputeQuiets(board, staged);
+		++compared;
+		if (!SameSequence(staged, expected) && ++mismatches <= 5)
+			UNSCOPED_INFO("mismatch at " << board.ExtractFEN());
+		if (depth == 0)
+			return;
+		for (const auto& move : moves) {
+			if (!board.DoMove(move))
+				continue;
+			ComparePartitions(board, depth - 1, compared, mismatches);
 			board.UndoMove(move);
 		}
 	}
@@ -135,6 +165,19 @@ TEST_CASE("Evasions equal the legal subsequence of the pseudo-legal list", "[mov
 	CHECK(mismatches == 0);
 	// A walk that reaches few checks proves little.
 	CHECK(compared > 1000);
+}
+
+TEST_CASE("Captures then quiets partition the pseudo-legal list", "[movegen]")
+{
+	int compared = 0;
+	int mismatches = 0;
+	for (const auto& position : Testing::Perft::get_test_positions(false)) {
+		Board board(position.fen);
+		ComparePartitions(board, 2, compared, mismatches);
+	}
+	INFO("positions compared: " << compared);
+	CHECK(mismatches == 0);
+	CHECK(compared > 5'000);
 }
 
 TEST_CASE("Evasions: double check leaves king moves only", "[movegen][evasion]")

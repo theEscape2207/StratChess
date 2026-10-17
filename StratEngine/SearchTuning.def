@@ -90,6 +90,10 @@ TUNING_FIELD(int,     frontier_futility_margin,  200,  0,     1000, true, "Front
 // Late move pruning at depth 2; its depth and move index are constants in AIPerplex.h.
 TUNING_FIELD(bool,    late_move_pruning_enabled, true, false, true, true, "LateMovePruning", true)
 
+// Staged generation in pvs(): captures first, quiets only when the loop reaches them. Either value
+// searches the same tree; off is the on/off equivalence test's reference path.
+TUNING_FIELD(bool,    staged_generation_enabled, true, false, true, true, nullptr, true)
+
 // How many previous moves condition quiet ordering through continuation history: 1 is the
 // opponent's last move, 2 adds our own before it. 0 reads and updates no table, which leaves the
 // search node-identical to one without it; it is the kill switch.

@@ -110,14 +110,15 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, const Board& board)
 // This applies to interior PV nodes. Ordering the ROOT's moves by the previous iteration's
 // scores is a separate question with a different answer available to it, and nothing here
 // forecloses it.
-void MoveSorter::ScoreUnordered(const MoveList& moveList, int n, const Board& board, eColor side, const Move& hash_move,
-                                const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
+void MoveSorter::ScoreUnordered(const MoveList& moveList, int first, int n, const Board& board, eColor side,
+                                const Move& hash_move, const Move& killer0, const Move& killer1,
+                                const int32_t (&history)[2][64][64],
                                 std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
                                 ContinuationRows cont)
 {
-	assert(n >= 0 && n <= static_cast<int>(MoveList::MAX_MOVES));
+	assert(first >= 0 && first <= n && n <= static_cast<int>(MoveList::MAX_MOVES));
 
-	for (int i = 0; i < n; ++i) {
+	for (int i = first; i < n; ++i) {
 		const Move& mv = moveList[i];
 		int s = 0;
 
@@ -137,12 +138,12 @@ void MoveSorter::ScoreUnordered(const MoveList& moveList, int n, const Board& bo
 			// promotion gain, so under-promotions stay below a queen promotion unaided.
 			const int mvv_lva = MoveHelper::Value(mv, board.GetEffectiveMovPiece(mv), board.GetCapturedPiece(mv));
 
-			s = (!MoveHelper::IsCapture(mv) || See::see_ge(board, mv, 0)) ? 1'000'000 + mvv_lva
+			s = (!MoveHelper::IsCapture(mv) || See::see_ge(board, mv, 0)) ? kGoodCaptureTier + mvv_lva
 			                                                              : kLosingCaptureTier + mvv_lva;
 		} else if (mv == killer0) {
-			s = 900'000;
+			s = kKiller0Score;
 		} else if (mv == killer1) {
-			s = 800'000;
+			s = kKiller1Score;
 		} else {
 			assert(static_cast<int>(side) >= 0 && static_cast<int>(side) < 2);
 			s = history[static_cast<int>(side)][mv.from()][mv.to()];
@@ -164,8 +165,29 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
                             const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
                             std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx, ContinuationRows cont)
 {
-	ScoreUnordered(moveList, n, board, side, hash_move, killer0, killer1, history, out_scored_idx, cont);
+	ScoreUnordered(moveList, 0, n, board, side, hash_move, killer0, killer1, history, out_scored_idx, cont);
 	OrderRemaining(moveList, out_scored_idx, 0, n);
+}
+
+void MoveSorter::ScoreAppended(const MoveList& moveList, int first, int n, const Board& board, eColor side,
+                               const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
+                               std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx, ContinuationRows cont)
+{
+	ScoreUnordered(moveList, first, n, board, side, Move::EmptyMove(), killer0, killer1, history, scored_idx, cont);
+}
+
+void MoveSorter::SelectBest(const MoveList& moveList, std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
+                            int first, int n)
+{
+	if (n - first < 2)
+		return;
+	const auto before = score_order(moveList);
+	int best = first;
+	for (int i = first + 1; i < n; ++i) {
+		if (before(scored_idx[i], scored_idx[best]))
+			best = i;
+	}
+	std::swap(scored_idx[first], scored_idx[best]);
 }
 
 void MoveSorter::ScoreMovesBestFirst(const MoveList& moveList, int n, const Board& board, eColor side,
@@ -174,16 +196,8 @@ void MoveSorter::ScoreMovesBestFirst(const MoveList& moveList, int n, const Boar
                                      std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
                                      ContinuationRows cont)
 {
-	ScoreUnordered(moveList, n, board, side, hash_move, killer0, killer1, history, out_scored_idx, cont);
-	if (n < 2)
-		return;
-	const auto before = score_order(moveList);
-	int best = 0;
-	for (int i = 1; i < n; ++i) {
-		if (before(out_scored_idx[i], out_scored_idx[best]))
-			best = i;
-	}
-	std::swap(out_scored_idx[0], out_scored_idx[best]);
+	ScoreUnordered(moveList, 0, n, board, side, hash_move, killer0, killer1, history, out_scored_idx, cont);
+	SelectBest(moveList, out_scored_idx, 0, n);
 }
 
 void MoveSorter::OrderRemaining(const MoveList& moveList,

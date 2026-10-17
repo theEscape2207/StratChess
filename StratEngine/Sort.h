@@ -23,8 +23,15 @@ class MoveSorter final {
 	// -piece/16, so a quiet sorts below every capture and the heaviest quiet sorts last.
 	// Asserted, because passing a mixed list is silent in Release.
 	static void SortMovesByValue(MoveList& moveList, const Board& board);
+	// A capture SEE does not call losing, or any promotion, scores this plus its MVV-LVA value: above
+	// both killer scores, so it outranks everything ComputeQuiets() can add.
+	static constexpr int kGoodCaptureTier = 1'000'000;
+	static constexpr int kKiller0Score = 900'000;
+	static constexpr int kKiller1Score = 800'000;
 	// The lowest tier above the quiets: a losing capture scores this plus its MVV-LVA value.
 	static constexpr int kLosingCaptureTier = 700'000;
+	static_assert(kGoodCaptureTier > kKiller0Score && kKiller0Score > kKiller1Score &&
+	              kKiller1Score > kLosingCaptureTier);
 
 	// Score all moves in [0, n) into out_scored_idx as (score, original_index) pairs,
 	// sorted descending by score. Priority: hash move -> SEE >= 0 captures and all promotions
@@ -42,6 +49,15 @@ class MoveSorter final {
 	                                const int32_t (&history)[2][64][64],
 	                                std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
 	                                ContinuationRows cont = {});
+	// Scores the moves appended at [first, n) as ScoreMoves would, for a list with no hash move, and
+	// leaves [0, first) alone. Unordered, like ScoreMovesBestFirst's tail.
+	static void ScoreAppended(const MoveList& moveList, int first, int n, const Board& board, eColor side,
+	                          const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
+	                          std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
+	                          ContinuationRows cont = {});
+	// Swaps the best of [first, n) to first, leaving the rest unordered.
+	static void SelectBest(const MoveList& moveList, std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
+	                       int first, int n);
 	// Puts [first, n) in ScoreMoves' order. Requires 0 <= first and n <= MAX_MOVES; does nothing when
 	// fewer than two entries remain (n - first < 2), so OrderRemaining(.., 1, 0) is a no-op.
 	// moveList supplies the profile tie-break key.
@@ -54,9 +70,11 @@ class MoveSorter final {
   private:
 	MoveSorter() = default; // Enforce static method calls
 
-	// The scoring every ScoreMoves entry point shares: (score, original_index) pairs in generation order.
-	static void ScoreUnordered(const MoveList& moveList, int n, const Board& board, eColor side, const Move& hash_move,
-	                           const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
+	// The scoring every ScoreMoves entry point shares: (score, original_index) pairs for [first, n), in
+	// generation order.
+	static void ScoreUnordered(const MoveList& moveList, int first, int n, const Board& board, eColor side,
+	                           const Move& hash_move, const Move& killer0, const Move& killer1,
+	                           const int32_t (&history)[2][64][64],
 	                           std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
 	                           ContinuationRows cont);
 };
