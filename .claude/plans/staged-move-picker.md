@@ -18,11 +18,12 @@ stay node-identical**, so the whole gain shows up as nps, measured by a paired b
   is generated. The claim is that, at the frames D2 admits, no history, continuation-history or
   killer entry the quiet stage reads can change in between. It rests on which subtrees reach a
   `pvs()` frame of the same side, including through singular extension under a lowered
-  `SingularMinDepth`. If the claim is wrong, the result is a silent node change, which the D7 test
+  `SingularMinDepth`. If the claim is wrong, the result is a silent node change, which the on/off test in Validation
   would catch only on its positions.
-- **D2's population against the cost.** The net gain is unknown. Frames that need quiets pay for
-  two generator calls and an extra scoring pass. The spike's worst case is about 0.8% of runtime,
-  against a 3.80% gross at d1-d2. Is restricting to no-hash frames at depth ≤ 2 the right cut?
+- **D2's population against the cost.** The net gain is unknown. Every frame that transitions pays
+  for two generator calls and an extra scoring pass, and in PR 1 that includes killer-only frames
+  (see Assumptions). The gross at d1-d2 is 3.80%. Is restricting to no-hash frames at depth ≤ 2 the
+  right cut?
 - **D6 (PR 2): the killer validator's oracle.** It is exhaustive over encodings, but only on the
   positions it is run on.
 
@@ -150,7 +151,7 @@ killers.
 ### D5: A non-UCI tuning bool, default on
 
 `staged_generation_enabled` is a `TUNING_FIELD(bool, …, true, …, nullptr, true)`. It costs one read
-per frame, already loaded alongside the other tuning reads. It exists for the D7 test, which
+per frame, already loaded alongside the other tuning reads. It exists for the on/off test in Validation, which
 compares the two paths inside one binary. A default-true runtime bool is also the project's end
 state for a search feature (the alternative being deletion). Rejected: a compile-time gate. It
 cannot be tested within one binary.
@@ -179,14 +180,22 @@ ships.
 
 ## Assumptions I cannot verify from the code
 
-- **The net nps gain is positive.** The spike's 4.04% (3.80% at d1-d2) is a gross `rdtsc` estimate,
-  and frames that need quiets pay a second generator prologue and scoring call. Not verified;
-  settled by D7's paired `Compare-Bench`.
+- **The net nps gain is positive.** The spike's 4.04% (3.80% at d1-d2) is a gross `rdtsc` ceiling,
+  not an amount PR 1 is known to avoid. Not verified; settled only by the Speedup gate in
+  Validation. Two cost terms the spike did not measure:
+  - **Transition count.** In PR 1, every frame that reaches the killer tier pays the second pass,
+    killer-only frames included. The spike's raw output for D2's population (no hash, out of
+    check, d1-d2) gives 1,155,879 killer-only, 305,648 frontier-check and 557,246 needs-quiets
+    frames: at least 2,018,773 transitions, exclusion frames not counted. The spike's 0.8% overhead
+    figure covered 1.34M frames across all depths, so it is not a bound for PR 1.
+  - **Losing-capture cuts.** The spike's no-quiet class includes frames that cut on a losing
+    capture. D4 generates quiets before the first losing capture, to find any killers, so those
+    frames pay the quiet stage without saving it. The spike does not split them out.
 - **The spike's population is representative of game play.** It measured 8 bench positions at depth
   13. Not verified beyond the per-position spread (A from 2.5% to 5.5%). The bench is the ship gate,
   and game-like depth does not change which frames D2 admits.
 
-Everything else, D3 included, is argued from the code above and closed by D7's tests.
+Everything else, D3 included, is argued from the code above and closed by the tests in Validation.
 
 ## Invariants
 
@@ -221,13 +230,19 @@ cannot change strength except through nps, which the bench measures more precise
   origin/main` → IDENTICAL.
 - **Inv 3:** covered by the stalemate-in-one and mate positions above.
 - **Inv 4:** review. The diff adds no write before the guard.
-- **Gain:** paired `Compare-Bench.ps1` with `-Control`, clang-cl Release, following the
-  `measure-strength` quiet-window rule. **Ship if the paired nps gain's interval lies above zero.** A
-  gain whose interval reaches below +1% goes to the owner with the cost before merge.
+- **Gain:** the speed-claim procedure in `measure-strength` → regression-check. Build both trees
+  as clang-cl Release, relink them with `New-OrderedBuildPair.ps1` so code placement is equalised,
+  then run one `Compare-Bench.ps1 -Control` series on that pair, `-Rounds 12` fixed before launch,
+  under the quiet-window rule. **Ship only on the script's Speedup verdict.** That verdict needs a
+  lower bound above zero against both baseline copies, and above the steady A/A offset when that
+  offset is non-zero. The first predeclared series is the answer. Report every series tried, with
+  its interval line and `metadata.json`. No Speedup, or a pair that could not be relinked, is
+  reported as an unconfirmed gain and does not ship without the owner's call. A Speedup whose
+  lower bound is under +1% also goes to the owner, with the cost, before merge.
 - **PR 2 adds:** an exhaustive validator test. For each perft-suite position walked to depth 1, try
   all 65,536 encodings and assert Inv 5. It also runs under Debug and the sanitizers in CI, which
-  covers "safe on any encoding". Then the same equivalence tests, and a `Compare-Bench` against
-  PR 1's build.
+  covers "safe on any encoding". Then the same equivalence tests, and the same Speedup gate on an
+  ordered pair of PR 1 and PR 2.
 
 ## Cost
 
@@ -238,7 +253,8 @@ cannot change strength except through nps, which the bench measures more precise
   bullet names the new generator. No script, skill or CI changes.
 - **Review:** one `search-reviewer` pass per PR, plus open-pull-request's code review (170–270k
   tokens, 3–5 min each).
-- **Measurement:** two paired benches, local, about 30 min each. No CI lab.
+- **Measurement:** one ordered-pair relink and one 12-round `-Control` series per PR, local. No CI
+  lab.
 - **Optional:** PR 2 as a whole, priced above, for a gross +1.9 points.
 
 ## Harvest
