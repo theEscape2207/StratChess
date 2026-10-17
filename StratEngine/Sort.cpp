@@ -116,7 +116,7 @@ void MoveSorter::ScoreUnordered(const MoveList& moveList, int first, int n, cons
                                 std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
                                 ContinuationRows cont)
 {
-	assert(first >= 0 && n <= static_cast<int>(MoveList::MAX_MOVES));
+	assert(first >= 0 && first <= n && n <= static_cast<int>(MoveList::MAX_MOVES));
 
 	for (int i = first; i < n; ++i) {
 		const Move& mv = moveList[i];
@@ -141,9 +141,9 @@ void MoveSorter::ScoreUnordered(const MoveList& moveList, int first, int n, cons
 			s = (!MoveHelper::IsCapture(mv) || See::see_ge(board, mv, 0)) ? kGoodCaptureTier + mvv_lva
 			                                                              : kLosingCaptureTier + mvv_lva;
 		} else if (mv == killer0) {
-			s = 900'000;
+			s = kKiller0Score;
 		} else if (mv == killer1) {
-			s = 800'000;
+			s = kKiller1Score;
 		} else {
 			assert(static_cast<int>(side) >= 0 && static_cast<int>(side) < 2);
 			s = history[static_cast<int>(side)][mv.from()][mv.to()];

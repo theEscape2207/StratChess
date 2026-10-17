@@ -75,6 +75,13 @@ namespace {
 TEST_CASE("Staged generation searches the same tree", "[search]")
 {
 	SECTION("default tuning") { require_same_tree(SearchTuning{}); }
+	SECTION("singular extensions from depth 2, the lowest that keeps depth 2 staged")
+	{
+		SearchTuning tuning;
+		tuning.singular_extensions_enabled = true;
+		tuning.singular_min_depth = 2;
+		require_same_tree(tuning);
+	}
 	SECTION("singular extensions from depth 1")
 	{
 		SearchTuning tuning;

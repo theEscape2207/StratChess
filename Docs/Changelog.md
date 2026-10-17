@@ -25,8 +25,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   `staged_generation_enabled`, default on.
 - Node-identical: the quiets' history, continuation and killer scores are read late, which equals
   frame-start only inside that depth band (`Docs/EngineContracts.md` → Search internals). An in-binary
-  on/off test (13 positions, depth 7, default and `singular_min_depth = 1`) fails when depth 3 is
-  admitted; it does not see a broken singular bound. `Compare-SearchEquivalence` identical
+  on/off test (13 positions, depth 7, default and `singular_min_depth` 1 and 2) fails when depth 3 is
+  admitted; it does not see a broken singular bound, which only the eligibility unit test guards. `Compare-SearchEquivalence` identical
   (6 positions, depth 12).
 - **Measured:** `Compare-Bench -Control`, 12 rounds, depth 13, ordered pair against `12bf7d1`:
   **Speedup, +3.10% nps [+2.86%, +3.34%]**; A/A control -0.15% [-0.44%, +0.14%]. Every bench

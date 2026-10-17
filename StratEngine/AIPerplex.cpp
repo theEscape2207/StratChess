@@ -1005,6 +1005,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				MoveSorter::SelectBest(move_list, scored_idx, 0, n);
 			else
 				MoveSorter::OrderRemaining(move_list, scored_idx, si, n);
+			// The captures were spent and there are no quiets either.
 			if (si == n)
 				break;
 		}
@@ -1943,8 +1944,8 @@ bool AIPerplex::late_move_pruning_eligible(int depth, int alpha, int beta, bool 
 // depth-1 child's child at depth 1, which singular_min_depth >= 2 rules out. Depth 3 would let a
 // grandchild cut and update this frame's quiet scores mid-loop.
 //
-// No hash move, because a frame with one would have to search it before generating anything, and
-// validating a hash move without generation is #741's unsolved cost.
+// No hash move, because a frame with one would have to search it before generating anything, and no
+// validator yet checks a hash move's legality cheaply enough to pay for that.
 bool AIPerplex::staged_generation_eligible(int depth, bool in_check, const Move& hash_move) const
 {
 	return tuning_.staged_generation_enabled && !in_check && hash_move.is_null() &&

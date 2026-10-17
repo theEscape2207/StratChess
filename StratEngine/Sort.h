@@ -24,10 +24,14 @@ class MoveSorter final {
 	// Asserted, because passing a mixed list is silent in Release.
 	static void SortMovesByValue(MoveList& moveList, const Board& board);
 	// A capture SEE does not call losing, or any promotion, scores this plus its MVV-LVA value: above
-	// both killers (900'000, 800'000), so it outranks everything ComputeQuiets() can add.
+	// both killer scores, so it outranks everything ComputeQuiets() can add.
 	static constexpr int kGoodCaptureTier = 1'000'000;
+	static constexpr int kKiller0Score = 900'000;
+	static constexpr int kKiller1Score = 800'000;
 	// The lowest tier above the quiets: a losing capture scores this plus its MVV-LVA value.
 	static constexpr int kLosingCaptureTier = 700'000;
+	static_assert(kGoodCaptureTier > kKiller0Score && kKiller0Score > kKiller1Score &&
+	              kKiller1Score > kLosingCaptureTier);
 
 	// Score all moves in [0, n) into out_scored_idx as (score, original_index) pairs,
 	// sorted descending by score. Priority: hash move -> SEE >= 0 captures and all promotions
