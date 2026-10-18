@@ -121,9 +121,10 @@ header dated other than its merge day; correct it in the next PR.
 
 ## 3. PR body
 
-Written manually as **Summary / Test plan / Notes** — `--body-file` only, never inline `--body`
-(backtick spans execute in bash and post a mangled public comment). `New-PullRequest.ps1 -BodyFile`
-bypasses `.github/pull_request_template.md`, so supply the structure yourself.
+Use the headings of `.github/pull_request_template.md`. Pass the body with `--body-file`, never
+inline `--body`: backtick spans execute in bash and post a mangled public comment. With no body,
+`New-PullRequest.ps1` scaffolds from the template. With a body, it warns about each heading the body
+lacks.
 
 - Auto-close needs GitHub's exact keywords: `Closes #N` / `Fixes #N` / `Resolves #N`. "closing #N" is
   prose and leaves the issue open.

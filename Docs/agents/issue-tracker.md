@@ -24,8 +24,8 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 **Never open or update a PR with `gh pr create`, `gh pr edit --body`, or a bare `git push`.** PRs go
 through `Scripts\New-PullRequest.ps1 -Title "..." -BodyFile <path>`, which syncs with `origin/main`,
 runs `Validate-PrePR.ps1` at the right change tier and then pushes. A bare push succeeds while
-silently skipping that gate (this happened on PR #148), and `gh pr create` also bypasses
-`.github/pull_request_template.md`, so format the body as Summary / Test plan / Notes yourself.
+silently skipping that gate (this happened on PR #148). The script also checks the body against the
+headings of `.github/pull_request_template.md`. `gh pr create` does neither.
 
 Two consequences worth stating for any skill that finishes a piece of work:
 
