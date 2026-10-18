@@ -182,8 +182,9 @@ stays resolvable. `Validate-PrePR.ps1` warns while a top-level plan remains.
 
 **Harvest** names where each durable decision ends up. Prefer a source comment, CLAUDE.md's Key
 Source Facts, or `Docs/Changelog.md` for anything that matters — a PR body is fine for working
-detail but is editable and lives outside Git, so important measurements should also be reachable
-from the tree. Anything durable living only in the plan has not been harvested yet.
+detail but is editable and lives outside Git. A measured result goes to its `Measurements/` ledger,
+with a headline line in the Changelog (what an entry holds: the `Docs/Changelog.md` header).
+Anything durable living only in the plan has not been harvested yet.
 
 **Delete only when all three hold**: no inbound references, no deliberate spec/ADR role, and every
 durable item has a discoverable destination. Anything that fails one of those tests belongs in a

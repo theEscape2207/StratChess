@@ -2,11 +2,19 @@
 
 All notable changes to StratChessEvolved are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), adapted for a project without
-external releases: sections are dated rather than versioned, and entries keep the level
-of implementation detail (files touched, validation method, "why") that's useful for a
-solo/AI-assisted dev workflow, rather than the terse end-user-facing style the original
-convention assumes. `Deprecated`/`Security` are dropped — they essentially never apply to
-engine internals.
+external releases: sections are dated rather than versioned. `Deprecated`/`Security` are
+dropped — they essentially never apply to engine internals.
+
+Every PR above Docs tier (`Get-ChangeTier.ps1`) adds an entry; a Measurements-only PR records
+its result in `Measurements/` instead. What goes where:
+
+- **Entry:** what changed in behaviour, why, the trade-offs and risks accepted, and what was
+  removed.
+- **Results:** one headline line with a pointer to its ledger row. Add a caveat only when it
+  changes how the result reads, and state it once without repeating the entry's numbers — e.g.
+  `Lab (GCC) +18.3 ±3.5 (ci-per-change); the lock cost is ~3× clang-cl's, so the shipping gain is smaller.`
+- **PR body only:** validation evidence — equivalence, tests, codegen, tactical runs, reviews.
+- **`Measurements/` ledgers:** the full measurement detail.
 
 Dates are PR merge dates, verified against `gh pr list`/`gh pr view`. A handful of
 entries couldn't be matched with confidence — those remain in the undated pocket below.
@@ -14,6 +22,21 @@ entries couldn't be matched with confidence — those remain in the undated pock
 Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
+
+## 2026-10-18: Changelog rule and check (#734, slice 3)
+
+### Added
+- `New-PullRequest.ps1` warns when a diff above Docs tier leaves `Docs/Changelog.md` untouched and
+  the body's new `## Changelog` section does not say `none — <reason>`. A warning, not a failure:
+  the escape is cheap, and a fail would block a PR on prose. CI workflows are Build tier, so they
+  are covered; a Measurements-only PR is Docs tier and exempt.
+
+### Changed
+- What an entry holds is now a rule in this page's header: behaviour, why, trade-offs and removals
+  in the entry; one headline result line pointing at its ledger row; validation evidence in the PR
+  body only. Harvest (`.claude/plans/TEMPLATE.md`, `Docs/Workflow.md`) sends measured results to
+  `Measurements/`, with the headline here. It replaces the "files touched, validation method"
+  guidance, which pushed entries toward bloat. Existing entries are not trimmed.
 
 ## 2026-10-18: PR body built from the pull-request template (#734, slice 1)
 

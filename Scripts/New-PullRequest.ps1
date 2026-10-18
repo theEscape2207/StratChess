@@ -16,7 +16,8 @@
     `.github/pull_request_template.md`. The template stays the one source of the body's
     structure anyway: an unspecified body is scaffolded from it, and a supplied body gets
     one warning per template `## ` heading it lacks. A warning, not a failure, so a short
-    Docs PR is not blocked.
+    Docs PR is not blocked. A diff above Docs tier that leaves Docs/Changelog.md untouched
+    also warns, unless the body's `## Changelog` section says `none — <reason>`.
 
     That scaffolding applies ONLY when creating. Re-running the script after another
     commit -- the normal way to update an open PR -- leaves the existing description
@@ -140,6 +141,23 @@ function Get-MissingHeading {
     return @($Template | Where-Object { $present -notcontains $_ })
 }
 
+# Does a PR owe a Docs/Changelog.md entry it has not written? Every tier above Docs owes
+# one; CI workflows are Build tier, and a Measurements-only diff is Docs. The escape is a
+# `## Changelog` section reading `none — <reason>`, so a reason with no "none" or a bare
+# "none" does not count.
+function Test-ChangelogMissing {
+    param(
+        [Parameter(Mandatory)][string]$Tier,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$ChangedFiles,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$BodyText
+    )
+    if ($Tier -eq 'Docs' -or $ChangedFiles -contains 'Docs/Changelog.md') { return $false }
+    $visible = $BodyText -replace '(?s)<!--.*?-->', ''
+    $section = [regex]::Match($visible, '(?ims)^##[ \t]+Changelog[ \t]*\r?$(.*?)(?=^##[ \t]|\z)')
+    if (-not $section.Success) { return $true }
+    return $section.Groups[1].Value -notmatch '(?im)^[ \t]*(?:[-*][ \t]+)?`?none[ \t]*[—–-]+[ \t]*\S'
+}
+
 if ($SelfTest) {
     $branchCases = @(
         @{ Name = 'master is refused';               Branch = 'master';                    Expect = $false }
@@ -182,6 +200,19 @@ if ($SelfTest) {
         @{ Name = 'a headingless body misses all';        Body = 'Refs #502';                                   Expect = 'Why|Summary|Test plan|Notes' }
     )
     $templateHeadings = @(Get-BodyHeading -Text $fixtureTemplate)
+    $code = @('Scripts/New-PullRequest.ps1')
+    $withEntry = @('Scripts/New-PullRequest.ps1', 'Docs/Changelog.md')
+    $changelogCases = @(
+        @{ Name = 'FALSIFY: Build tier, no entry, no escape warns'; Tier = 'Build';  Files = $code;      Body = "## Summary`n- x"; Expect = $true }
+        @{ Name = 'an entry in the diff satisfies it';             Tier = 'Engine'; Files = $withEntry; Body = '';                Expect = $false }
+        @{ Name = 'a Docs-tier diff owes nothing';                 Tier = 'Docs';   Files = @('Measurements/local.md'); Body = ''; Expect = $false }
+        @{ Name = 'the none — <reason> escape';                    Tier = 'Build';  Files = $code;      Body = "## Changelog`nnone — tooling message only`n## Notes"; Expect = $false }
+        @{ Name = 'the escape as a bullet, hyphen dash';           Tier = 'Build';  Files = $code;      Body = "## Changelog`r`n- none - reverts #800`r`n"; Expect = $false }
+        @{ Name = 'none with no reason warns';                     Tier = 'Build';  Files = $code;      Body = "## Changelog`nnone`n"; Expect = $true }
+        @{ Name = '"entry added" without an entry warns';          Tier = 'Build';  Files = $code;      Body = "## Changelog`nentry added`n"; Expect = $true }
+        @{ Name = 'an escape inside a comment warns';              Tier = 'Build';  Files = $code;      Body = "## Changelog`n<!-- none — x -->`n"; Expect = $true }
+        @{ Name = 'an escape under another heading warns';         Tier = 'Build';  Files = $code;      Body = "## Changelog`n`n## Notes`nnone — x"; Expect = $true }
+    )
 
     $failed = 0
     foreach ($case in $headingCases) {
@@ -193,6 +224,11 @@ if ($SelfTest) {
         $actual = @(Get-MissingHeading -Template $templateHeadings -BodyText $case.Body) -join '|'
         if ($actual -eq $case.Expect) { Write-Host "  PASS  $($case.Name)" -ForegroundColor Green }
         else { $failed++; Write-Host "  FAIL  $($case.Name): got '$actual', expected '$($case.Expect)'" -ForegroundColor Red }
+    }
+    foreach ($case in $changelogCases) {
+        $actual = Test-ChangelogMissing -Tier $case.Tier -ChangedFiles $case.Files -BodyText $case.Body
+        if ($actual -eq $case.Expect) { Write-Host "  PASS  $($case.Name)" -ForegroundColor Green }
+        else { $failed++; Write-Host "  FAIL  $($case.Name): got $actual, expected $($case.Expect)" -ForegroundColor Red }
     }
     foreach ($case in $editCases) {
         $actual = @(Get-PrEditArgument -Number '7' -NewTitle $case.New -CurrentTitle $case.Current -BodyPath $case.Body) -join ' '
@@ -215,7 +251,7 @@ if ($SelfTest) {
         Write-Host "$failed self-test case(s) FAILED." -ForegroundColor Red
         exit 1
     }
-    $total = $branchCases.Count + $untrackedCases.Count + $editCases.Count + $headingCases.Count + $missingCases.Count
+    $total = $branchCases.Count + $untrackedCases.Count + $editCases.Count + $headingCases.Count + $missingCases.Count + $changelogCases.Count
     Write-Host "All $total self-test cases passed." -ForegroundColor Green
     exit 0
 }
@@ -410,10 +446,19 @@ if ($BodyFile) {
     $bodyPath = $tempBody
 }
 
-if ($bodySupplied) {
-    $templateHeadings = @(Get-BodyHeading -Text (Get-Content -LiteralPath $templatePath -Raw))
-    $missingHeadings = @(Get-MissingHeading -Template $templateHeadings -BodyText "$(Get-Content -LiteralPath $bodyPath -Raw)")
-    foreach ($h in $missingHeadings) { Write-Host "WARNING: body lacks the template heading '## $h'." -ForegroundColor Yellow }
+if ($bodyPath) {
+    $prBody = "$(Get-Content -LiteralPath $bodyPath -Raw)"
+    if ($bodySupplied) {
+        $templateHeadings = @(Get-BodyHeading -Text (Get-Content -LiteralPath $templatePath -Raw))
+        $missingHeadings = @(Get-MissingHeading -Template $templateHeadings -BodyText $prBody)
+        foreach ($h in $missingHeadings) { Write-Host "WARNING: body lacks the template heading '## $h'." -ForegroundColor Yellow }
+    }
+    # A warning, not a failure: the escape is cheap, and a fail would block a PR on prose.
+    $prFiles = @($changed | Where-Object { $_ })
+    $prTier = if ($prFiles.Count -gt 0) { (& (Join-Path $PSScriptRoot 'Get-ChangeTier.ps1') -Paths $prFiles).Tier } else { 'Docs' }
+    if (Test-ChangelogMissing -Tier $prTier -ChangedFiles $prFiles -BodyText $prBody) {
+        Write-Host "WARNING: $prTier-tier diff with no Docs/Changelog.md entry -- add one, or write 'none — <reason>' under '## Changelog'." -ForegroundColor Yellow
+    }
 }
 
 try {
