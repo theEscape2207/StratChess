@@ -134,9 +134,9 @@ function Get-BodyHeading {
 function Get-MissingHeading {
     param(
         [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Template,
-        [Parameter(Mandatory)][AllowEmptyString()][string]$Body
+        [Parameter(Mandatory)][AllowEmptyString()][string]$BodyText
     )
-    $present = @(Get-BodyHeading -Text $Body)
+    $present = @(Get-BodyHeading -Text $BodyText)
     return @($Template | Where-Object { $present -notcontains $_ })
 }
 
@@ -190,7 +190,7 @@ if ($SelfTest) {
         else { $failed++; Write-Host "  FAIL  $($case.Name): got '$actual', expected '$($case.Expect)'" -ForegroundColor Red }
     }
     foreach ($case in $missingCases) {
-        $actual = @(Get-MissingHeading -Template $templateHeadings -Body $case.Body) -join '|'
+        $actual = @(Get-MissingHeading -Template $templateHeadings -BodyText $case.Body) -join '|'
         if ($actual -eq $case.Expect) { Write-Host "  PASS  $($case.Name)" -ForegroundColor Green }
         else { $failed++; Write-Host "  FAIL  $($case.Name): got '$actual', expected '$($case.Expect)'" -ForegroundColor Red }
     }
@@ -393,7 +393,6 @@ if ($existing -and -not $bodySupplied -and -not $titleChanged) {
 }
 
 $templatePath = Join-Path $RepoRoot '.github/pull_request_template.md'
-$templateText = if (Test-Path -LiteralPath $templatePath) { Get-Content -LiteralPath $templatePath -Raw } else { '' }
 
 $tempBody = $null
 $bodyPath = ''
@@ -404,8 +403,7 @@ if ($BodyFile) {
     # An open PR whose title alone changes keeps its description: no scaffold.
     if (-not $Body) {
         # --body-file bypasses the template, so scaffold from it rather than open an empty PR.
-        if (-not $templateText) { Write-Host "FAIL: no body given and $templatePath not found." -ForegroundColor Red; exit 1 }
-        $Body = $templateText
+        $Body = Get-Content -LiteralPath $templatePath -Raw
     }
     $tempBody = Join-Path ([System.IO.Path]::GetTempPath()) ("pr-body-{0}.md" -f ([guid]::NewGuid()))
     Set-Content -Path $tempBody -Value $Body -Encoding utf8
@@ -413,13 +411,9 @@ if ($BodyFile) {
 }
 
 if ($bodySupplied) {
-    if (-not $templateText) {
-        Write-Host "WARNING: $templatePath not found -- body headings not checked." -ForegroundColor Yellow
-    } else {
-        $suppliedText = if ($BodyFile) { Get-Content -LiteralPath $BodyFile -Raw } else { $Body }
-        $missingHeadings = @(Get-MissingHeading -Template @(Get-BodyHeading -Text $templateText) -Body "$suppliedText")
-        foreach ($h in $missingHeadings) { Write-Host "WARNING: body lacks the template heading '## $h'." -ForegroundColor Yellow }
-    }
+    $templateHeadings = @(Get-BodyHeading -Text (Get-Content -LiteralPath $templatePath -Raw))
+    $missingHeadings = @(Get-MissingHeading -Template $templateHeadings -BodyText "$(Get-Content -LiteralPath $bodyPath -Raw)")
+    foreach ($h in $missingHeadings) { Write-Host "WARNING: body lacks the template heading '## $h'." -ForegroundColor Yellow }
 }
 
 try {
