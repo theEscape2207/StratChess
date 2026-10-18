@@ -12,10 +12,11 @@
       3. Push   -- `git push -u origin <branch>`.
       4. PR     -- creates it against `main`, or updates the title and body of an open one.
 
-    The body is written to a temp file and passed with `--body-file`, because
-    `gh pr create --body` bypasses `.github/pull_request_template.md` entirely. To keep
-    PRs consistent anyway, an unspecified body is scaffolded with the project's
-    Summary / Test plan / Notes headings rather than left empty.
+    The body is written to a temp file and passed with `--body-file`, which bypasses
+    `.github/pull_request_template.md`. The template stays the one source of the body's
+    structure anyway: an unspecified body is scaffolded from it, and a supplied body gets
+    one warning per template `## ` heading it lacks. A warning, not a failure, so a short
+    Docs PR is not blocked.
 
     That scaffolding applies ONLY when creating. Re-running the script after another
     commit -- the normal way to update an open PR -- leaves the existing description
@@ -121,6 +122,24 @@ function Get-PrEditArgument {
     return @('pr', 'edit', $Number) + $edits
 }
 
+# The `## ` headings of a markdown text, in order. HTML comments are dropped first, so a
+# heading quoted inside a template hint is not one.
+function Get-BodyHeading {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+    $visible = $Text -replace '(?s)<!--.*?-->', ''
+    return @([regex]::Matches($visible, '(?m)^##[ \t]+(.+?)[ \t]*\r?$') | ForEach-Object { $_.Groups[1].Value })
+}
+
+# The template headings a body lacks. Case-insensitive: "Test Plan" satisfies "Test plan".
+function Get-MissingHeading {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Template,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$BodyText
+    )
+    $present = @(Get-BodyHeading -Text $BodyText)
+    return @($Template | Where-Object { $present -notcontains $_ })
+}
+
 if ($SelfTest) {
     $branchCases = @(
         @{ Name = 'master is refused';               Branch = 'master';                    Expect = $false }
@@ -149,7 +168,32 @@ if ($SelfTest) {
         @{ Name = 'title and body are edited together'; New = 'default on'; Current = 'default off'; Body = 'b.md'; Expect = 'pr edit 7 --title default on --body-file b.md' }
     )
 
+    $fixtureTemplate = "## Why`n<!-- why`n## Not a heading -->`n`n## Summary`n`n-`n`n## Test plan`r`n`n## Notes`n"
+    $headingCases = @(
+        @{ Name = 'template headings, comments skipped, CRLF trimmed'; Body = $fixtureTemplate;                      Expect = 'Why|Summary|Test plan|Notes' }
+        @{ Name = 'a ### subheading is not a heading';                 Body = "### Why`n## Summary";            Expect = 'Summary' }
+        @{ Name = 'no headings';                                       Body = 'Refs #502';                      Expect = '' }
+    )
+    $missingCases = @(
+        @{ Name = 'a full body misses nothing';           Body = "## Why`n## Summary`n## Test plan`n## Notes";  Expect = '' }
+        @{ Name = 'FALSIFY: a missing heading is named';  Body = "## Summary`n## Test plan`n## Notes";          Expect = 'Why' }
+        @{ Name = 'case does not matter';                 Body = "## why`n## summary`n## Test Plan`n## NOTES";  Expect = '' }
+        @{ Name = 'a heading only in a comment misses';   Body = "<!-- ## Why -->`n## Summary`n## Test plan`n## Notes"; Expect = 'Why' }
+        @{ Name = 'a headingless body misses all';        Body = 'Refs #502';                                   Expect = 'Why|Summary|Test plan|Notes' }
+    )
+    $templateHeadings = @(Get-BodyHeading -Text $fixtureTemplate)
+
     $failed = 0
+    foreach ($case in $headingCases) {
+        $actual = @(Get-BodyHeading -Text $case.Body) -join '|'
+        if ($actual -eq $case.Expect) { Write-Host "  PASS  $($case.Name)" -ForegroundColor Green }
+        else { $failed++; Write-Host "  FAIL  $($case.Name): got '$actual', expected '$($case.Expect)'" -ForegroundColor Red }
+    }
+    foreach ($case in $missingCases) {
+        $actual = @(Get-MissingHeading -Template $templateHeadings -BodyText $case.Body) -join '|'
+        if ($actual -eq $case.Expect) { Write-Host "  PASS  $($case.Name)" -ForegroundColor Green }
+        else { $failed++; Write-Host "  FAIL  $($case.Name): got '$actual', expected '$($case.Expect)'" -ForegroundColor Red }
+    }
     foreach ($case in $editCases) {
         $actual = @(Get-PrEditArgument -Number '7' -NewTitle $case.New -CurrentTitle $case.Current -BodyPath $case.Body) -join ' '
         if ($actual -eq $case.Expect) { Write-Host "  PASS  $($case.Name)" -ForegroundColor Green }
@@ -171,7 +215,7 @@ if ($SelfTest) {
         Write-Host "$failed self-test case(s) FAILED." -ForegroundColor Red
         exit 1
     }
-    $total = $branchCases.Count + $untrackedCases.Count + $editCases.Count
+    $total = $branchCases.Count + $untrackedCases.Count + $editCases.Count + $headingCases.Count + $missingCases.Count
     Write-Host "All $total self-test cases passed." -ForegroundColor Green
     exit 0
 }
@@ -348,6 +392,8 @@ if ($existing -and -not $bodySupplied -and -not $titleChanged) {
     exit 0
 }
 
+$templatePath = Join-Path $RepoRoot '.github/pull_request_template.md'
+
 $tempBody = $null
 $bodyPath = ''
 if ($BodyFile) {
@@ -356,26 +402,18 @@ if ($BodyFile) {
 } elseif ($bodySupplied -or -not $existing) {
     # An open PR whose title alone changes keeps its description: no scaffold.
     if (-not $Body) {
-        # gh --body bypasses .github/pull_request_template.md, so scaffold the house
-        # headings rather than opening an empty PR.
-        $Body = @"
-## Summary
-
-<what changed and why>
-
-## Test plan
-
-- ``Scripts\Validate-PrePR.ps1`` -- PASS
--
-
-## Notes
-
-<risks, follow-ups, or 'none'>
-"@
+        # --body-file bypasses the template, so scaffold from it rather than open an empty PR.
+        $Body = Get-Content -LiteralPath $templatePath -Raw
     }
     $tempBody = Join-Path ([System.IO.Path]::GetTempPath()) ("pr-body-{0}.md" -f ([guid]::NewGuid()))
     Set-Content -Path $tempBody -Value $Body -Encoding utf8
     $bodyPath = $tempBody
+}
+
+if ($bodySupplied) {
+    $templateHeadings = @(Get-BodyHeading -Text (Get-Content -LiteralPath $templatePath -Raw))
+    $missingHeadings = @(Get-MissingHeading -Template $templateHeadings -BodyText "$(Get-Content -LiteralPath $bodyPath -Raw)")
+    foreach ($h in $missingHeadings) { Write-Host "WARNING: body lacks the template heading '## $h'." -ForegroundColor Yellow }
 }
 
 try {
