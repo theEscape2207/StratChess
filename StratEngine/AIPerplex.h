@@ -92,16 +92,39 @@ inline double lmr_raw_base(int depth, int move_number, int log_base, int log_div
 // where the base sits below the cap. A divisor small against the +-3 * HISTORY_MAX score range, the
 // default among them, makes this nearly a sign switch: a score of history_divisor * (cap - 1) already
 // gives R = 1. A displaced killer's killer-tier score follows the same formula, so it gets R = 1 too.
+//
+// extra (the non-improving offset) is added to the truncated base BEFORE the cap, so R stays inside
+// [1, depth - 2] whatever the tuning and the history shift still applies after it: a quiet with good
+// history is still reduced less at a node that is not improving.
 inline int lmr_reduction(int depth, int move_number, int ordering_score, int history_divisor, int log_base,
-                         int log_divisor) noexcept
+                         int log_divisor, int extra = 0) noexcept
 {
-	assert(move_number >= 1 && history_divisor >= 0 && log_divisor >= 0);
+	assert(move_number >= 1 && history_divisor >= 0 && log_divisor >= 0 && extra >= 0);
 	const int cap = std::max(1, depth - 2);
-	const int base =
-	    std::min(std::max(1, static_cast<int>(lmr_raw_base(depth, move_number, log_base, log_divisor))), cap);
+	const int base = std::min(
+	    std::max(1, static_cast<int>(lmr_raw_base(depth, move_number, log_base, log_divisor)) + extra), cap);
 	if (history_divisor == 0)
 		return base;
 	return std::clamp(base - ordering_score / history_divisor, 1, cap);
+}
+
+// Whether the node at ply is improving: its static eval beats the one at ply - 2, or at ply - 4 when
+// ply - 2 has none (that ancestor was in check). Evaluate() scores for the side to move, and ply,
+// ply - 2 and ply - 4 share it -- a null move advances the ply too -- so the values compare directly.
+// No evidence counts as improving, so a missing value never earns the extra reduction.
+inline bool is_improving(const int16_t* evals, int ply) noexcept
+{
+	if (ply < 2 || evals[ply] == kNoStaticEval)
+		return true;
+	int16_t previous = evals[ply - 2];
+	if (previous == kNoStaticEval) {
+		if (ply < 4)
+			return true;
+		previous = evals[ply - 4];
+		if (previous == kNoStaticEval)
+			return true;
+	}
+	return evals[ply] > previous;
 }
 
 struct AIPerplexConfig {

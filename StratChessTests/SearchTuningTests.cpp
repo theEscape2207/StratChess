@@ -38,6 +38,7 @@ namespace {
 		int lmr_history_divisor;
 		int lmr_log_base;
 		int lmr_log_divisor;
+		int lmr_improving_offset;
 		bool null_move_enabled;
 		int null_move_reduction;
 		int null_move_min_depth;
@@ -75,6 +76,7 @@ namespace {
 	SAME_MEMBER(lmr_history_divisor)
 	SAME_MEMBER(lmr_log_base)
 	SAME_MEMBER(lmr_log_divisor)
+	SAME_MEMBER(lmr_improving_offset)
 	SAME_MEMBER(null_move_enabled)
 	SAME_MEMBER(null_move_reduction)
 	SAME_MEMBER(null_move_min_depth)
@@ -133,6 +135,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.lmr_history_divisor == 64);
 	CHECK(tuning.lmr_log_base == 100);
 	CHECK(tuning.lmr_log_divisor == 150);
+	CHECK(tuning.lmr_improving_offset == 0);
 	CHECK(tuning.null_move_enabled);
 	CHECK(tuning.null_move_reduction == 3);
 	CHECK(tuning.null_move_min_depth == 3);
@@ -231,6 +234,11 @@ TEST_CASE("SearchTuning bounded fields accept their domain edges and reject beyo
 		CHECK(rejection(margin_key, -1) == Code::OutOfRange);
 		CHECK(rejection(margin_key, 1001) == Code::OutOfRange);
 	}
+
+	CHECK(accepts("lmr_improving_offset", 0));
+	CHECK(accepts("lmr_improving_offset", 3));
+	CHECK(rejection("lmr_improving_offset", -1) == Code::OutOfRange);
+	CHECK(rejection("lmr_improving_offset", 4) == Code::OutOfRange);
 }
 
 TEST_CASE("SearchTuning comparison-only thresholds take any representable value", "[tuning]")
@@ -416,6 +424,13 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(uci_rejection("LmrLogDivisor", "-1") == Code::InvalidType);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("LmrImprovingOffset", "1", tuning));
+	expected.lmr_improving_offset = 1;
+	CHECK(tuning == expected);
+	CHECK(uci_rejection("LmrImprovingOffset", "4") == Code::OutOfRange);
+	CHECK(uci_rejection("LmrImprovingOffset", "-1") == Code::InvalidType);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("SeePruningMargin", "200", tuning));
 	expected.see_pruning_margin = 200;
 	CHECK(tuning == expected);
@@ -506,6 +521,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name LmrHistoryDivisor type spin default 64 min 0 max 1000000",
 	    "option name LmrLogBase type spin default 100 min 0 max 1000",
 	    "option name LmrLogDivisor type spin default 150 min 0 max 10000",
+	    "option name LmrImprovingOffset type spin default 0 min 0 max 3",
 	    "option name SeePruningMargin type spin default 0 min 0 max 900",
 	    "option name SingularExtensions type check default true",
 	    "option name SingularMinDepth type spin default 6 min 1 max 256",

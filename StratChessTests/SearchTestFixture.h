@@ -411,6 +411,8 @@ class AIPerlexTestFixture {
 		ai->tuning_.lmr_log_base = base;
 		ai->tuning_.lmr_log_divisor = divisor;
 	}
+	void set_lmr_improving_offset(int offset) const { ai->tuning_.lmr_improving_offset = offset; }
+	int16_t ply_eval(int ply) const { return ai->td_.ply_eval[ply]; }
 	std::pair<int16_t, int16_t> continuation_range() const
 	{
 		std::pair<int16_t, int16_t> range{0, 0};

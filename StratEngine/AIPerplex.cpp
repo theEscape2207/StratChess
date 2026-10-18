@@ -618,12 +618,13 @@ namespace {
 		}
 	}
 
-	// Profiles how the history adjustment moved one reduction R away from its base.
+	// Profiles how the history adjustment moved one reduction R away from its base. The base carries
+	// the same extra as R, so the counts describe the history shift alone.
 	void record_lmr_reach(LmrStats& stats, int depth, int move_number, int ordering_score, int r, int log_base,
-	                      int log_divisor) noexcept
+	                      int log_divisor, int extra) noexcept
 	{
 		if constexpr (kSearchProfileCompiled) {
-			const int base = lmr_reduction(depth, move_number, ordering_score, 0, log_base, log_divisor);
+			const int base = lmr_reduction(depth, move_number, ordering_score, 0, log_base, log_divisor, extra);
 			if (base == std::max(1, depth - 2))
 				stats.capped++;
 			if (r == base)
@@ -789,6 +790,17 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		}
 		return static_eval;
 	};
+
+	// This ply's slot of the improving stack, written before any child is searched. A real eval is
+	// needed only at depth >= lmr_min_depth, and that loses nothing: LMR reads the flag only at such
+	// a node, and depth never rises along a path (singular keeps a child at its parent's depth), so
+	// every ancestor it reads had that depth too and stored a real eval unless it was in check.
+	// An exclusion frame writes nothing: it is its parent's position at the parent's ply, often
+	// below lmr_min_depth, and its sentinel would erase the eval the parent's later children read.
+	if (!is_exclusion_frame)
+		td.ply_eval[ply] = tuning_.lmr_improving_offset != 0 && !in_check && depth >= tuning_.lmr_min_depth
+		                       ? static_cast<int16_t>(node_eval())
+		                       : kNoStaticEval;
 
 	// Reverse futility pruning. A shallow non-PV node whose static evaluation already stands
 	// a margin above beta is reported as a fail-high without being searched. It sits exactly where
@@ -1112,11 +1124,14 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 				if (apply_lmr) {
 					// scored_idx still holds the score ScoreMovesBestFirst gave this move before the loop.
+					const int extra = tuning_.lmr_improving_offset != 0 && !is_improving(td.ply_eval, ply)
+					                      ? tuning_.lmr_improving_offset
+					                      : 0;
 					const int R = lmr_reduction(depth, move_number, scored_idx[si].first, tuning_.lmr_history_divisor,
-					                            tuning_.lmr_log_base, tuning_.lmr_log_divisor);
+					                            tuning_.lmr_log_base, tuning_.lmr_log_divisor, extra);
 					assert(depth - 1 - R >= 1 || tuning_.lmr_min_depth < 3);
 					record_lmr_reach(td.telemetry.lmr, depth, move_number, scored_idx[si].first, R,
-					                 tuning_.lmr_log_base, tuning_.lmr_log_divisor);
+					                 tuning_.lmr_log_base, tuning_.lmr_log_divisor, extra);
 
 					// Search profile: node totals count the outermost search of each kind only. Each
 					// nesting depth drops straight after its call, before any abort return.

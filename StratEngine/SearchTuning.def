@@ -45,6 +45,10 @@ TUNING_FIELD(int,     lmr_history_divisor, 64,  0,                              
 // of 0 restores the sqrt base and makes lmr_log_base inert (see lmr_raw_base()).
 TUNING_FIELD(int,     lmr_log_base,        100, 0,                                  1000,                            true, "LmrLogBase",        true)
 TUNING_FIELD(int,     lmr_log_divisor,     150, 0,                                  10000,                           true, "LmrLogDivisor",     true)
+// Plies added to a reduced quiet's R at a node that is not improving: its static eval is no higher
+// than at ply - 2 (see is_improving()). 0 evaluates nothing extra and leaves the search unchanged.
+// The range bounds the first experiment, which measures 1.
+TUNING_FIELD(int,     lmr_improving_offset, 0,  0,                                  3,                               true, "LmrImprovingOffset", true)
 
 TUNING_FIELD(bool,    null_move_enabled,   true, false, true,                            true, nullptr, true)
 TUNING_FIELD(int,     null_move_reduction, 3,    1,     std::numeric_limits<int>::max(), true, nullptr, true)
