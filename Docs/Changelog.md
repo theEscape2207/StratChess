@@ -89,7 +89,7 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   against the merge base: **+10.78 +/- 3.50 Elo** (19,980 games, 10+0.1;
   `Measurements/ci-per-change.md`).
 
-## 2026-10-16: Static evaluation in the TT entry (#832)
+## 2026-10-17: Static evaluation in the TT entry (#832)
 
 ### Changed
 - Each TT entry carries the side-to-move `Evaluate()` of its position in 16 bits taken from the key:
