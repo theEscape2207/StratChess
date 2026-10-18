@@ -40,7 +40,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   (6 positions, depth 12).
 - **Measured:** `Compare-Bench -Control`, 12 rounds, depth 13, ordered pair against `12bf7d1`:
   **Speedup, +3.10% nps [+2.86%, +3.34%]**; A/A control -0.15% [-0.44%, +0.14%]. Every bench
-  position gained (+2.30% to +4.09%).
+  position gained (+2.30% to +4.09%). Informational lab run (19980 games, against `12bf7d1`):
+  +2.96 +/- 3.49 Elo, inconclusive.
 
 ## 2026-10-17: Pawn-structure cache (#837)
 

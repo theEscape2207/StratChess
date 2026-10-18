@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-17 | eac04e2, staged move generation in `pvs()` (#839; node-identical, a speed change only) | 12bf7d1 | 19980 | 10+0.1 | **+2.96 +/- 3.49** | inconclusive @ 19980 |
 | 2026-10-17 | df34ce5, per-thread pawn-structure cache (#837; node-identical, a speed change only) | 295fa5f | 19980 | 10+0.1 | **+10.78 +/- 3.50** | gain |
 | 2026-10-16 | 83b4cf9, static evaluation in the TT entry (#832; node-identical, a speed change only) | 0fb63d0 | 19980 | 10+0.1 | **+14.82 +/- 3.53** | gain |
 | 2026-10-16 | cced4d1, legal-only move lists at in-check nodes (#823; node-identical, a speed change only) | 663e2c5 | 23976 | 10+0.1 | **+30.36 +/- 3.23** | gain |
@@ -93,6 +94,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-17 -- eac04e2, staged move generation in `pvs()` (#839) (19980 games)
+
+**Informational run for PR #840 at the owner's request; the ship gate was the local bench.** [Run `39035597892`](https://github.com/theEscape2207/StratChess/actions/runs/39035597892), about 3 h 17 min, 18 shards x 555 pairs, reference the merge base `12bf7d1`, resolved before the PR merged. The aggregate passed its integrity checks (18 shards, 555 pairs each). Pooled Ptnml(0-2) [718, 2254, 3921, 2334, 763], score 50.43%, interval [-0.54, +6.45]; 13 of 18 shards favour the candidate by score. The search is node-identical (`Compare-SearchEquivalence.ps1`), so any gain is speed: local clang-cl nps +3.10% [+2.86%, +3.34%] on an ordered pair. The point estimate fits that speed-up, but the interval spans zero; about 27,900 games would be needed to exclude it if the estimate holds. On the lab's GCC build the speed-up is unmeasured.
 
 ### 2026-10-17 -- df34ce5, per-thread pawn-structure cache (#837) (19980 games)
 
