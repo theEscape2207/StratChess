@@ -49,8 +49,11 @@ A node at `ply` is **improving** when `eval[ply] > eval[ply-2]`.
 
 - If `eval[ply-2]` is the sentinel (`kNoStaticEval`: the ancestor was in check), compare with
   `eval[ply-4]`.
-- If that is also missing, or `ply < 2`, the node counts as improving, so it gets no extra
-  reduction.
+- The fallback reads `eval[ply-4]` only when `ply >= 4`.
+- In every other case the node counts as improving, so it gets no extra reduction:
+  - `ply < 2`;
+  - `ply` is 2 or 3 and `eval[ply-2]` is the sentinel;
+  - both ancestors are the sentinel.
 
 `Evaluate()` scores from the side to move, and ply and ply-2 have the same side to move, so the
 values compare directly. That holds under a null move too: the null child is at ply+1, and ply+2
@@ -117,18 +120,27 @@ The history shift and its clamp then apply as today.
 - The history shift can still reduce R at a non-improving node.
 
 `record_lmr_reach()` passes the same `extra` to its base call, so its counts still describe the
-history shift alone. A new `LmrStats::not_improving` counter records how often the offset applied;
-the screen reads it as the share of reductions affected.
+history shift alone.
+
+The profile output gets no new counter. A count of non-improving nodes would only measure
+eligibility, not reach: at depth 3 the cap is 1, so `extra` cannot change R there. Measuring reach
+means comparing the final R with and without `extra`, and adding a row means changing the parser,
+the report, its tests and the EngineGuide. That work is worth doing only if the lab result needs
+explaining, and then as its own change.
 
 Rejected:
-- **Adding the offset after the history clamp:** at the cap it would be swallowed.
+- **Adding the offset after the history clamp:** the history shift would then apply before the
+  offset and could no longer cancel it. For example, at depth 6, move index 20 and history
+  quotient 1, the pre-cap placement gives R = 3 and the post-clamp placement gives R = 4. Placing
+  it first keeps history's priority: a quiet with good history is still reduced less.
 - **A separate log-table row for non-improving nodes:** more constants to tune, for a first
   measurement.
 
 ### D5: The option
 
 `TUNING_FIELD(int, lmr_improving_offset, 0, 0, 3, true, "LmrImprovingOffset", true)`. The range
-0-3 keeps it a ply count; above 3, R would sit on the cap for every realistic depth.
+0-3 bounds this first experiment, which measures 1. Widening it is a one-line change if a later
+tune wants more.
 
 At 0 the frame computes no extra eval, and the reading code is skipped, so the search is
 node-identical to the merge base. The lab measures 1 with `candidate_uci_options`.
@@ -137,7 +149,8 @@ node-identical to the merge base. The lab measures 1 with `candidate_uci_options
 
 - **A1: the offset-0 cost is within bench noise.** The added work per frame is one compare and one
   `int16_t` store. Verified by an ordered-pair `Compare-Bench.ps1 -Control` against the merge base;
-  the verdict must be "No slowdown".
+  the verdict must be "No slowdown". That verdict allows up to 0.5% cost, so report its
+  interval, not "zero overhead".
 - **A2: the eval-at-depth≥3 cost is small at offset 1.** It is not separable from the tree change,
   so `Compare-WallClock.ps1` and the lab measure it together. No separate gate.
 
@@ -159,22 +172,32 @@ node-identical to the merge base. The lab measures 1 with `candidate_uci_options
 - **Speed:** an ordered pair (`New-OrderedBuildPair.ps1`) through `Compare-Bench.ps1 -Control`,
   which must read "No slowdown" (A1).
 - **Unit tests** (`SearchLmrTests.cpp`):
-  - `is_improving()`: higher, equal, lower, ply-2 sentinel falling back to ply-4, both missing,
-    and `ply < 2`.
+  - `is_improving()`: higher, equal, lower; a ply-2 sentinel falling back to ply-4; both
+    missing; `ply < 2`; and `ply` 2 and 3 with a sentinel at ply-2.
   - `lmr_reduction()` with `extra`: it raises R by `extra` below the cap, never passes the cap,
     and the history shift still applies.
   - **Exclusion frame:** after a singular verification at a node with `depth >= lmr_min_depth`,
     `ply_eval[ply]` still holds the node's real eval. Use a fixture position known to trigger
-    singular extensions, and a test-only accessor.
+    singular extensions, and a test-only accessor. The verification depth must be below
+    `lmr_min_depth`, so that removing the skip makes the test fail.
   - **Reaches the search:** offset 1 changes `mainnodes()` against offset 0 on the existing LMR
     fixture position, at depth 8.
   - **Falsification:** each test is shown to fail with its code path reverted
     (`feedback_falsify_new_regression_tests`).
 - **`SearchTuningTests.cpp`:** the mirror struct, the default, and the JSON round trip.
-- **Screen** (insight, not a gate): `Compare-SearchProfile.ps1 -Seeds 8 -Depth 12` on a local
-  build with the default set to 1, against the PR build.
-- **Wall clock:** `Compare-WallClock.ps1` on the same pair. Both rows go to
-  `Measurements/ci-per-change.md` next to the lab row.
+- **Screen** (insight, not a gate, about 25 min):
+  - Run `Compare-SearchProfile.ps1 -Seeds 8 -Depth 12 -Positions Tests/profile-screen.fen` on two
+    `-DSTRAT_SEARCH_PROFILE=1` builds of the PR: the PR as is (offset 0), and a local-only copy
+    with the default set to 1.
+  - The offset-0 build is the tree-shape reference, which is valid once equivalence has passed.
+    Record that provenance with the row.
+- **Wall clock** (about 17 min): `Compare-WallClock.ps1` on shipping builds, never profile builds,
+  so the instrumentation is not timed.
+  - Baseline: the exact merge base.
+  - Candidate: the local default-1 shipping build, so the run times both the stack and the tree
+    change.
+  - Neither script accepts a UCI option, which is why the default-1 build exists.
+- Both rows go to `Measurements/ci-per-change.md` next to the lab row.
 - **Elo:** one strength-lab run, already approved:
   `gh workflow run strength.yml --ref <branch> -f candidate_uci_options="LmrImprovingOffset=1"`
   against the merge base.
@@ -186,14 +209,13 @@ node-identical to the merge base. The lab measures 1 with `candidate_uci_options
 ## Cost
 
 - **Size:** 50-200 lines across `ThreadData.h`, `AIPerplex.{h,cpp}`, `SearchTuning.def`,
-  `SearchTelemetry.h` (one counter), `SearchLmrTests.cpp`, `SearchTuningTests.cpp`,
+  `SearchLmrTests.cpp`, `SearchTuningTests.cpp`,
   `SearchTestFixture.h` (a setter) and `Docs/EngineGuide.md` (the option).
 - **Blast radius:** engine tier. No gate, skill or script changes.
 - **Review:** one code review, plus `search-reviewer`.
 - **Measurement:** the ordered-pair bench takes about 15 min of quiet, the screen about 25 min and
   the wall clock about 17 min. The lab run, already approved, takes about 3 h and 18 of 20 CI slots.
-- **Optional:** the `not_improving` counter, about 5 lines. It lets the screen show how many
-  reductions the offset touched. Without it, a null lab result could mean the flag rarely fires.
+- **Optional parts:** none. The reach counter was dropped in review (D4).
 
 ## Harvest
 
