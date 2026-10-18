@@ -944,6 +944,63 @@ to set. Under the common `defrag=madvise` the first touch of an advised region m
 synchronously, so a fragmented host can see a slower table build; that cost falls at construction or
 `setoption Hash`, never during search.
 
+---
+
+## 2026-09-30: Nightly Linux jobs on ubuntu-26.04 (#476, step 3b, PR #683)
+
+The seven Linux jobs in `nightly.yml` run on ubuntu-26.04 (GCC 15.2); `lint-tree` and
+`lint-deep-linux` use the image's LLVM 22, removing both apt.llvm.org install steps. The
+`Run-Lint.ps1` parallel-overlap self-test raced `pwsh` startup against a 500 ms sleep; its fake
+workers now wait (capped at 10 s) for a second active worker under `STRAT_TIDY_TEST_BARRIER`.
+Accepted cost: `tactical-stability` rose to ~477 s from 93–169 s, all in default-TT construction
+under THP `madvise`, until #676 removed it.
+
+---
+
+## 2026-09-30: lint-linux on ubuntu-26.04 with the image's LLVM 22 (#476, step 3a, PR #681)
+
+`lint-linux` runs on ubuntu-26.04 and calls the image's `clang-tidy-22` / `clang-format-22` instead
+of installing LLVM 22 from apt.llvm.org, removing the job's only apt-mirror dependency. `LLVM_MAJOR`
+still pins the major: an image without 22 fails the step rather than switching majors. The job
+drops its ~20 s install step.
+
+---
+
+## 2026-09-30: sanitize-linux on ubuntu-26.04 (#476, step 2b, PR #680)
+
+`sanitize-linux`, the gate's slowest job, moves to ubuntu-26.04 / GCC 15.2 with a `-gcc15` ccache
+key. It was held on 24.04 by the THP slowdown (#676) until #679 shrank test tables to 1 MiB. Warm
+job 142 → 76 s.
+
+---
+
+## 2026-09-30: Every test engine uses a 1 MiB hash (#677, PR #679)
+
+Zero-filling the 192 MiB default TT for each test engine dominated suite time, most under ASan and
+on THP-`madvise` hosts. Fixtures, direct `AIPerplex` construction, `CreatePlayer` and the UCI
+reporting tests now use 1 MiB; only the default-geometry test in `UCITests.cpp` keeps the full size.
+`PlayerCreationOptions` gains an optional `hash_mb`; unset keeps the engine default, so `Game.cpp`,
+UCI and the lab are unchanged. The rule lives in `Docs/TestDesign.md` → Test Isolation Rules.
+`sanitize-linux` fast tier 91 → 71 s.
+
+---
+
+## 2026-09-30: tsan-linux on ubuntu-26.04 (#476, step 2a, PR #675)
+
+`tsan-linux` moves to ubuntu-26.04 / GCC 15.2 with a `-gcc15` ccache key; `setarch -R` stays.
+`sanitize-linux` was held back: 26.04's THP `madvise` mode slowed its fast tier 91 → 112 s.
+
+---
+
+## 2026-09-30: build-linux on ubuntu-26.04 (#476, step 1, PR #674)
+
+`build-linux` (Debug and Release) moves from ubuntu-24.04 / GCC 13.3 to ubuntu-26.04 / GCC 15.2,
+with ccache keys `ccache-linux-gcc15-{release,debug}`. Removed: the GCC >= 13 floor comment, since
+#476 keeps no compiler-compatibility case. Trade-off: a cold GCC 15 Release build is ~9% slower than
+GCC 13 (#676 comment).
+
+---
+
 ## 2026-09-30: Continuation history orders quiet moves (#664)
 
 Quiet moves were ordered by the butterfly `history[side][from][to]` table alone, which knows nothing
