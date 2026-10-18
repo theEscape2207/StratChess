@@ -23,6 +23,17 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-18: Improving flag for LMR (#848)
+
+### Added
+- `LmrImprovingOffset` (`SearchTuning::lmr_improving_offset`, 0-3, default 0): plies added to a
+  reduced quiet's R at a node whose static eval is no higher than two plies earlier (four, when that
+  ancestor was in check). A per-ply eval stack in `ThreadData` feeds it; a real eval is stored only
+  at `depth >= lmr_min_depth`, the only frames LMR reads. The offset enters before the `depth - 2`
+  cap, so the history shift can still cancel it. At 0 the search is node-identical and the stack
+  costs one store per frame.
+- Results: pending the strength lab at `LmrImprovingOffset=1`.
+
 ## 2026-10-18: Changelog rule and check (#734, slice 3)
 
 ### Added
