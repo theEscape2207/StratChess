@@ -19,6 +19,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <thread>
 #include <vector>
 
@@ -83,8 +84,8 @@ inline double lmr_raw_base(int depth, int move_number, int log_base, int log_div
 }
 
 // The LMR reduction for a quiet at move_number (>= 1) searched from depth: lmr_raw_base() truncated,
-// then capped. The cap keeps one main-tree ply below the reduced search, and its own max(1, ...)
-// keeps R >= 1 (R == 0 would make the re-search an identical repeat).
+// plus extra, then capped. The cap keeps one main-tree ply below the reduced search, and its own
+// max(1, ...) keeps R >= 1 (R == 0 would make the re-search an identical repeat).
 //
 // A nonzero history_divisor shifts R by the move's ordering score / history_divisor, positive
 // reducing less. It is applied AFTER the cap: the sqrt base usually overshoots the cap by several
@@ -112,7 +113,7 @@ inline int lmr_reduction(int depth, int move_number, int ordering_score, int his
 // ply - 2 has none (that ancestor was in check). Evaluate() scores for the side to move, and ply,
 // ply - 2 and ply - 4 share it -- a null move advances the ply too -- so the values compare directly.
 // No evidence counts as improving, so a missing value never earns the extra reduction.
-inline bool is_improving(const int16_t* evals, int ply) noexcept
+inline bool is_improving(std::span<const int16_t, MAX_PLY> evals, int ply) noexcept
 {
 	if (ply < 2 || evals[ply] == kNoStaticEval)
 		return true;

@@ -188,6 +188,7 @@ TEST_CASE("LMR: extra raises R below the cap and never passes it", "[search][lmr
 TEST_CASE("LMR: the history shift still applies after extra", "[search][lmr]")
 {
 	// d = 6, m = 20, quotient 1: the cap of 4 binds before the shift, so R = 3 with or without extra.
+	CHECK(lmr_reduction(6, 20, 8192, 8192, 0, 0, 0) == 3);
 	CHECK(lmr_reduction(6, 20, 8192, 8192, 0, 0, 1) == 3);
 	// d = 10, m = 3: base 4 + 1, shifted down by 1.
 	CHECK(lmr_reduction(10, 3, 8192, 8192, 0, 0, 1) == 4);
@@ -208,32 +209,32 @@ namespace {
 
 TEST_CASE("Improving: the eval two plies back decides", "[search][lmr]")
 {
-	CHECK(is_improving(evals({{4, 10}, {6, 20}}).data(), 6));
-	CHECK_FALSE(is_improving(evals({{4, 20}, {6, 20}}).data(), 6));
-	CHECK_FALSE(is_improving(evals({{4, 30}, {6, 20}}).data(), 6));
+	CHECK(is_improving(evals({{4, 10}, {6, 20}}), 6));
+	CHECK_FALSE(is_improving(evals({{4, 20}, {6, 20}}), 6));
+	CHECK_FALSE(is_improving(evals({{4, 30}, {6, 20}}), 6));
 	// ply - 1 is the opponent's view and plays no part.
-	CHECK_FALSE(is_improving(evals({{4, 30}, {5, -100}, {6, 20}}).data(), 6));
+	CHECK_FALSE(is_improving(evals({{4, 30}, {5, -100}, {6, 20}}), 6));
 }
 
 TEST_CASE("Improving: an in-check ancestor falls back to ply - 4", "[search][lmr]")
 {
-	CHECK_FALSE(is_improving(evals({{2, 30}, {6, 20}}).data(), 6));
-	CHECK(is_improving(evals({{2, 10}, {6, 20}}).data(), 6));
-	CHECK_FALSE(is_improving(evals({{0, 20}, {4, 20}}).data(), 4));
+	CHECK_FALSE(is_improving(evals({{2, 30}, {6, 20}}), 6));
+	CHECK(is_improving(evals({{2, 10}, {6, 20}}), 6));
+	CHECK_FALSE(is_improving(evals({{0, 20}, {4, 20}}), 4));
 }
 
 TEST_CASE("Improving: no evidence counts as improving", "[search][lmr]")
 {
 	// Both ancestors missing.
-	CHECK(is_improving(evals({{6, 20}}).data(), 6));
+	CHECK(is_improving(evals({{6, 20}}), 6));
 	// ply < 2.
-	CHECK(is_improving(evals({{0, 20}, {1, 20}}).data(), 0));
-	CHECK(is_improving(evals({{0, 20}, {1, 20}}).data(), 1));
+	CHECK(is_improving(evals({{0, 20}, {1, 20}}), 0));
+	CHECK(is_improving(evals({{0, 20}, {1, 20}}), 1));
 	// ply 2 and 3 with no eval at ply - 2, and no ply - 4 to fall back to.
-	CHECK(is_improving(evals({{2, -50}}).data(), 2));
-	CHECK(is_improving(evals({{3, -50}}).data(), 3));
+	CHECK(is_improving(evals({{2, -50}}), 2));
+	CHECK(is_improving(evals({{3, -50}}), 3));
 	// The node itself has none.
-	CHECK(is_improving(evals({{4, 30}}).data(), 6));
+	CHECK(is_improving(evals({{4, 30}}), 6));
 }
 
 TEST_CASE("Improving: a singular verification keeps the node's eval in its slot", "[search][lmr][singular]")

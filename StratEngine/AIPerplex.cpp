@@ -711,7 +711,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	bool tt_usable_for_singular = false;
 	int tt_value_for_singular = 0;
 
-	// This node's static evaluation, computed at most once and shared by both futility guards, or
+	// This node's static evaluation, computed at most once and shared by both futility guards and the
+	// improving stack, or
 	// served by the probe below from an entry of either phase. Only ever call node_eval() while
 	// td.board holds THIS position: after DoMove() it holds a child, whose evaluation is a different
 	// number from the other side's point of view.
@@ -801,13 +802,16 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		td.ply_eval[ply] = tuning_.lmr_improving_offset != 0 && !in_check && depth >= tuning_.lmr_min_depth
 		                       ? static_cast<int16_t>(node_eval())
 		                       : kNoStaticEval;
+	// Plies added to every reduced quiet's R at this node.
+	const int lmr_extra =
+	    tuning_.lmr_improving_offset != 0 && !is_improving(td.ply_eval, ply) ? tuning_.lmr_improving_offset : 0;
 
 	// Reverse futility pruning. A shallow non-PV node whose static evaluation already stands
 	// a margin above beta is reported as a fail-high without being searched. It sits exactly where
 	// the probe above measured this surface, and for the same reasons: a node the transposition
 	// table already resolved never reaches here, and in_check is free by now. The eligibility test
 	// leads so the Evaluate() call -- the feature's entire first-order cost -- is paid only on a
-	// node that could actually be cut.
+	// node that could actually be cut, or one the improving stack above already evaluated.
 	if (reverse_futility_eligible(depth, beta, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe)) {
 		// Fail-hard, and no transposition store. The evidence is one static evaluation and not
 		// a search, so storing it would let a speculative bound answer a later, deeper probe.
@@ -1124,14 +1128,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 				if (apply_lmr) {
 					// scored_idx still holds the score ScoreMovesBestFirst gave this move before the loop.
-					const int extra = tuning_.lmr_improving_offset != 0 && !is_improving(td.ply_eval, ply)
-					                      ? tuning_.lmr_improving_offset
-					                      : 0;
 					const int R = lmr_reduction(depth, move_number, scored_idx[si].first, tuning_.lmr_history_divisor,
-					                            tuning_.lmr_log_base, tuning_.lmr_log_divisor, extra);
+					                            tuning_.lmr_log_base, tuning_.lmr_log_divisor, lmr_extra);
 					assert(depth - 1 - R >= 1 || tuning_.lmr_min_depth < 3);
 					record_lmr_reach(td.telemetry.lmr, depth, move_number, scored_idx[si].first, R,
-					                 tuning_.lmr_log_base, tuning_.lmr_log_divisor, extra);
+					                 tuning_.lmr_log_base, tuning_.lmr_log_divisor, lmr_extra);
 
 					// Search profile: node totals count the outermost search of each kind only. Each
 					// nesting depth drops straight after its call, before any abort return.
