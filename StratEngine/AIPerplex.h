@@ -101,8 +101,8 @@ inline int lmr_reduction(int depth, int move_number, int ordering_score, int his
 {
 	assert(move_number >= 1 && history_divisor >= 0 && log_divisor >= 0 && extra >= 0);
 	const int cap = std::max(1, depth - 2);
-	const int base = std::min(
-	    std::max(1, static_cast<int>(lmr_raw_base(depth, move_number, log_base, log_divisor)) + extra), cap);
+	const int base =
+	    std::min(std::max(1, static_cast<int>(lmr_raw_base(depth, move_number, log_base, log_divisor)) + extra), cap);
 	if (history_divisor == 0)
 		return base;
 	return std::clamp(base - ordering_score / history_divisor, 1, cap);
