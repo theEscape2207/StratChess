@@ -117,9 +117,9 @@ happened on PR #148). Same rule for creation — never `gh pr create`.
 
 **Changelog:** every PR above Docs tier adds an entry, or says `none — <reason>` under the body's
 `## Changelog`; when one is due and what it holds: the `Docs/Changelog.md` header. Follow its
-heading convention, using today's Copenhagen date
-provisionally instead of `Unreleased`. After merge, the cleanup's `-SyncMaster` warns about a
-header dated other than its merge day; correct it in the next PR.
+heading convention, using today's Copenhagen date provisionally instead of `Unreleased`. After
+merge, the cleanup's `-SyncMaster` warns about a header dated other than its merge day; correct it
+in the next PR.
 
 ## 3. PR body
 
