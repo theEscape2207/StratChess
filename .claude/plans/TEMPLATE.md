@@ -99,7 +99,7 @@ lets the file be deleted rather than accumulating.
 |---|---|
 | e.g. why the fast path skips the age reset | source comment on `clear()` |
 | e.g. a non-obvious cross-cutting contract | `CLAUDE.md` → Key Source Facts |
-| e.g. a measured before/after result | `Docs/Changelog.md`, and the PR body |
+| e.g. a measured before/after result | the `Measurements/` ledger, with a headline line in `Docs/Changelog.md` |
 
 Prefer destinations inside the tree. A PR body is fine for working detail, but it is editable and
 lives outside Git, so anything that would be missed later belongs in a source comment, Key Source
