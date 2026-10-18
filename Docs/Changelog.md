@@ -15,6 +15,16 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-18: PR body built from the pull-request template (#734, slice 1)
+
+### Changed
+- `New-PullRequest.ps1` takes the PR body's structure from `.github/pull_request_template.md`.
+  When no body is given, it scaffolds the body from the template, which replaces the hard-coded
+  Summary / Test plan / Notes copy (that copy had already dropped `## Why`). When a body is given,
+  the script prints one warning per template `## ` heading the body lacks and still opens the PR.
+- The `open-pull-request` skill and `Docs/agents/issue-tracker.md` now point at the template
+  instead of listing the sections themselves.
+
 ## 2026-10-17: Staged move generation in pvs() (#839)
 
 ### Changed
