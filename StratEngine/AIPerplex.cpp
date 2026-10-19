@@ -790,6 +790,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		return static_eval;
 	};
 
+	// This ply's slot of the eval stack, written before any child is searched, at every depth. A
+	// reader at depth d reads ply - 2 and ply - 4, whose depths are >= d (depth never rises along a
+	// path; singular keeps a child at its parent's depth) but unbounded above, so any depth cap would
+	// turn readers to Unknown. An exclusion frame writes nothing: it is its parent's position at the
+	// parent's ply, so the slot already holds that eval, and skipping saves an Evaluate() it could
+	// not be TT-served.
+	if (!is_exclusion_frame)
+		td.ply_eval[ply] = tracks_eval_trend() && !in_check ? static_cast<int16_t>(node_eval()) : kNoStaticEval;
+
 	// Reverse futility pruning. A shallow non-PV node whose static evaluation already stands
 	// a margin above beta is reported as a fail-high without being searched. It sits exactly where
 	// the probe above measured this surface, and for the same reasons: a node the transposition
