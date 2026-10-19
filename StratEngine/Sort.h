@@ -18,7 +18,7 @@ struct ContinuationRows {
 
 // A node's move-ordering inputs, built once per node. The hash move is not here: ScoreAppended
 // scores without one. Killers and history are references, so a staged frame reads them when it
-// scores its quiets, not when it builds the context. Quiescence passes empty continuation rows.
+// scores its quiets, not when it builds the context. Every member must outlive the context.
 struct MoveScoringContext {
 	const Board& board;
 	eColor side;
