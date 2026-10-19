@@ -47,3 +47,63 @@ TEST_CASE("Improving: no evidence is Unknown", "[search][improving]")
 	// The node itself has none.
 	CHECK(eval_trend(evals({{4, 30}}), 6) == EvalTrend::Unknown);
 }
+
+namespace {
+	// Turns tracking on through the one option that reads the trend.
+	void track_eval_trend(const AIPerlexTestFixture& fix) { fix.set_late_move_pruning_not_improving_cut(4); }
+
+	constexpr const char* kQuietFen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+} // namespace
+
+TEST_CASE("Eval stack: a depth-1 node writes its eval", "[search][improving]")
+{
+	// The depth every reader can sit at.
+	AIPerlexTestFixture fix(kQuietFen);
+	track_eval_trend(fix);
+	fix.arm_clock();
+
+	fix.search_node(1, /*ply=*/2);
+
+	CHECK(fix.ply_eval(2) == fix.evaluate());
+}
+
+TEST_CASE("Eval stack: a depth-5 node writes its eval", "[search][improving]")
+{
+	// Above the readers' depths: a depth-3 reader's unreduced grandparent sits here.
+	AIPerlexTestFixture fix(kQuietFen);
+	track_eval_trend(fix);
+	fix.arm_clock();
+
+	fix.search_node(5, /*ply=*/2);
+
+	CHECK(fix.ply_eval(2) == fix.evaluate());
+}
+
+TEST_CASE("Eval stack: the sentinel is written while no reader is on", "[search][improving]")
+{
+	AIPerlexTestFixture fix(kQuietFen);
+	fix.set_ply_eval(2, 123);
+	fix.arm_clock();
+
+	fix.search_node(3, /*ply=*/2);
+
+	CHECK(fix.ply_eval(2) == kNoStaticEval);
+}
+
+TEST_CASE("Eval stack: a singular verification keeps the node's eval in its slot", "[search][improving][singular]")
+{
+	// SearchSingularTests' baseline: a quiet position whose planted hash move is verified. The
+	// verification frame shares the node's ply and position, so the node's eval must survive it.
+	AIPerlexTestFixture fix(kQuietFen);
+	track_eval_trend(fix);
+	fix.set_singular_enabled(true);
+	fix.set_singular_min_depth(4);
+	fix.arm_clock();
+	fix.store_main_entry_with_move(900, 4, /*ply=*/1, BoundType::LOWER, fix.first_sorted_move_uci());
+	fix.clear_singular_telemetry();
+
+	fix.search_node(4, /*ply=*/1);
+
+	REQUIRE(fix.singular_verifications() == 1);
+	CHECK(fix.ply_eval(1) == fix.evaluate());
+}

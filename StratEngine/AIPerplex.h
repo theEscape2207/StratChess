@@ -58,7 +58,8 @@ using CompletionHandler = std::function<void(const SearchResult&)>;
 inline constexpr unsigned DEFAULT_AIPERPLEX_HASH_MB = 192;
 
 // Late move pruning, deliberately not tunable: parent depth exactly two, and the zero-based legal
-// move index at which quiet moves become skippable (the thirteenth legal move).
+// move index at which quiet moves become skippable (the thirteenth legal move) at a node with no
+// NotImproving trend; late_move_pruning_not_improving_cut lowers it at one that has.
 inline constexpr int kLateMovePruningDepth = 2;
 inline constexpr int kLateMovePruningMinLegalIndex = 12;
 
@@ -124,6 +125,13 @@ inline EvalTrend eval_trend(std::span<const int16_t, MAX_PLY> evals, int ply) no
 			return EvalTrend::Unknown;
 	}
 	return evals[ply] > previous ? EvalTrend::Improving : EvalTrend::NotImproving;
+}
+
+// The legal move index from which late move pruning may skip a quiet: cut earlier at a NotImproving
+// node, where late quiets are less likely to recover.
+inline int late_move_pruning_min_index(int cut, EvalTrend trend) noexcept
+{
+	return kLateMovePruningMinLegalIndex - (trend == EvalTrend::NotImproving ? cut : 0);
 }
 
 struct AIPerplexConfig {
@@ -282,7 +290,7 @@ class AIPerplex final {
 	                               bool zugzwang_safe) const;
 	// True when any guard reads eval_trend(), so pvs() keeps td.ply_eval filled. The one list of the
 	// trend's readers: a new reader adds its option here.
-	static bool tracks_eval_trend() noexcept { return false; }
+	bool tracks_eval_trend() const noexcept { return tuning_.late_move_pruning_not_improving_cut != 0; }
 	// Singular multi-cut: the verification failed high, so an alternative also reaches singular_beta,
 	// and singular_beta >= beta makes that two moves at the cutoff. It can only fire where the TT
 	// entry itself could not cut: one that deep would have returned at the probe, so a cut always

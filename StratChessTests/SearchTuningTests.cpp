@@ -54,6 +54,7 @@ namespace {
 		bool frontier_futility_enabled;
 		int frontier_futility_margin;
 		bool late_move_pruning_enabled;
+		int late_move_pruning_not_improving_cut;
 		bool staged_generation_enabled;
 		int continuation_history_plies;
 		int contempt;
@@ -91,6 +92,7 @@ namespace {
 	SAME_MEMBER(frontier_futility_enabled)
 	SAME_MEMBER(frontier_futility_margin)
 	SAME_MEMBER(late_move_pruning_enabled)
+	SAME_MEMBER(late_move_pruning_not_improving_cut)
 	SAME_MEMBER(staged_generation_enabled)
 	SAME_MEMBER(continuation_history_plies)
 	SAME_MEMBER(contempt)
@@ -149,6 +151,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.frontier_futility_enabled);
 	CHECK(tuning.frontier_futility_margin == 200);
 	CHECK(tuning.late_move_pruning_enabled);
+	CHECK(tuning.late_move_pruning_not_improving_cut == 0);
 	CHECK(tuning.staged_generation_enabled);
 	CHECK(tuning.continuation_history_plies == 2);
 	CHECK(tuning.contempt == 0);
@@ -231,6 +234,11 @@ TEST_CASE("SearchTuning bounded fields accept their domain edges and reject beyo
 		CHECK(rejection(margin_key, -1) == Code::OutOfRange);
 		CHECK(rejection(margin_key, 1001) == Code::OutOfRange);
 	}
+
+	CHECK(accepts("late_move_pruning_not_improving_cut", 0));
+	CHECK(accepts("late_move_pruning_not_improving_cut", 8));
+	CHECK(rejection("late_move_pruning_not_improving_cut", -1) == Code::OutOfRange);
+	CHECK(rejection("late_move_pruning_not_improving_cut", 9) == Code::OutOfRange);
 }
 
 TEST_CASE("SearchTuning comparison-only thresholds take any representable value", "[tuning]")
@@ -384,6 +392,13 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(tuning == expected);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("LateMovePruningNotImprovingCut", "4", tuning));
+	expected.late_move_pruning_not_improving_cut = 4;
+	CHECK(tuning == expected);
+	CHECK(uci_rejection("LateMovePruningNotImprovingCut", "9") == Code::OutOfRange);
+	CHECK(uci_rejection("LateMovePruningNotImprovingCut", "-1") == Code::InvalidType);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("Contempt", "20", tuning));
 	expected.contempt = 20;
 	CHECK(tuning == expected);
@@ -518,6 +533,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name FrontierFutility type check default true",
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
 	    "option name LateMovePruning type check default true",
+	    "option name LateMovePruningNotImprovingCut type spin default 0 min 0 max 8",
 	    // No negative half: SearchTuningSchema's read_uci() accepts unsigned decimal digits only,
 	    // so an advertised negative minimum would be a value the engine then refuses to apply.
 	    "option name Contempt type spin default 0 min 0 max 100",

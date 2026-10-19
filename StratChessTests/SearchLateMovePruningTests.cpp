@@ -405,3 +405,68 @@ TEST_CASE("Late move pruning: the search result reports the skip count", "[searc
 	REQUIRE(fix.lmp_skips() > 0);
 	CHECK(result.telemetry.lmp.skips == fix.lmp_skips());
 }
+
+// ============================================================================
+// The not-improving cut
+// ============================================================================
+
+namespace {
+	// A depth-2 node at ply 3, the first ply whose trend a seeded ply 1 decides, with the cut set and
+	// ply 1 holding the node's own eval plus ancestor_gap.
+	AIPerlexTestFixture trend_fixture(int cut, int ancestor_gap)
+	{
+		auto fix = enabled_fixture(kMixedFen);
+		fix.set_late_move_pruning_not_improving_cut(cut);
+		fix.set_ply_eval(1, static_cast<int16_t>(fix.evaluate() + ancestor_gap));
+		return fix;
+	}
+
+	int search_depth2_at_ply3(const AIPerlexTestFixture& fix)
+	{
+		return fix.search_node(/*depth=*/2, /*ply=*/3, kHighAlpha, kHighAlpha + 1, /*is_pv_node=*/false);
+	}
+} // namespace
+
+TEST_CASE("Late move pruning: the cut applies only at a NotImproving node", "[search][lmp][improving]")
+{
+	CHECK(late_move_pruning_min_index(4, EvalTrend::NotImproving) == 8);
+	CHECK(late_move_pruning_min_index(4, EvalTrend::Improving) == 12);
+	CHECK(late_move_pruning_min_index(4, EvalTrend::Unknown) == 12);
+	CHECK(late_move_pruning_min_index(0, EvalTrend::NotImproving) == 12);
+	CHECK(late_move_pruning_min_index(8, EvalTrend::NotImproving) == 4);
+}
+
+TEST_CASE("Late move pruning: a NotImproving node skips from the cut index", "[search][lmp][improving]")
+{
+	auto fix = trend_fixture(/*cut=*/4, /*ancestor_gap=*/100);
+	const int candidates = fix.tally_late_moves(/*ply=*/3, 8).candidates;
+	REQUIRE(candidates > fix.tally_late_moves(/*ply=*/3, 12).candidates);
+
+	search_depth2_at_ply3(fix);
+
+	CHECK(fix.lmp_skips() == candidates);
+	CHECK(fix.search_board_restored());
+}
+
+TEST_CASE("Late move pruning: an Improving node keeps the thirteenth-move index", "[search][lmp][improving]")
+{
+	auto fix = trend_fixture(/*cut=*/4, /*ancestor_gap=*/-100);
+	const int candidates = fix.tally_late_moves(/*ply=*/3, 12).candidates;
+
+	search_depth2_at_ply3(fix);
+
+	CHECK(fix.lmp_skips() == candidates);
+}
+
+TEST_CASE("Late move pruning: a nonzero not-improving cut reaches the search", "[search][lmp][improving][nodes]")
+{
+	// Through a real search, so the trend comes from ancestors pvs() wrote, not from seeded slots.
+	AIPerlexTestFixture off(kBaselineFen);
+	off.get_move_at_threads(1, 8);
+
+	AIPerlexTestFixture on(kBaselineFen);
+	on.set_late_move_pruning_not_improving_cut(4);
+	on.get_move_at_threads(1, 8);
+
+	CHECK(on.lmp_skips() > off.lmp_skips());
+}

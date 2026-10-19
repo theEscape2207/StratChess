@@ -89,6 +89,9 @@ TUNING_FIELD(int,     frontier_futility_margin,  200,  0,     1000, true, "Front
 
 // Late move pruning at depth 2; its depth and move index are constants in AIPerplex.h.
 TUNING_FIELD(bool,    late_move_pruning_enabled, true, false, true, true, "LateMovePruning", true)
+// Moves the skip index that many legal moves earlier at a NotImproving node (see eval_trend()); the
+// bound keeps it at 4 or more. Nonzero turns on the eval stack.
+TUNING_FIELD(int,     late_move_pruning_not_improving_cut, 0, 0, 8, true, "LateMovePruningNotImprovingCut", true)
 
 // Staged generation in pvs(): captures first, quiets only when the loop reaches them. Either value
 // searches the same tree; off is the on/off equivalence test's reference path.

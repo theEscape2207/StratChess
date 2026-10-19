@@ -267,6 +267,10 @@ class AIPerlexTestFixture {
 
 	// --- Late move pruning pokes ---
 	void set_late_move_pruning(bool enabled) const { ai->tuning_.late_move_pruning_enabled = enabled; }
+	void set_late_move_pruning_not_improving_cut(int cut) const
+	{
+		ai->tuning_.late_move_pruning_not_improving_cut = cut;
+	}
 	bool late_move_pruning_enabled() const { return ai->tuning_.late_move_pruning_enabled; }
 	int64_t lmp_skips() const { return ai->td_.telemetry.lmp.skips; }
 	const LmrStats& lmr_profile() const { return ai->td_.telemetry.lmr; }

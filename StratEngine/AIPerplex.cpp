@@ -979,6 +979,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	// Late move pruning: at a depth-2 null-window node, a late quiet move is skipped outright.
 	const bool lmp_node = late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
+	const int lmp_min_index = lmp_node ? late_move_pruning_min_index(tuning_.late_move_pruning_not_improving_cut,
+	                                                                 eval_trend(td.ply_eval, ply))
+	                                   : kLateMovePruningMinLegalIndex;
 	bool lmp_skipped = false;
 
 	// Search profile: a late cut's cost is the nodes spent since the loop began up to the cutting
@@ -1043,9 +1046,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// if DoMove() accepts it: every legal move counts, exempt and skipped ones included, and a
 		// rejected pseudo-legal move does not. The hash move sorts first, so its exemption is defence
 		// in depth.
-		const bool lmp_candidate = lmp_node && legal_moves_searched >= kLateMovePruningMinLegalIndex &&
-		                           !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) &&
-		                           move != td.killers[ply][0] && move != td.killers[ply][1] && move != hash_move;
+		const bool lmp_candidate = lmp_node && legal_moves_searched >= lmp_min_index && !MoveHelper::IsCapture(move) &&
+		                           !MoveHelper::IsPromote(move) && move != td.killers[ply][0] &&
+		                           move != td.killers[ply][1] && move != hash_move;
 
 		// In check the list is ComputeEvasions(), legal by construction, so DoMove() never rejects
 		// there. DoMove() tests legality regardless: on the few moves of an in-check node that costs too
