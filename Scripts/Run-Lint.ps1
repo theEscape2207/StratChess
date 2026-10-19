@@ -107,9 +107,6 @@ param(
     [ValidateSet('Release', 'Debug')]
     [string]$Config = 'Release',
 
-    [ValidateSet('clang-cl', 'msvc')]
-    [string]$Compiler = 'clang-cl',
-
     [switch]$SelfTest
 )
 
@@ -646,7 +643,7 @@ function Invoke-TidyCheck {
 
     $buildDir = $BuildDirectory
     if ([string]::IsNullOrWhiteSpace($buildDir)) {
-        $preset = "windows-$Compiler"
+        $preset = 'windows-clang-cl'
         if ($Config -eq 'Debug') { $preset += '-debug' }
         $buildDir = Join-Path $RepoRoot "build\$preset"
     }

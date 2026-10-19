@@ -1,11 +1,11 @@
 {
   "version": 3,
-  "cmakeMinimumRequired": { "major": 3, "minor": 24, "patch": 0 },
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
   "configurePresets": [
     {
       "name": "windows-base",
       "hidden": true,
-      "description": "Run from a VS Developer PowerShell so cl, clang-cl, llvm-rc, lld-link and ninja are on PATH. CMAKE_RC_COMPILER is llvm-rc for every Windows preset, MSVC included: the Windows SDK rc.exe is the only tool in this chain that is not long-path aware and fails with RC1109 under a deep build path. llvm-rc has no such limit, and this repo has no .rc files of its own, so it only ever compiles the manifest CMake generates. It ships with the same VS 'C++ Clang tools for Windows' component clang-cl comes from.",
+      "description": "Run from a VS Developer PowerShell so clang-cl, llvm-rc, lld-link and ninja are on PATH. CMAKE_RC_COMPILER is llvm-rc: the Windows SDK rc.exe is the only tool in this chain that is not long-path aware and fails with RC1109 under a deep build path. llvm-rc has no such limit, and this repo has no .rc files of its own, so it only ever compiles the manifest CMake generates. It ships with the same VS 'C++ Clang tools for Windows' component clang-cl comes from.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "condition": {
@@ -22,7 +22,7 @@
       "name": "windows-clang-cl",
       "inherits": "windows-base",
       "displayName": "Windows / clang-cl + Ninja (Release)",
-      "description": "The shipping configuration. Builds a measurably faster engine than MSVC while searching an identical tree - see issue #84. Use this for anything measured: Run-Bench and Run-EloMatch results are only comparable between binaries from the same compiler.",
+      "description": "The shipping configuration, and the only Windows toolchain: it built a measurably faster engine than MSVC while searching an identical tree - see issue #84.",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_CXX_COMPILER": "clang-cl"
@@ -45,32 +45,11 @@
       "cacheVariables": {
         "STRAT_COVERAGE": "ON"
       }
-    },
-    {
-      "name": "windows-msvc",
-      "inherits": "windows-base",
-      "displayName": "Windows / MSVC + Ninja (Release)",
-      "description": "MSVC build, kept as a supported second toolchain for development and debugging, and because it honours flags clang-cl accepts and silently drops. It is NOT what ships, so do not measure with it: an MSVC candidate against a clang reference reads as a large phantom regression.",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_CXX_COMPILER": "cl"
-      }
-    },
-    {
-      "name": "windows-msvc-debug",
-      "inherits": "windows-msvc",
-      "displayName": "Windows / MSVC + Ninja (Debug)",
-      "description": "MSVC Debug. The closest equivalent to the retired .vcxproj Debug configuration.",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
     }
   ],
   "buildPresets": [
     { "name": "windows-clang-cl",          "configurePreset": "windows-clang-cl" },
     { "name": "windows-clang-cl-debug",    "configurePreset": "windows-clang-cl-debug" },
-    { "name": "windows-clang-cl-coverage", "configurePreset": "windows-clang-cl-coverage" },
-    { "name": "windows-msvc",              "configurePreset": "windows-msvc" },
-    { "name": "windows-msvc-debug",        "configurePreset": "windows-msvc-debug" }
+    { "name": "windows-clang-cl-coverage", "configurePreset": "windows-clang-cl-coverage" }
   ]
 }

@@ -304,15 +304,14 @@ public, so standard-runner minutes are free.
 
 **Do not add a Windows Debug configuration to any gate.** Its unique checks are subsumed. MSVC's
 `/RTC1` finds uninitialised locals and stack-frame corruption; ASan finds the latter better and MSan
-the former far better. `windows-msvc-debug` exists for interactive debugging, not for validation.
+the former far better. `windows-clang-cl-debug` exists for interactive debugging, not for validation.
 
 **Windows CI is not redundant, and does not become redundant when TSan and MSan land.** It covers a
 different axis — *toolchain*, not bug class — and Linux cannot cover it by construction:
 
 - clang-cl silently mistranslates or drops flags. Two of three spellings failed silently in #84, and
   `/RTC1` is a live example today: clang-cl accepts it, emits no diagnostic even under
-  `-Wunused-command-line-argument`, and produces byte-identical object files. MSVC honours it
-  (+53% object size on the same source).
+  `-Wunused-command-line-argument`, and produces byte-identical object files.
 - The MSVC standard library, the `_MSC_VER`/`_WIN32` sites, and the lld-link ThinLTO link of the
   binary that actually ships exist nowhere else.
 
@@ -705,8 +704,7 @@ The rest of it is non-obvious in these ways:
   not long-path aware, and fails with `RC1109` under a deep build path.
 - **`/clang:` prefixes** on the warning and constexpr flags. clang-cl silently mistranslates the
   plain GNU spellings (`-Wall` is read as `/Wall` → `-Weverything`; `-fconstexpr-steps=` is dropped
-  before reaching the frontend), and MSVC ignores them with a D9002 warning while still producing a
-  binary. A clean compile does not prove a flag arrived — check `cmake --build --verbose`.
+  before reaching the frontend). A clean compile does not prove a flag arrived — check `cmake --build --verbose`.
 
 ---
 
@@ -722,8 +720,8 @@ cmake --build --preset windows-clang-cl    # build every target
 cmake --build --preset windows-clang-cl --target StratChessTests
 ```
 
-Presets: `windows-clang-cl`, `windows-clang-cl-debug`, `windows-msvc`, `windows-msvc-debug`.
-clang-cl is what ships; MSVC is for development and debugging only, never for measurement.
+Presets: `windows-clang-cl`, `windows-clang-cl-debug`, `windows-clang-cl-coverage`. clang-cl is the
+only Windows toolchain; `CMakeLists.txt` refuses `cl.exe`.
 
 Configuring is only needed when the build tree does not exist — Ninja re-runs CMake by itself when
 `CMakeLists.txt` or `CMakePresets.json` change. Add `--verbose` to `cmake --build` to see the real

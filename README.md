@@ -40,7 +40,6 @@ the developer environment itself, so a plain shell works:
 ```powershell
 .\build.ps1                     # engine + tests, Release, clang-cl
 .\build.ps1 all -Config Debug   # debug build
-.\build.ps1 main -Compiler msvc # MSVC instead of clang-cl
 .\build.ps1 run-tests           # build and run the fast test tier
 ```
 

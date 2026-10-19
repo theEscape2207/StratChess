@@ -77,11 +77,10 @@
     .\Run-Bench.ps1 -SelfTest
 
 .EXAMPLE
-    # Comparing two builds. Both must come from the same compiler unless the
-    # compiler IS what is being compared -- otherwise the toolchain difference
-    # swamps whatever change is under test.
-    .\Run-Bench.ps1 -Exe .\build\windows-clang-cl\StratChessEvolved.exe -Depth 10 -Csv before.csv
-    .\Run-Bench.ps1 -Exe .\build\windows-msvc\StratChessEvolved.exe     -Depth 10 -Csv after.csv
+    # Comparing two builds. Both must come from the same compiler -- otherwise the
+    # toolchain difference swamps whatever change is under test.
+    .\Run-Bench.ps1 -Exe C:\before\StratChessEvolved.exe -Depth 10 -Csv before.csv
+    .\Run-Bench.ps1 -Exe .\build\windows-clang-cl\StratChessEvolved.exe -Depth 10 -Csv after.csv
 #>
 [CmdletBinding()]
 param(

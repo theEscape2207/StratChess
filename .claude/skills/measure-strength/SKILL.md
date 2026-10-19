@@ -154,9 +154,9 @@ running one is skill `analyze-games`.
 ## The rule that silently invalidates everything
 
 **Never compare binaries from different compilers.** Both run, both look healthy; the compiler gap
-alone is worth tens of Elo and gets credited to whatever change is under test. So never measure an
-MSVC build against a clang one — `Get-BuildArtifact.ps1` defaults to the shipping clang-cl build for
-that reason — and never read a GCC-built CI-lab row against a local clang-cl row. Match Lazy SMP
+alone is worth tens of Elo and gets credited to whatever change is under test. So allow for it when
+the MSVC-built `elo-reference-v1` is the reference, and never read a GCC-built CI-lab row against a
+local clang-cl row. Match Lazy SMP
 thread count across candidate and reference too.
 
 ## Speed
