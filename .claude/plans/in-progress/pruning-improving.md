@@ -151,7 +151,8 @@ equivalence run of the flipped build against the PR build at the lab's option va
 
 - **A1: the wide-gate cost.** #848's triage probe, which evaluated every node not in check as D2
   does, read -1.90% [-2.01, -1.78], placement not controlled (A/A +0.44% [-0.18, +1.06]). Nothing
-  gates on it. It is measured only if a run fails to ship (Validation, step 4).
+  gates on it. It is measured only if the run that first turns tracking on fails to ship
+  (Validation, step 4).
 - **A2: the cost at the defaults is a branch.** With every option at 0 the frame writes the sentinel
   and evaluates nothing. #849 measured -0.35% [-0.46, -0.25] ordered-pair with its option off at the
   narrow gate, which is evidence for the shape, not for this code. Re-checked only if a PR merges
@@ -159,12 +160,14 @@ equivalence run of the flipped build against the PR build at the lab's option va
 
 ## Invariants
 
-- With every option at 0: node counts and best moves identical to the merge base at `Threads=1`.
+- With this PR's new option at 0, and earlier shipped settings kept: node counts and best moves
+  identical to the merge base at `Threads=1`.
 - RFP never returns beta from an eval below beta; frontier futility never skips with a negative
   margin.
 - A frame never reads a `ply_eval` slot its own path did not write in this search (#848's invariant).
-- While `tracks_eval_trend()` is true, every frame not in check and not an exclusion frame holds its
-  real eval in `ply_eval[ply]`, at every depth.
+- While `tracks_eval_trend()` is true, every frame that reaches the stack write, is not in check and
+  is not an exclusion frame holds its real eval in `ply_eval[ply]`, at every depth. Frames that exit
+  earlier (TT cutoff, draw, abort, horizon) search no child, so nothing reads their slot.
 - `frontier_floor` uses the margin the skip test used.
 
 ## Validation
@@ -187,12 +190,13 @@ equivalence run of the flipped build against the PR build at the lab's option va
 3. **Elo:** one strength-lab run per PR at the value its Decision names,
    `gh workflow run strength.yml --ref <branch> -f candidate_uci_options="<Option>=<value>"`
    (reference: the default `merge-base`), about 3-3.5 h. The owner approves each dispatch.
-4. **Cost probe (informational, only if a run does not ship):** a local build writing the stack
-   under D2 with no reader is node-identical to the merge base (checked first), so `Compare-Bench.ps1`
-   applies: an ordered pair from `New-OrderedBuildPair.ps1`, `-Control -Rounds 60 -Affinity 4`,
-   about 35 min of quiet, runnable while a lab run is in flight. The gate is shared, so this runs
-   once, the first time it is needed. It answers whether the cost could explain the failure, which
-   is what would justify D2's rejected material gate.
+4. **Cost probe (informational, only if the run that first turns tracking on does not ship):** a
+   local build writing the stack under D2 with no reader is node-identical to the merge base
+   (checked first), so `Compare-Bench.ps1` applies: an ordered pair from `New-OrderedBuildPair.ps1`,
+   `-Control -Rounds 60 -Affinity 4`, about 35 min of quiet, runnable while a lab run is in flight.
+   It answers whether the cost could explain the failure, which is what would justify D2's rejected
+   material gate. Once a margin has shipped, both sides of a later run pay for the stack, so the
+   cost cannot explain that run's failure and the probe does not apply.
 5. **Screen (optional, insight only):** `Compare-SearchProfile.ps1 -Seeds 8 -Depth 12 -Positions
    Tests/profile-screen.fen` on profile builds of the PR, at the default against a local
    default-on copy; the RFP bins show where the cutoffs shift by depth, not how many the relief
@@ -206,7 +210,7 @@ equivalence run of the flipped build against the PR build at the lab's option va
 - **Blast radius:** engine tier. No gate, skill or script changes.
 - **Review:** one code review plus `search-reviewer` per PR.
 - **Measurement:** one lab run per PR, about 3-3.5 h each, sequential across PRs.
-- **Optional parts:** the cost probe (~35 min, once, only after a failed run) and the screen with
+- **Optional parts:** the cost probe (~35 min, at most once, only after the first tracking run fails) and the screen with
   wall clock (~45 min per PR). Both explain a result; the lab decides it.
 
 ## Harvest
