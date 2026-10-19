@@ -51,6 +51,7 @@ namespace {
 		bool reverse_futility_enabled;
 		int reverse_futility_max_depth;
 		int reverse_futility_margin;
+		int reverse_futility_improving_relief;
 		bool frontier_futility_enabled;
 		int frontier_futility_margin;
 		bool late_move_pruning_enabled;
@@ -88,6 +89,7 @@ namespace {
 	SAME_MEMBER(reverse_futility_enabled)
 	SAME_MEMBER(reverse_futility_max_depth)
 	SAME_MEMBER(reverse_futility_margin)
+	SAME_MEMBER(reverse_futility_improving_relief)
 	SAME_MEMBER(frontier_futility_enabled)
 	SAME_MEMBER(frontier_futility_margin)
 	SAME_MEMBER(late_move_pruning_enabled)
@@ -146,6 +148,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.reverse_futility_enabled);
 	CHECK(tuning.reverse_futility_max_depth == 3);
 	CHECK(tuning.reverse_futility_margin == 100);
+	CHECK(tuning.reverse_futility_improving_relief == 0);
 	CHECK(tuning.frontier_futility_enabled);
 	CHECK(tuning.frontier_futility_margin == 200);
 	CHECK(tuning.late_move_pruning_enabled);
@@ -224,7 +227,8 @@ TEST_CASE("SearchTuning bounded fields accept their domain edges and reject beyo
 	CHECK(rejection("reverse_futility_max_depth", 0) == Code::OutOfRange);
 	CHECK(rejection("reverse_futility_max_depth", MAX_PLY + 1) == Code::OutOfRange);
 
-	for (const char* margin_key : {"reverse_futility_margin", "frontier_futility_margin"}) {
+	for (const char* margin_key :
+	     {"reverse_futility_margin", "reverse_futility_improving_relief", "frontier_futility_margin"}) {
 		INFO(margin_key);
 		CHECK(accepts(margin_key, 0));
 		CHECK(accepts(margin_key, 1000));
@@ -367,6 +371,13 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	REQUIRE_FALSE(parse_uci("ReverseFutilityMargin", "150", tuning));
 	expected.reverse_futility_margin = 150;
 	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("ReverseFutilityImprovingRelief", "50", tuning));
+	expected.reverse_futility_improving_relief = 50;
+	CHECK(tuning == expected);
+	CHECK(uci_rejection("ReverseFutilityImprovingRelief", "1001") == Code::OutOfRange);
+	CHECK(uci_rejection("ReverseFutilityImprovingRelief", "-1") == Code::InvalidType);
 
 	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("FrontierFutility", "false", tuning));
@@ -515,6 +526,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name ReverseFutility type check default true",
 	    "option name ReverseFutilityMaxDepth type spin default 3 min 1 max 256",
 	    "option name ReverseFutilityMargin type spin default 100 min 0 max 1000",
+	    "option name ReverseFutilityImprovingRelief type spin default 0 min 0 max 1000",
 	    "option name FrontierFutility type check default true",
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
 	    "option name LateMovePruning type check default true",

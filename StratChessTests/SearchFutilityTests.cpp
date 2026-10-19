@@ -303,3 +303,35 @@ TEST_CASE("Reverse futility: a static evaluation inside the margin does not cut"
 
 	CHECK(fix.mainnodes() > before);
 }
+
+// ============================================================================
+// The improving relief
+// ============================================================================
+
+TEST_CASE("Reverse futility: the relief applies only at an improving node", "[search][futility][improving]")
+{
+	CHECK(reverse_futility_slack(100, 3, 50, EvalTrend::Improving) == 250);
+	CHECK(reverse_futility_slack(100, 3, 50, EvalTrend::NotImproving) == 300);
+	CHECK(reverse_futility_slack(100, 3, 50, EvalTrend::Unknown) == 300);
+	CHECK(reverse_futility_slack(100, 3, 0, EvalTrend::Improving) == 300);
+}
+
+TEST_CASE("Reverse futility: the relieved slack never goes below 0", "[search][futility][improving]")
+{
+	CHECK(reverse_futility_slack(100, 1, 100, EvalTrend::Improving) == 0);
+	CHECK(reverse_futility_slack(100, 1, 1000, EvalTrend::Improving) == 0);
+	CHECK(reverse_futility_slack(0, 3, 50, EvalTrend::Improving) == 0);
+}
+
+TEST_CASE("Reverse futility: a nonzero improving relief reaches the search", "[search][futility][improving][nodes]")
+{
+	constexpr const char* fen = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4";
+	AIPerlexTestFixture off(fen);
+	off.get_move_at_threads(1, 8);
+
+	AIPerlexTestFixture on(fen);
+	on.set_reverse_futility_improving_relief(50);
+	on.get_move_at_threads(1, 8);
+
+	CHECK(on.mainnodes() != off.mainnodes());
+}

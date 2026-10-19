@@ -81,6 +81,9 @@ TUNING_FIELD(bool,    singular_multicut_enabled, true, false, true, true, "Singu
 TUNING_FIELD(bool,    reverse_futility_enabled,   true, false, true,    true, "ReverseFutility",         true)
 TUNING_FIELD(int,     reverse_futility_max_depth, 3,    1,     MAX_PLY, true, "ReverseFutilityMaxDepth", true)
 TUNING_FIELD(int,     reverse_futility_margin,    100,  0,     1000,    true, "ReverseFutilityMargin",   true)
+// Centipawns taken off the whole margin (margin * depth) at an improving node (see eval_trend()),
+// floored at 0 so a cutoff never rests on an eval below beta. Nonzero turns on the eval stack.
+TUNING_FIELD(int,     reverse_futility_improving_relief, 0, 0, 1000, true, "ReverseFutilityImprovingRelief", true)
 
 // Frontier futility pruning at depth 1. The margin is centipawns one quiet move may gain
 // positionally, the room delta_pruning_margin also trusts.

@@ -126,6 +126,13 @@ inline EvalTrend eval_trend(std::span<const int16_t, MAX_PLY> evals, int ply) no
 	return evals[ply] > previous ? EvalTrend::Improving : EvalTrend::NotImproving;
 }
 
+// Reverse futility's slack at depth: margin per ply, less relief at an Improving node, floored at 0
+// so the cutoff never fires on a static eval below beta.
+inline int reverse_futility_slack(int margin, int depth, int relief, EvalTrend trend) noexcept
+{
+	return std::max(0, margin * depth - (trend == EvalTrend::Improving ? relief : 0));
+}
+
 struct AIPerplexConfig {
 	unsigned default_depth{4};
 	std::chrono::milliseconds default_time{15000};
@@ -282,7 +289,7 @@ class AIPerplex final {
 	                               bool zugzwang_safe) const;
 	// True when any guard reads eval_trend(), so pvs() keeps td.ply_eval filled. The one list of the
 	// trend's readers: a new reader adds its option here.
-	static bool tracks_eval_trend() noexcept { return false; }
+	bool tracks_eval_trend() const noexcept { return tuning_.reverse_futility_improving_relief != 0; }
 	// Singular multi-cut: the verification failed high, so an alternative also reaches singular_beta,
 	// and singular_beta >= beta makes that two moves at the cutoff. It can only fire where the TT
 	// entry itself could not cut: one that deep would have returned at the probe, so a cut always

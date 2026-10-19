@@ -798,6 +798,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// not be TT-served.
 	if (!is_exclusion_frame)
 		td.ply_eval[ply] = tracks_eval_trend() && !in_check ? static_cast<int16_t>(node_eval()) : kNoStaticEval;
+	const EvalTrend trend = tracks_eval_trend() ? eval_trend(td.ply_eval, ply) : EvalTrend::Unknown;
 
 	// Reverse futility pruning. A shallow non-PV node whose static evaluation already stands
 	// a margin above beta is reported as a fail-high without being searched. It sits exactly where
@@ -814,7 +815,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// as exactly its alpha -- no improvement, hence no killer, history or PV write, and a
 		// null-move child returns beta - 1, one below the cutoff that would otherwise store a
 		// LOWER bound. A fail-soft return would break all of that at once.
-		if (node_eval() - tuning_.reverse_futility_margin * depth >= beta) {
+		if (node_eval() - reverse_futility_slack(tuning_.reverse_futility_margin, depth,
+		                                         tuning_.reverse_futility_improving_relief, trend) >=
+		    beta) {
 			if constexpr (kSearchProfileCompiled)
 				td.telemetry.pruning.record_rfp(depth);
 			return beta;
