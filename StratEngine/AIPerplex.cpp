@@ -710,7 +710,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	bool tt_usable_for_singular = false;
 	int tt_value_for_singular = 0;
 
-	// This node's static evaluation, computed at most once and shared by both futility guards, or
+	// This node's static evaluation, computed at most once and shared by both futility guards and the
+	// eval stack, or
 	// served by the probe below from an entry of either phase. Only ever call node_eval() while
 	// td.board holds THIS position: after DoMove() it holds a child, whose evaluation is a different
 	// number from the other side's point of view.
@@ -796,16 +797,17 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// turn readers to Unknown. An exclusion frame writes nothing: it is its parent's position at the
 	// parent's ply, so the slot already holds that eval, and skipping saves an Evaluate() it could
 	// not be TT-served.
+	const bool track_trend = tracks_eval_trend();
 	if (!is_exclusion_frame)
-		td.ply_eval[ply] = tracks_eval_trend() && !in_check ? static_cast<int16_t>(node_eval()) : kNoStaticEval;
-	const EvalTrend trend = tracks_eval_trend() ? eval_trend(td.ply_eval, ply) : EvalTrend::Unknown;
+		td.ply_eval[ply] = track_trend && !in_check ? static_cast<int16_t>(node_eval()) : kNoStaticEval;
+	const EvalTrend trend = track_trend ? eval_trend(td.ply_eval, ply) : EvalTrend::Unknown;
 
 	// Reverse futility pruning. A shallow non-PV node whose static evaluation already stands
 	// a margin above beta is reported as a fail-high without being searched. It sits exactly where
 	// the probe above measured this surface, and for the same reasons: a node the transposition
 	// table already resolved never reaches here, and in_check is free by now. The eligibility test
 	// leads so the Evaluate() call -- the feature's entire first-order cost -- is paid only on a
-	// node that could actually be cut.
+	// node that could actually be cut, unless the eval stack above already paid it.
 	if (reverse_futility_eligible(depth, beta, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe)) {
 		// Fail-hard, and no transposition store. The evidence is one static evaluation and not
 		// a search, so storing it would let a speculative bound answer a later, deeper probe.

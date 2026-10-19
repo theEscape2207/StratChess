@@ -96,7 +96,8 @@ repeats the aborted-frame tripwire; change both together.
   `Evaluator` — the UCI `eval` command's, the batch scorer's, every test's — is unconfigured and
   answers `GameValues::Draw`. Guarding each `Evaluate()` call instead costs ~1% nps.
 - **At `contempt > 0` a static evaluation depends on `root_color_`, not on the position alone.** Its
-  consumers — reverse futility, frontier futility and the quiescence stand-pat — shift by at most
+  consumers — reverse futility, frontier futility, the quiescence stand-pat and the eval stack
+  `eval_trend()` reads — shift by at most
   `contempt`. The TT entry caches a static eval, and serves it to pvs()'s `node_eval` and the
   stand-pat, but never a dead-draw one, the only result that reads contempt:
   `storable_static_eval()` stores `kNoStaticEval` whenever the eval equals `draw_score(td)`. The TT clear fires on every

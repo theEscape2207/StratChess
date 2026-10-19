@@ -284,7 +284,7 @@ class AIPerplex final {
 	bool should_try_null_move(const ThreadData& td, int depth, int beta, int ply, bool is_pv_node, bool in_check,
 	                          bool zugzwang_safe) const;
 	// Every reverse-futility guard except the static evaluation itself, so pvs() only pays for
-	// that evaluation on a node a cutoff could actually apply to.
+	// that evaluation on a node a cutoff could actually apply to, unless the eval stack already did.
 	bool reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame,
 	                               bool zugzwang_safe) const;
 	// True when any guard reads eval_trend(), so pvs() keeps td.ply_eval filled. The one list of the

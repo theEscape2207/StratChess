@@ -57,7 +57,7 @@ namespace {
 
 TEST_CASE("Eval stack: a depth-1 node writes its eval", "[search][improving]")
 {
-	// Below the old depth >= lmr_min_depth gate: the depth every reader can sit at.
+	// The depth every reader can sit at.
 	AIPerlexTestFixture fix(kQuietFen);
 	track_eval_trend(fix);
 	fix.arm_clock();
@@ -79,9 +79,10 @@ TEST_CASE("Eval stack: a depth-5 node writes its eval", "[search][improving]")
 	CHECK(fix.ply_eval(2) == fix.evaluate());
 }
 
-TEST_CASE("Eval stack: nothing is written while no reader is on", "[search][improving]")
+TEST_CASE("Eval stack: the sentinel is written while no reader is on", "[search][improving]")
 {
 	AIPerlexTestFixture fix(kQuietFen);
+	fix.set_ply_eval(2, 123);
 	fix.arm_clock();
 
 	fix.search_node(3, /*ply=*/2);
