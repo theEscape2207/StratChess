@@ -236,3 +236,25 @@ Same clang-cl Release binary on both sides, only `Threads` differs; default book
 - **8 vs 4:** Ptnml(0-2) [4, 40, 88, 86, 32], 60.20%. Zero time losses, illegal moves or disconnects.
 
 All three valid steps sit within error of each other (+77 / +65 / +72), so scaling has not levelled off by 8 threads. The HX 370 mixes Zen 5 and Zen 5c cores and leaves thread placement to the OS, which adds noise that is largest in the 8 vs 4 step.
+
+### 2026-10-19 -- eval stack cost probe, every depth, no reader (#851, Validation step 4)
+
+**Speed only, not Elo. Verdict Unresolved; the median reads about -1.5%.** Candidate: `3a2ff89` (the
+#851 eval stack on `main` @ `e11bbe4`) with `tracks_eval_trend()` forced to `true`, so every
+`pvs()` frame not in check writes `node_eval()` to `ply_eval` and nothing reads it. It is
+node-identical to `e11bbe4` (`Compare-SearchEquivalence.ps1`: IDENTICAL, 120 lines, 6 positions,
+depth 12). Pair relinked by `New-OrderedBuildPair.ps1` (all four hot functions and 1,223 of 1,223
+pinned functions at identical addresses). `Compare-Bench.ps1 -Control -Rounds 60 -Affinity 4`,
+depth 13, built-in 8 positions, 19:07-19:39 on a quiet machine. Output dir:
+`%TEMP%\compare-bench-20261019-190743`.
+
+- Candidate vs geomean(baseline, control): mean -0.45% [-2.84, +2.00], **median -1.47%**. One
+  round read +100.34%, which sets the mean and the interval; 52 of 60 rounds read between -5.2%
+  and 0.
+- A/A -0.09% [-0.91, +0.74]: wider than the ±0.5% band, so the script warns.
+- Per position: **rook-endgm -4.13% [-5.52, -2.72], piece-endgm -3.65% [-5.56, -1.70]**; the six
+  middlegame and tactical positions are all within ±0.7% with intervals spanning zero.
+- Medians: baseline 3,700,778 nps, candidate 3,643,560, control 3,702,511.
+
+The cost lands in the endgames, as #848's triage probe found (-1.90% [-2.01, -1.78], placement not
+controlled). This is about the same size as that probe.
