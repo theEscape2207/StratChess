@@ -19,6 +19,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <thread>
 #include <vector>
 
@@ -102,6 +103,27 @@ inline int lmr_reduction(int depth, int move_number, int ordering_score, int his
 	if (history_divisor == 0)
 		return base;
 	return std::clamp(base - ordering_score / history_divisor, 1, cap);
+}
+
+enum class EvalTrend : uint8_t { Unknown, Improving, NotImproving };
+
+// The eval trend at ply: Improving when its static eval beats the one at ply - 2, or at ply - 4 when
+// ply - 2 has none (that ancestor was in check). Evaluate() scores for the side to move, and ply,
+// ply - 2 and ply - 4 share it -- a null move advances the ply too -- so the values compare directly.
+// A missing value gives Unknown, which leaves every margin at its trend-free value.
+inline EvalTrend eval_trend(std::span<const int16_t, MAX_PLY> evals, int ply) noexcept
+{
+	if (ply < 2 || evals[ply] == kNoStaticEval)
+		return EvalTrend::Unknown;
+	int16_t previous = evals[ply - 2];
+	if (previous == kNoStaticEval) {
+		if (ply < 4)
+			return EvalTrend::Unknown;
+		previous = evals[ply - 4];
+		if (previous == kNoStaticEval)
+			return EvalTrend::Unknown;
+	}
+	return evals[ply] > previous ? EvalTrend::Improving : EvalTrend::NotImproving;
 }
 
 struct AIPerplexConfig {
@@ -258,6 +280,9 @@ class AIPerplex final {
 	// that evaluation on a node a cutoff could actually apply to.
 	bool reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame,
 	                               bool zugzwang_safe) const;
+	// True when any guard reads eval_trend(), so pvs() keeps td.ply_eval filled. The one list of the
+	// trend's readers: a new reader adds its option here.
+	static bool tracks_eval_trend() noexcept { return false; }
 	// Singular multi-cut: the verification failed high, so an alternative also reaches singular_beta,
 	// and singular_beta >= beta makes that two moves at the cutoff. It can only fire where the TT
 	// entry itself could not cut: one that deep would have returned at the probe, so a cut always

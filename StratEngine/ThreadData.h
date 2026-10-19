@@ -69,6 +69,11 @@ struct ThreadData {
 	// Killer move heuristic: two non-capture moves per ply that caused a beta cutoff.
 	Move killers[MAX_PLY][MAX_KILLERS];
 
+	// ply_eval[p] is the static eval of the node at ply p, or kNoStaticEval when it has none. Never
+	// cleared per search: pvs() writes its slot before searching any child, so every slot a node
+	// reads was written on its own path in this search. Indexed like killers.
+	int16_t ply_eval[MAX_PLY]{};
+
 	// Null-move consecutive-pass guard: last_move_was_null[ply] is true when
 	// the move that led to this ply was itself a null move. Indexed the same
 	// way as killers; cleared at search start and reset immediately after
