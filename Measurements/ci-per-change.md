@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-19 | e6cd42f, `ReverseFutilityImprovingRelief=50`: RFP slack `margin*depth - 50` at improving nodes, floored at 0 (#851; PR #854, never merged) | 03141cb | 19980 | 10+0.1 | **-2.75 +/- 3.54** | inconclusive @ 19980 |
 | 2026-10-19 | 6b24787, `LmrImprovingRelief=1`: R - 1 at improving nodes, after the history clamp (#848; PR #849, never merged) | 719af11 | 19980 | 10+0.1 | **-13.71 +/- 3.56** | regression |
 | 2026-10-18 | d7b7939, `LmrImprovingOffset=1`: R + 1 at non-improving nodes, before the `depth-2` cap (#848; PR #849, never merged) | 719af11 | 19980 | 10+0.1 | **-1.06 +/- 3.56** | inconclusive @ 19980 |
 | 2026-10-17 | eac04e2, staged move generation in `pvs()` (#839; node-identical, a speed change only) | 12bf7d1 | 19980 | 10+0.1 | **+2.96 +/- 3.49** | inconclusive @ 19980 |
@@ -96,6 +97,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-19 -- e6cd42f, `ReverseFutilityImprovingRelief=50` (#851) (19980 games)
+
+**Gating run for PR #854, ship rule "Elo minus its error bar above 0", declared in design D7 before dispatch.** [Run `39249308747`](https://github.com/theEscape2207/StratChess/actions/runs/39249308747), 18 shards x 555 pairs, reference the merge base `03141cb`, candidate options `ReverseFutilityImprovingRelief=50`. Pooled Ptnml(0-2) [789, 2359, 3813, 2279, 750], score 49.60%, interval [-6.29, +0.79]; 6 of 18 shards favour the candidate by score (11 the reference, 1 even). The run is the first with the eval stack on, which evaluates every non-check frame, PV and depth >= 4 included, so it carries the stack's unmeasured nps cost as well as the relief. The option reached the candidate's fastchess command line; no PGN check was made. No screen or wall clock was run. The negative point estimate rules out the design's sweep, which applies only to a positive run that spans zero.
 
 ### 2026-10-19 -- 6b24787, `LmrImprovingRelief=1` (#848) (19980 games)
 
