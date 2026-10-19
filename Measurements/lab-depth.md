@@ -26,6 +26,10 @@ Elo of each run is in [`ci-per-change.md`](ci-per-change.md).
 | 2026-09-18 | 35336326192 | e2ff7d2 at `Contempt=20` (#452) | e2ff7d2 | 19980 | 12.62 | 12.63 | −0.004 [−0.008, −0.001] |
 | 2026-09-27 | 36354288096 | e11a58a, deepening stops early only on mate (#652) | f58f052 | 19980 | 12.69 | 12.54 | +0.163 [+0.155, +0.170] |
 | 2026-09-29 | 36495197163 | 455352e, opposite-bishop scale (#599) | 0c01b00 | 19980 | 12.86 | 12.85 | +0.020 [+0.017, +0.024] |
+| 2026-09-29 | 36599205249 | 17cf5a3, continuation history 2 plies (#664) | 481aa97 | 19980 | 12.72 | 12.66 | +0.005 [+0.001, +0.008] |
+| 2026-09-30 | 36782774432 | 05fc0d5, toolchain null: GCC 15 / `ubuntu-26.04` (#476) | 7f72225 | 28400 | 12.76 | 12.76 | +0.001 [−0.002, +0.003] |
+| 2026-10-02 | 37020636422 | 48a31ad, singular extensions on (#95) | 48a31ad, `SingularExtensions=false` | 19980 | 12.23 | 12.83 | −0.579 [−0.583, −0.575] |
+| 2026-10-03 | 37154126192 | ee45484, singular min depth 6, margin factor 1 (#702) | 4dafbdd, previous singular defaults | 19980 | 11.68 | 12.16 | −0.526 [−0.529, −0.522] |
 | 2026-10-06 | 37518249596 | c82dc6e, lock-free TT (#747), **`Threads=4`** | 79c3217 | 6624 | 12.51 | 12.30 | +0.199 [+0.192, +0.205] |
 | 2026-10-09 | 37964064691 | c16e692, TT prefetch (#776) | f07859d | 26640 | 11.74 | 11.60 | +0.133 [+0.130, +0.136] |
 | 2026-10-12 | 38312922668 | cd97a1f, `LmrHistoryDivisor` screen, arms A/B/C (#816) | cd97a1f | 19980 | 11.75 / 12.13 / 11.90 | 11.95 | pooled −0.021 [−0.025, −0.018] |
@@ -40,9 +44,10 @@ Elo of each run is in [`ci-per-change.md`](ci-per-change.md).
 ## Row detail
 
 **Trend, 2026-08-28 to 2026-09-29.** At 10+0.1, reference depth went from 11.5-11.7 (08-28 to
-09-05) to 12.2-12.9 (09-13 to 09-29). Then it fell to 11.60 by 2026-10-09. Two things landed in
-between that this ledger cannot separate: singular extensions on by default (#95, 2026-10-03),
-and the lab moving to GCC 15 on `ubuntu-26.04`. 09-11 (18+0.18) and 10-06 (`Threads=4`) are not on
+09-05) to 12.2-12.9 (09-13 to 09-29). Then it fell to 11.60 by 2026-10-09, and singular extensions account for all of it: about
+−1.1 plies from two steps, −0.58 for turning them on (#95) and −0.53 for the #702 retune, which
+extends more. The toolchain did not move depth: 36782774432 runs GCC 15 / `ubuntu-26.04` at 12.76,
+against 12.66-12.72 on GCC 13 the day before. 09-11 (18+0.18) and 10-06 (`Threads=4`) are not on
 the 10+0.1 single-thread scale.
 
 **36354288096 changes the tree:** deepening that no longer stops early on a large score completes
