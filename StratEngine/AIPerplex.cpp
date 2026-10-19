@@ -710,10 +710,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	bool tt_usable_for_singular = false;
 	int tt_value_for_singular = 0;
 
-	// This node's static evaluation, computed at most once and shared by both futility guards, or
-	// served by the probe below from an entry of either phase. Only ever call node_eval() while
-	// td.board holds THIS position: after DoMove() it holds a child, whose evaluation is a different
-	// number from the other side's point of view.
+	// This node's static evaluation, computed at most once and shared by both futility guards and the
+	// eval stack, or served by the probe below from an entry of either phase. Only ever call
+	// node_eval() while td.board holds THIS position: after DoMove() it holds a child, whose
+	// evaluation is a different number from the other side's point of view.
 	int static_eval = 0;
 	bool static_eval_known = false;
 	bool static_eval_served = false; // served and not yet counted; read only by a stats build
@@ -804,7 +804,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// the probe above measured this surface, and for the same reasons: a node the transposition
 	// table already resolved never reaches here, and in_check is free by now. The eligibility test
 	// leads so the Evaluate() call -- the feature's entire first-order cost -- is paid only on a
-	// node that could actually be cut.
+	// node that could actually be cut, unless the eval stack above already paid it.
 	if (reverse_futility_eligible(depth, beta, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe)) {
 		// Fail-hard, and no transposition store. The evidence is one static evaluation and not
 		// a search, so storing it would let a speculative bound answer a later, deeper probe.
