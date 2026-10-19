@@ -3,8 +3,9 @@
 **Issue:** #851 (#636 child B3, slice 3 of #848)
 
 **Status:** RFP (first PR) measured -2.75 ± 3.54 at relief 50 and did not ship; PR #854 closed
-unmerged, its commits at `refs/pull/854/head` (`Measurements/ci-per-change.md`, 2026-10-19). Next:
-the cost probe (Validation, step 4), then LMP from fresh `main` per D7.
+unmerged, its commits at `refs/pull/854/head` (`Measurements/ci-per-change.md`, 2026-10-19). The
+cost probe (Validation, step 4) read a median -1.5% nps, unresolved, with -4% resolved in endgames
+(`Measurements/local.md`, 2026-10-19). LMP (second PR) is implemented, its lab run pending.
 
 ## Goal
 

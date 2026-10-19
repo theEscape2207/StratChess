@@ -469,4 +469,5 @@ TEST_CASE("Late move pruning: a nonzero not-improving cut reaches the search", "
 	on.get_move_at_threads(1, 8);
 
 	CHECK(on.lmp_skips() > off.lmp_skips());
+	CHECK(on.mainnodes() != off.mainnodes());
 }

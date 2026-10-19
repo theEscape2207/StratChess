@@ -32,8 +32,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - The eval stack and `eval_trend()` from #848 (PR #849, closed), re-ported after the reverse
   futility slice (PR #854) closed unmerged. The stack is written at every depth while a reader is
   on, since a reader's ancestors sit at any depth above it; with the option at 0 it evaluates
-  nothing and the search is unchanged. Writing it costs about 1.5% nps, about 4% in endgames
-  (local.md, 2026-10-19).
+  nothing and the search is unchanged. Cost of writing it: about 4% nps in endgames; the
+  all-position median, about -1.5%, is unresolved (local.md, 2026-10-19).
 
 ## 2026-10-18: Changelog rule and check (#734, slice 3)
 

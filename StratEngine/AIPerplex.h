@@ -57,11 +57,13 @@ using CompletionHandler = std::function<void(const SearchResult&)>;
 
 inline constexpr unsigned DEFAULT_AIPERPLEX_HASH_MB = 192;
 
-// Late move pruning, deliberately not tunable: parent depth exactly two, and the zero-based legal
-// move index at which quiet moves become skippable (the thirteenth legal move) at a node with no
-// NotImproving trend; late_move_pruning_not_improving_cut lowers it at one that has.
+// Late move pruning: parent depth exactly two, and the zero-based legal move index at which quiet
+// moves become skippable (the thirteenth legal move). Neither is tunable; only
+// late_move_pruning_not_improving_cut lowers the index, at a NotImproving node.
 inline constexpr int kLateMovePruningDepth = 2;
 inline constexpr int kLateMovePruningMinLegalIndex = 12;
+// The cut's upper bound in SearchTuning.def (8) must leave the index at 4 or more.
+static_assert(kLateMovePruningMinLegalIndex - 8 >= 4);
 
 // ln(i) for i in [1, MAX_PLY); slot 0 is unused. It covers every move number (MoveList::MAX_MOVES <
 // MAX_PLY) and every search depth, which resolve_limits() clamps to MAX_PLY - 1. Cached so the log

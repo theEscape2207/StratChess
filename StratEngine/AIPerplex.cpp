@@ -979,9 +979,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	// Late move pruning: at a depth-2 null-window node, a late quiet move is skipped outright.
 	const bool lmp_node = late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
-	const int lmp_min_index = lmp_node ? late_move_pruning_min_index(tuning_.late_move_pruning_not_improving_cut,
-	                                                                 eval_trend(td.ply_eval, ply))
-	                                   : kLateMovePruningMinLegalIndex;
+	const int lmp_min_index =
+	    lmp_node && tracks_eval_trend()
+	        ? late_move_pruning_min_index(tuning_.late_move_pruning_not_improving_cut, eval_trend(td.ply_eval, ply))
+	        : kLateMovePruningMinLegalIndex;
 	bool lmp_skipped = false;
 
 	// Search profile: a late cut's cost is the nodes spent since the loop began up to the cutting
