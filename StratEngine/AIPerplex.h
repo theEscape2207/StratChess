@@ -109,23 +109,25 @@ inline int lmr_reduction(int depth, int move_number, int ordering_score, int his
 	return std::clamp(base - ordering_score / history_divisor, 1, cap);
 }
 
+enum class EvalTrend : uint8_t { Unknown, Improving, NotImproving };
+
 // Whether the node at ply is improving: its static eval beats the one at ply - 2, or at ply - 4 when
 // ply - 2 has none (that ancestor was in check). Evaluate() scores for the side to move, and ply,
 // ply - 2 and ply - 4 share it -- a null move advances the ply too -- so the values compare directly.
-// No evidence counts as improving, so a missing value never earns the extra reduction.
-inline bool is_improving(std::span<const int16_t, MAX_PLY> evals, int ply) noexcept
+// A missing value gives Unknown, which earns neither the extra reduction nor the relief.
+inline EvalTrend eval_trend(std::span<const int16_t, MAX_PLY> evals, int ply) noexcept
 {
 	if (ply < 2 || evals[ply] == kNoStaticEval)
-		return true;
+		return EvalTrend::Unknown;
 	int16_t previous = evals[ply - 2];
 	if (previous == kNoStaticEval) {
 		if (ply < 4)
-			return true;
+			return EvalTrend::Unknown;
 		previous = evals[ply - 4];
 		if (previous == kNoStaticEval)
-			return true;
+			return EvalTrend::Unknown;
 	}
-	return evals[ply] > previous;
+	return evals[ply] > previous ? EvalTrend::Improving : EvalTrend::NotImproving;
 }
 
 struct AIPerplexConfig {

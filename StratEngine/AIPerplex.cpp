@@ -798,13 +798,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// every ancestor it reads had that depth too and stored a real eval unless it was in check.
 	// An exclusion frame writes nothing: it is its parent's position at the parent's ply, often
 	// below lmr_min_depth, and its sentinel would erase the eval the parent's later children read.
+	const bool track_trend = tuning_.lmr_improving_offset != 0 || tuning_.lmr_improving_relief != 0;
 	if (!is_exclusion_frame)
-		td.ply_eval[ply] = tuning_.lmr_improving_offset != 0 && !in_check && depth >= tuning_.lmr_min_depth
+		td.ply_eval[ply] = track_trend && !in_check && depth >= tuning_.lmr_min_depth
 		                       ? static_cast<int16_t>(node_eval())
 		                       : kNoStaticEval;
-	// Plies added to every reduced quiet's R at this node.
-	const int lmr_extra =
-	    tuning_.lmr_improving_offset != 0 && !is_improving(td.ply_eval, ply) ? tuning_.lmr_improving_offset : 0;
+	const EvalTrend trend = track_trend ? eval_trend(td.ply_eval, ply) : EvalTrend::Unknown;
+	// Plies added to (extra) or taken off (relief) every reduced quiet's R at this node.
+	const int lmr_extra = trend == EvalTrend::NotImproving ? tuning_.lmr_improving_offset : 0;
+	const int lmr_relief = trend == EvalTrend::Improving ? tuning_.lmr_improving_relief : 0;
 
 	// Reverse futility pruning. A shallow non-PV node whose static evaluation already stands
 	// a margin above beta is reported as a fail-high without being searched. It sits exactly where
@@ -1128,11 +1130,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 				if (apply_lmr) {
 					// scored_idx still holds the score ScoreMovesBestFirst gave this move before the loop.
-					const int R = lmr_reduction(depth, move_number, scored_idx[si].first, tuning_.lmr_history_divisor,
-					                            tuning_.lmr_log_base, tuning_.lmr_log_divisor, lmr_extra);
-					assert(depth - 1 - R >= 1 || tuning_.lmr_min_depth < 3);
-					record_lmr_reach(td.telemetry.lmr, depth, move_number, scored_idx[si].first, R,
+					const int history_r =
+					    lmr_reduction(depth, move_number, scored_idx[si].first, tuning_.lmr_history_divisor,
+					                  tuning_.lmr_log_base, tuning_.lmr_log_divisor, lmr_extra);
+					record_lmr_reach(td.telemetry.lmr, depth, move_number, scored_idx[si].first, history_r,
 					                 tuning_.lmr_log_base, tuning_.lmr_log_divisor, lmr_extra);
+					// The relief comes after the history clamp: nearly every base sits at the cap and
+					// history moves few of them, so taken off any earlier it would be swallowed.
+					const int R = std::max(1, history_r - lmr_relief);
+					assert(depth - 1 - R >= 1 || tuning_.lmr_min_depth < 3);
 
 					// Search profile: node totals count the outermost search of each kind only. Each
 					// nesting depth drops straight after its call, before any abort return.

@@ -1,7 +1,7 @@
-// SearchLmrTests.cpp — the late move reduction, its sqrt and log bases, its history adjustment and
-// its non-improving offset.
+// SearchLmrTests.cpp — the late move reduction, its sqrt and log bases, its history adjustment, its
+// non-improving offset and its improving relief.
 //
-// lmr_reduction() and is_improving() are pure, so the bounds, the placement of the adjustment and
+// lmr_reduction() and eval_trend() are pure, so the bounds, the placement of the adjustment and
 // the improving rule are asserted on them directly; search cases prove pvs() actually feeds them.
 
 #include <catch2/catch_test_macros.hpp>
@@ -209,32 +209,32 @@ namespace {
 
 TEST_CASE("Improving: the eval two plies back decides", "[search][lmr]")
 {
-	CHECK(is_improving(evals({{4, 10}, {6, 20}}), 6));
-	CHECK_FALSE(is_improving(evals({{4, 20}, {6, 20}}), 6));
-	CHECK_FALSE(is_improving(evals({{4, 30}, {6, 20}}), 6));
+	CHECK(eval_trend(evals({{4, 10}, {6, 20}}), 6) == EvalTrend::Improving);
+	CHECK(eval_trend(evals({{4, 20}, {6, 20}}), 6) == EvalTrend::NotImproving);
+	CHECK(eval_trend(evals({{4, 30}, {6, 20}}), 6) == EvalTrend::NotImproving);
 	// ply - 1 is the opponent's view and plays no part.
-	CHECK_FALSE(is_improving(evals({{4, 30}, {5, -100}, {6, 20}}), 6));
+	CHECK(eval_trend(evals({{4, 30}, {5, -100}, {6, 20}}), 6) == EvalTrend::NotImproving);
 }
 
 TEST_CASE("Improving: an in-check ancestor falls back to ply - 4", "[search][lmr]")
 {
-	CHECK_FALSE(is_improving(evals({{2, 30}, {6, 20}}), 6));
-	CHECK(is_improving(evals({{2, 10}, {6, 20}}), 6));
-	CHECK_FALSE(is_improving(evals({{0, 20}, {4, 20}}), 4));
+	CHECK(eval_trend(evals({{2, 30}, {6, 20}}), 6) == EvalTrend::NotImproving);
+	CHECK(eval_trend(evals({{2, 10}, {6, 20}}), 6) == EvalTrend::Improving);
+	CHECK(eval_trend(evals({{0, 20}, {4, 20}}), 4) == EvalTrend::NotImproving);
 }
 
-TEST_CASE("Improving: no evidence counts as improving", "[search][lmr]")
+TEST_CASE("Improving: no evidence is Unknown", "[search][lmr]")
 {
 	// Both ancestors missing.
-	CHECK(is_improving(evals({{6, 20}}), 6));
+	CHECK(eval_trend(evals({{6, 20}}), 6) == EvalTrend::Unknown);
 	// ply < 2.
-	CHECK(is_improving(evals({{0, 20}, {1, 20}}), 0));
-	CHECK(is_improving(evals({{0, 20}, {1, 20}}), 1));
+	CHECK(eval_trend(evals({{0, 20}, {1, 20}}), 0) == EvalTrend::Unknown);
+	CHECK(eval_trend(evals({{0, 20}, {1, 20}}), 1) == EvalTrend::Unknown);
 	// ply 2 and 3 with no eval at ply - 2, and no ply - 4 to fall back to.
-	CHECK(is_improving(evals({{2, -50}}), 2));
-	CHECK(is_improving(evals({{3, -50}}), 3));
+	CHECK(eval_trend(evals({{2, -50}}), 2) == EvalTrend::Unknown);
+	CHECK(eval_trend(evals({{3, -50}}), 3) == EvalTrend::Unknown);
 	// The node itself has none.
-	CHECK(is_improving(evals({{4, 30}}), 6));
+	CHECK(eval_trend(evals({{4, 30}}), 6) == EvalTrend::Unknown);
 }
 
 TEST_CASE("Improving: a singular verification keeps the node's eval in its slot", "[search][lmr][singular]")
@@ -264,6 +264,19 @@ TEST_CASE("LMR: a nonzero improving offset reaches the search", "[search][lmr][n
 
 	AIPerlexTestFixture on(fen);
 	on.set_lmr_improving_offset(1);
+	on.get_move_at_threads(1, 8);
+
+	CHECK(on.mainnodes() != off.mainnodes());
+}
+
+TEST_CASE("LMR: a nonzero improving relief reaches the search", "[search][lmr][nodes]")
+{
+	constexpr const char* fen = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4";
+	AIPerlexTestFixture off(fen);
+	off.get_move_at_threads(1, 8);
+
+	AIPerlexTestFixture on(fen);
+	on.set_lmr_improving_relief(1);
 	on.get_move_at_threads(1, 8);
 
 	CHECK(on.mainnodes() != off.mainnodes());

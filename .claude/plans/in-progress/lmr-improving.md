@@ -145,6 +145,28 @@ tune wants more.
 At 0 the frame computes no extra eval, and the reading code is skipped, so the search is
 node-identical to the merge base. The lab measures 1 with `candidate_uci_options`.
 
+### D6: Relief at improving nodes (added after the first lab run)
+
+The offset-1 lab run measured -1.1 ± 3.6 Elo. The screen explains why it barely moved anything: 94% of
+reduced quiets already have a base at the `depth-2` cap, and history moves only about 5% of them, so
+a pre-cap `extra` changes R for very few moves. The approved variant runs the other way:
+`lmr_improving_relief` plies are taken off R at an improving node, **after** the history clamp, with
+a floor of 1. Placed there it reaches the capped majority.
+
+- **Evidence rule:** `is_improving()` becomes `eval_trend()`, returning `Improving`, `NotImproving`
+  or `Unknown`. The offset applies only on `NotImproving` and the relief only on `Improving`, so a
+  missing value earns neither. Offset behaviour is unchanged: `Unknown` already gave no extra.
+- **Option:** `TUNING_FIELD(int, lmr_improving_relief, 0, 0, 3, true, "LmrImprovingRelief", true)`.
+  The stack is written when either option is nonzero.
+- **Profile:** `record_lmr_reach()` gets R before the relief, so its counts still describe the
+  history shift alone.
+- **Measurement:** one lab run at `LmrImprovingRelief=1` (offset 0) against the merge base, with the
+  same ship rule. Equivalence at the defaults must still be identical. No screen or wall clock: the
+  lab decides, and both run only if the result needs explaining.
+
+Rejected: a signed offset. The UCI parser rejects a sign, and a pre-cap negative offset would be
+swallowed by the cap just like the positive one.
+
 ## Assumptions I cannot verify from the code
 
 - **A1: the offset-0 cost is within bench noise.** The added work per frame is one compare and one
@@ -226,4 +248,5 @@ node-identical to the merge base. The lab measures 1 with `candidate_uci_options
 | D3's no-clear reasoning | comment on `ThreadData::ply_eval` |
 | D4's before-the-cap placement | `lmr_reduction()` header comment |
 | D5's option meaning and range | `SearchTuning.def` comment, `Docs/EngineGuide.md` |
+| D6's after-the-clamp placement and the evidence rule | comment at the relief in `pvs()`, `eval_trend()` comment, `SearchTuning.def` |
 | Lab, screen and wall-clock results | `Measurements/ci-per-change.md`, headline in `Docs/Changelog.md` |
