@@ -23,6 +23,15 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-20: MoveSorter scoring context (#841)
+
+### Changed
+- `MoveSorter`'s scoring entry points take one `MoveScoringContext` (board, side, killers, history,
+  continuation rows) instead of six loose parameters, built once per `pvs()` frame and once per
+  in-check quiescence node. The hash move stays a separate argument, so `ScoreAppended` still
+  scores without one by signature. Killers and history are held by reference, so staged frames
+  still read them when the quiets are appended. Search is node-identical.
+
 ## 2026-10-19: Drop the MSVC (cl.exe) toolchain
 
 ### Removed
