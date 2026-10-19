@@ -23,6 +23,17 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-19: Improving flag for reverse futility (#851, slice 1)
+
+### Added
+- `ReverseFutilityImprovingRelief` (default 0, range 0-1000): centipawns taken off reverse
+  futility's whole margin at a node whose static eval beats the one two plies back, floored at 0
+  so a cutoff never rests on an eval below beta. Hypothesis: an eval above beta holds more often
+  when the side to move is improving.
+- The eval stack and `eval_trend()` from #848 (PR #849, closed), without its LMR uses. The stack
+  is written at every depth while a reader is on, since a reader's ancestors sit at any depth
+  above it; with every reader at 0 it evaluates nothing and the search is unchanged.
+
 ## 2026-10-18: Changelog rule and check (#734, slice 3)
 
 ### Added
