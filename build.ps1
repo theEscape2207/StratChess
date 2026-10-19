@@ -4,10 +4,10 @@
 
 .DESCRIPTION
     Drives the CMake presets in CMakePresets.json and exposes simple build verbs.
-    Defaults to Release with clang-cl, which is the shipping configuration.
+    Builds with clang-cl, the only Windows toolchain; defaults to Release.
 
     Imports the Visual Studio developer environment itself, so this works from a
-    plain PowerShell, a git hook or an agent session — clang-cl and cl need
+    plain PowerShell, a git hook or an agent session — clang-cl needs
     INCLUDE/LIB set, and nothing outside a Developer Prompt has them.
 
 .PARAMETER Verb
@@ -618,7 +618,7 @@ function Invoke-CMakeBuild {
             if (-not $env:CCACHE_DIR) {
                 $env:CCACHE_DIR = $compilerCache
             }
-            # ~55 MB per generation of the two clang-cl presets, so 1G holds ~18 of them.
+            # ~55 MB per generation of the clang-cl presets, so 1G holds ~18 of them.
             $env:CCACHE_MAXSIZE = '1G'
             # Hash the compiler itself rather than trusting its mtime, which a rebuilt or
             # replaced clang-cl leaves untouched. Costs ~1.4 s of an 11.7 s warm build.

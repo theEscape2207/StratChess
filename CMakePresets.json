@@ -22,7 +22,7 @@
       "name": "windows-clang-cl",
       "inherits": "windows-base",
       "displayName": "Windows / clang-cl + Ninja (Release)",
-      "description": "The shipping configuration, and the only Windows toolchain: it built a measurably faster engine than MSVC while searching an identical tree - see issue #84.",
+      "description": "The shipping configuration, and the only Windows toolchain.",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_CXX_COMPILER": "clang-cl"

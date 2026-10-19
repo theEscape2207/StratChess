@@ -9,8 +9,8 @@ project(StratChess CXX)
 # Builds on Linux (GCC/Clang) and on Windows via clang-cl + Ninja, configured by
 # the windows-clang-cl presets in CMakePresets.json.
 #
-# clang-cl is the only Windows toolchain. cl.exe was dropped: nothing gated
-# it, and every flag decision below had to be made twice.
+# clang-cl is the only Windows toolchain; cl.exe is refused rather than built
+# with flags nothing here was written for.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     message(FATAL_ERROR
         "cl.exe is not supported. Build with clang-cl: the windows-clang-cl presets, "
