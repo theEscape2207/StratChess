@@ -16,6 +16,18 @@ struct ContinuationRows {
 	bool empty() const noexcept { return one_ply == nullptr && two_ply == nullptr; }
 };
 
+// A node's move-ordering inputs, built once per node. The hash move is not here: ScoreAppended
+// scores without one. Killers and history are references, so a staged frame reads them when it
+// scores its quiets, not when it builds the context. Quiescence passes empty continuation rows.
+struct MoveScoringContext {
+	const Board& board;
+	eColor side;
+	const Move& killer0;
+	const Move& killer1;
+	const int32_t (&history)[2][64][64];
+	ContinuationRows cont;
+};
+
 class MoveSorter final {
   public:
 	// Sorts the list by MVV-LVA, descending; equal values keep generation order. The list must
@@ -38,23 +50,17 @@ class MoveSorter final {
 	// -> killer0 -> killer1 -> SEE < 0 captures -> quiets, with generation order as the final
 	// tie-break. A quiet scores its history entry plus its entry in each continuation row present;
 	// quiescence passes none.
-	static void ScoreMoves(const MoveList& moveList, int n, const Board& board, eColor side, const Move& hash_move,
-	                       const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
-	                       std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
-	                       ContinuationRows cont = {});
+	static void ScoreMoves(const MoveList& moveList, int n, const MoveScoringContext& ctx, const Move& hash_move,
+	                       std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx);
 	// As ScoreMoves, but only out_scored_idx[0] is in order; [1, n) is unordered until OrderRemaining.
 	// For n <= 1 the result is already fully ordered.
-	static void ScoreMovesBestFirst(const MoveList& moveList, int n, const Board& board, eColor side,
-	                                const Move& hash_move, const Move& killer0, const Move& killer1,
-	                                const int32_t (&history)[2][64][64],
-	                                std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
-	                                ContinuationRows cont = {});
+	static void ScoreMovesBestFirst(const MoveList& moveList, int n, const MoveScoringContext& ctx,
+	                                const Move& hash_move,
+	                                std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx);
 	// Scores the moves appended at [first, n) as ScoreMoves would, for a list with no hash move, and
 	// leaves [0, first) alone. Unordered, like ScoreMovesBestFirst's tail.
-	static void ScoreAppended(const MoveList& moveList, int first, int n, const Board& board, eColor side,
-	                          const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
-	                          std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
-	                          ContinuationRows cont = {});
+	static void ScoreAppended(const MoveList& moveList, int first, int n, const MoveScoringContext& ctx,
+	                          std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx);
 	// Swaps the best of [first, n) to first, leaving the rest unordered.
 	static void SelectBest(const MoveList& moveList, std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
 	                       int first, int n);
@@ -72,9 +78,7 @@ class MoveSorter final {
 
 	// The scoring every ScoreMoves entry point shares: (score, original_index) pairs for [first, n), in
 	// generation order.
-	static void ScoreUnordered(const MoveList& moveList, int first, int n, const Board& board, eColor side,
-	                           const Move& hash_move, const Move& killer0, const Move& killer1,
-	                           const int32_t (&history)[2][64][64],
-	                           std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
-	                           ContinuationRows cont);
+	static void ScoreUnordered(const MoveList& moveList, int first, int n, const MoveScoringContext& ctx,
+	                           const Move& hash_move,
+	                           std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx);
 };

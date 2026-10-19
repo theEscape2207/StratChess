@@ -110,13 +110,12 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, const Board& board)
 // This applies to interior PV nodes. Ordering the ROOT's moves by the previous iteration's
 // scores is a separate question with a different answer available to it, and nothing here
 // forecloses it.
-void MoveSorter::ScoreUnordered(const MoveList& moveList, int first, int n, const Board& board, eColor side,
-                                const Move& hash_move, const Move& killer0, const Move& killer1,
-                                const int32_t (&history)[2][64][64],
-                                std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
-                                ContinuationRows cont)
+void MoveSorter::ScoreUnordered(const MoveList& moveList, int first, int n, const MoveScoringContext& ctx,
+                                const Move& hash_move,
+                                std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx)
 {
 	assert(first >= 0 && first <= n && n <= static_cast<int>(MoveList::MAX_MOVES));
+	const Board& board = ctx.board;
 
 	for (int i = first; i < n; ++i) {
 		const Move& mv = moveList[i];
@@ -140,40 +139,38 @@ void MoveSorter::ScoreUnordered(const MoveList& moveList, int first, int n, cons
 
 			s = (!MoveHelper::IsCapture(mv) || See::see_ge(board, mv, 0)) ? kGoodCaptureTier + mvv_lva
 			                                                              : kLosingCaptureTier + mvv_lva;
-		} else if (mv == killer0) {
+		} else if (mv == ctx.killer0) {
 			s = kKiller0Score;
-		} else if (mv == killer1) {
+		} else if (mv == ctx.killer1) {
 			s = kKiller1Score;
 		} else {
-			assert(static_cast<int>(side) >= 0 && static_cast<int>(side) < 2);
-			s = history[static_cast<int>(side)][mv.from()][mv.to()];
+			assert(static_cast<int>(ctx.side) >= 0 && static_cast<int>(ctx.side) < 2);
+			s = ctx.history[static_cast<int>(ctx.side)][mv.from()][mv.to()];
 			// Each entry is bounded by HISTORY_MAX, so the sum stays below kLosingCaptureTier; ThreadData
 			// asserts that.
-			if (!cont.empty()) {
+			if (!ctx.cont.empty()) {
 				const int col = QuietContinuationColumn(board, mv);
-				if (cont.one_ply != nullptr)
-					s += cont.one_ply[col];
-				if (cont.two_ply != nullptr)
-					s += cont.two_ply[col];
+				if (ctx.cont.one_ply != nullptr)
+					s += ctx.cont.one_ply[col];
+				if (ctx.cont.two_ply != nullptr)
+					s += ctx.cont.two_ply[col];
 			}
 		}
 		out_scored_idx[i] = {s, i};
 	}
 }
 
-void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board, eColor side, const Move& hash_move,
-                            const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
-                            std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx, ContinuationRows cont)
+void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const MoveScoringContext& ctx, const Move& hash_move,
+                            std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx)
 {
-	ScoreUnordered(moveList, 0, n, board, side, hash_move, killer0, killer1, history, out_scored_idx, cont);
+	ScoreUnordered(moveList, 0, n, ctx, hash_move, out_scored_idx);
 	OrderRemaining(moveList, out_scored_idx, 0, n);
 }
 
-void MoveSorter::ScoreAppended(const MoveList& moveList, int first, int n, const Board& board, eColor side,
-                               const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
-                               std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx, ContinuationRows cont)
+void MoveSorter::ScoreAppended(const MoveList& moveList, int first, int n, const MoveScoringContext& ctx,
+                               std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx)
 {
-	ScoreUnordered(moveList, first, n, board, side, Move::EmptyMove(), killer0, killer1, history, scored_idx, cont);
+	ScoreUnordered(moveList, first, n, ctx, Move::EmptyMove(), scored_idx);
 }
 
 void MoveSorter::SelectBest(const MoveList& moveList, std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
@@ -190,13 +187,11 @@ void MoveSorter::SelectBest(const MoveList& moveList, std::array<std::pair<int, 
 	std::swap(scored_idx[first], scored_idx[best]);
 }
 
-void MoveSorter::ScoreMovesBestFirst(const MoveList& moveList, int n, const Board& board, eColor side,
-                                     const Move& hash_move, const Move& killer0, const Move& killer1,
-                                     const int32_t (&history)[2][64][64],
-                                     std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
-                                     ContinuationRows cont)
+void MoveSorter::ScoreMovesBestFirst(const MoveList& moveList, int n, const MoveScoringContext& ctx,
+                                     const Move& hash_move,
+                                     std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx)
 {
-	ScoreUnordered(moveList, 0, n, board, side, hash_move, killer0, killer1, history, out_scored_idx, cont);
+	ScoreUnordered(moveList, 0, n, ctx, hash_move, out_scored_idx);
 	SelectBest(moveList, out_scored_idx, 0, n);
 }
 

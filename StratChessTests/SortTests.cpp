@@ -56,7 +56,7 @@ TEST_CASE("Sort - Hash move scores 1'900'000 and sorts first", "[sort]")
 	int32_t history[2][64][64] = {};
 
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, hash_move, killer0, killer1, history, scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, {board, WHITE, killer0, killer1, history, {}}, hash_move, scored_idx);
 
 	REQUIRE(FindScore(scored_idx, moveList, n, hash_move) == 1'900'000);
 	REQUIRE(moveList[scored_idx[0].second] == hash_move);
@@ -85,7 +85,7 @@ TEST_CASE("Sort - an empty hash move promotes nothing", "[sort]")
 	int32_t history[2][64][64] = {};
 
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, {board, WHITE, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	for (int i = 0; i < n; ++i)
 		REQUIRE(scored_idx[i].first < 1'900'000);
@@ -109,7 +109,7 @@ TEST_CASE("Sort - Capture scores above 1'000'000 (winning capture category)", "[
 	int32_t history[2][64][64] = {};
 
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, {board, WHITE, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	const int cap_score = FindScore(scored_idx, moveList, n, capture);
 	REQUIRE(cap_score >= 1'000'000); // winning-capture category
@@ -141,7 +141,7 @@ TEST_CASE("Sort - Killer0 scores 900'000; beats quiet move with no history", "[s
 	int32_t history[2][64][64] = {};
 
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, {board, WHITE, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	REQUIRE(FindScore(scored_idx, moveList, n, killer0) == 900'000);
 	REQUIRE(FindScore(scored_idx, moveList, n, quiet_no_history) == 0);
@@ -184,7 +184,7 @@ TEST_CASE("Sort - the SEE tier chain, winning capture down to losing capture", "
 	history[WHITE][e1][e2] = 500;
 
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, {board, WHITE, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	const int winning_score = FindScore(scored_idx, moveList, n, winning);
 	const int killer_score = FindScore(scored_idx, moveList, n, killer0);
@@ -225,7 +225,7 @@ TEST_CASE("Sort - two SEE-winning captures order by MVV-LVA within the tier", "[
 	int32_t history[2][64][64] = {};
 
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, {board, WHITE, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	REQUIRE(FindScore(scored_idx, moveList, n, by_pawn) >= 1'000'000);
 	REQUIRE(FindScore(scored_idx, moveList, n, by_rook) >= 1'000'000);
@@ -255,7 +255,7 @@ TEST_CASE("Sort - a promotion onto a defended square is still tactical", "[sort]
 		const Move null_move, killer0, killer1;
 		int32_t history[2][64][64] = {};
 		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-		MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+		MoveSorter::ScoreMoves(moveList, n, {board, WHITE, killer0, killer1, history, {}}, null_move, scored_idx);
 
 		REQUIRE(FindScore(scored_idx, moveList, n, *it) >= 1'000'000);
 	}
@@ -278,7 +278,7 @@ TEST_CASE("Sort - a promotion onto a defended square is still tactical", "[sort]
 		const Move null_move, killer0, killer1;
 		int32_t history[2][64][64] = {};
 		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-		MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+		MoveSorter::ScoreMoves(moveList, n, {board, WHITE, killer0, killer1, history, {}}, null_move, scored_idx);
 
 		REQUIRE(FindScore(scored_idx, moveList, n, *it) >= 1'000'000);
 	}
@@ -309,7 +309,7 @@ TEST_CASE("Sort - a non-capturing promotion is tactical, not a quiet", "[sort]")
 	int32_t history[2][64][64] = {};
 
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, {board, WHITE, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	const int queen_score = FindScore(scored_idx, moveList, n, queen_promotion);
 	const int knight_score = FindScore(scored_idx, moveList, n, knight_promotion);
@@ -339,7 +339,7 @@ TEST_CASE("Sort - Quiet move with positive history scores exactly that history v
 	history[WHITE][e1][d1] = 42; // inject a history score
 
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, {board, WHITE, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	REQUIRE(FindScore(scored_idx, moveList, n, quiet_move) == 42);
 }
@@ -370,12 +370,12 @@ static bool CheckEveryPathGivesReferenceOrder(const MoveList& moveList, const Bo
 	const int n = static_cast<int>(moveList.size());
 
 	ScoredIdx full;
-	MoveSorter::ScoreMoves(moveList, n, board, side, hash_move, killer0, killer1, history, full);
+	MoveSorter::ScoreMoves(moveList, n, {board, side, killer0, killer1, history, {}}, hash_move, full);
 	const auto ref = ReferenceOrder(full, n);
 	REQUIRE(Prefix(full, n) == ref);
 
 	ScoredIdx lazy;
-	MoveSorter::ScoreMovesBestFirst(moveList, n, board, side, hash_move, killer0, killer1, history, lazy);
+	MoveSorter::ScoreMovesBestFirst(moveList, n, {board, side, killer0, killer1, history, {}}, hash_move, lazy);
 	bool tail_was_unordered = false;
 	if (n > 0) {
 		REQUIRE(lazy[0] == ref[0]);
