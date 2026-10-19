@@ -487,9 +487,8 @@ jobs:
       # ThinLTO link that ships.
       #
       # build.ps1 imports the VS developer environment itself, so no separate
-      # setup step is needed here. It defaults to clang-cl, which is what ships;
-      # if a runner image ever lacks the VS Clang component, `-Compiler msvc` is
-      # the one-word fallback and build.ps1 says so by name.
+      # setup step is needed here. If a runner image ever lacks the VS Clang
+      # component, build.ps1 names the component to install.
       #
       # The launcher reaches CMake as an environment variable rather than a -D,
       # because build.ps1 drives a preset and takes no pass-through for cache

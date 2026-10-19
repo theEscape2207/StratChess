@@ -82,24 +82,14 @@
 
     Defaults to the built-in set of six from issue #330.
 
-.PARAMETER Compiler
-    Compiler for a -BaselineRef build. Defaults to the candidate's own, inferred
-    from its build/<preset>/ path, else clang-cl.
-
 .PARAMETER Config
     Configuration for a -BaselineRef build. Defaults to the candidate's own,
-    inferred the same way, else Release.
+    inferred from its build/<preset>/ path, else Release.
 
 .PARAMETER CacheRoot
     Where -BaselineRef builds are cached. Defaults to StratChessSupport\Equivalence
     beside the main checkout, the same placement build.ps1 uses for its shared FetchContent
     cache.
-
-.PARAMETER AllowMixedCompiler
-    Compare a clang-cl build against an MSVC one. Refused by default: a difference
-    then cannot be attributed to the source change, which is the only question this
-    script exists to answer. Meaningful only when the compilers ARE what is being
-    compared.
 
 .PARAMETER AllowSameBinary
     Compare a binary against itself. Refused by default, because a run that
@@ -139,15 +129,10 @@ param(
 
     [string]$Positions = '',
 
-    [ValidateSet('clang-cl', 'msvc')]
-    [string]$Compiler = '',
-
     [ValidateSet('Release', 'Debug')]
     [string]$Config = '',
 
     [string]$CacheRoot = '',
-
-    [switch]$AllowMixedCompiler,
 
     [switch]$AllowSameBinary,
 
@@ -289,18 +274,17 @@ function Compare-Transcript {
 
 function Get-BuildFlavour {
     <#
-        Compiler and configuration from a binary's path, which is the only place
-        they are recorded: CMake presets emit into build/<preset>/, and a cached
+        Configuration from a binary's path, which is the only place it is
+        recorded: CMake presets emit into build/<preset>/, and a cached
         baseline mirrors that layout on purpose so this keeps working for it.
         Returns $null when the path says nothing.
     #>
     param([Parameter(Mandatory)][string]$Path)
 
     $p = $Path.Replace('\', '/')
-    if ($p -match '/windows-(clang-cl|msvc)(-debug)?/[^/]+\.exe$') {
+    if ($p -match '/windows-clang-cl(-debug)?/[^/]+\.exe$') {
         return [pscustomobject]@{
-            Compiler = $Matches[1]
-            Config   = if ($Matches[2]) { 'Debug' } else { 'Release' }
+            Config = if ($Matches[1]) { 'Debug' } else { 'Release' }
         }
     }
     return $null
@@ -402,9 +386,9 @@ if ($SelfTest) {
     Assert-Case 'fen spec passes through'      ((ConvertTo-PositionSpec 'fen 8/8/8/8/8/8/8/K1k5 w - - 0 1') -eq 'fen 8/8/8/8/8/8/8/K1k5 w - - 0 1')
 
     $f = Get-BuildFlavour 'C:\repo\build\windows-clang-cl\StratChessEvolved.exe'
-    Assert-Case 'clang-cl Release inferred' ($null -ne $f -and $f.Compiler -eq 'clang-cl' -and $f.Config -eq 'Release')
-    $f = Get-BuildFlavour 'C:/repo/build/windows-msvc-debug/StratChessEvolved.exe'
-    Assert-Case 'msvc Debug inferred' ($null -ne $f -and $f.Compiler -eq 'msvc' -and $f.Config -eq 'Debug')
+    Assert-Case 'Release inferred' ($null -ne $f -and $f.Config -eq 'Release')
+    $f = Get-BuildFlavour 'C:/repo/build/windows-clang-cl-debug/StratChessEvolved.exe'
+    Assert-Case 'Debug inferred' ($null -ne $f -and $f.Config -eq 'Debug')
     Assert-Case 'unknown path infers nothing' ($null -eq (Get-BuildFlavour 'C:\tmp\before.exe'))
 
     Write-Host ''
@@ -469,12 +453,11 @@ function New-BaselineBinary {
     <#
         Build $Ref in a throwaway detached worktree and cache the binary per
         commit. Cached under build/<preset>/ layout so Get-BuildFlavour can still
-        read its compiler and configuration off the path.
+        read its configuration off the path.
     #>
     param(
         [Parameter(Mandatory)][string]$RepoPath,
         [Parameter(Mandatory)][string]$Ref,
-        [Parameter(Mandatory)][string]$CompilerName,
         [Parameter(Mandatory)][string]$ConfigName,
         [Parameter(Mandatory)][string]$Root
     )
@@ -484,7 +467,7 @@ function New-BaselineBinary {
     $sha = $sha.Trim()
     $short = $sha.Substring(0, 12)
 
-    $preset = "windows-$CompilerName"
+    $preset = 'windows-clang-cl'
     if ($ConfigName -eq 'Debug') { $preset += '-debug' }
 
     $cached = Join-Path $Root "$short\build\$preset\StratChessEvolved.exe"
@@ -522,7 +505,7 @@ function New-BaselineBinary {
         #
         # Its shared FetchContent cache resolves through the common git dir, so no
         # dependency is re-cloned for the throwaway tree.
-        & pwsh -ExecutionPolicy Bypass -File (Join-Path $wt 'build.ps1') main -Config $ConfigName -Compiler $CompilerName | Out-Host
+        & pwsh -ExecutionPolicy Bypass -File (Join-Path $wt 'build.ps1') main -Config $ConfigName | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "Baseline build failed (exit $LASTEXITCODE) for $Ref ($short)." }
 
         $built = Join-Path $wt "build\$preset\StratChessEvolved.exe"
@@ -554,13 +537,12 @@ $afterPath = (Resolve-Path $After).Path
 $afterFlavour = Get-BuildFlavour $afterPath
 
 if ($BaselineRef) {
-    $compilerName = if ($Compiler) { $Compiler } elseif ($afterFlavour) { $afterFlavour.Compiler } else { 'clang-cl' }
-    $configName   = if ($Config)   { $Config }   elseif ($afterFlavour) { $afterFlavour.Config }   else { 'Release' }
+    $configName = if ($Config) { $Config } elseif ($afterFlavour) { $afterFlavour.Config } else { 'Release' }
     if (-not $CacheRoot) {
         $CacheRoot = Join-Path (Get-MainCheckoutParent -RepoPath $RepoRoot) 'StratChessSupport\Equivalence'
     }
     $beforePath = New-BaselineBinary -RepoPath $RepoRoot -Ref $BaselineRef `
-                                     -CompilerName $compilerName -ConfigName $configName -Root $CacheRoot
+                                     -ConfigName $configName -Root $CacheRoot
 } else {
     $beforePath = (Resolve-Path $Before).Path
 }
@@ -576,18 +558,9 @@ if ($beforeHash -eq $afterHash -and -not $AllowSameBinary) {
            " pass. Pass -AllowSameBinary if that self-check is what you meant.")
 }
 
-if ($beforeFlavour -and $afterFlavour) {
-    if ($beforeFlavour.Compiler -ne $afterFlavour.Compiler -and -not $AllowMixedCompiler) {
-        throw ("Mixed-compiler comparison refused: before is $($beforeFlavour.Compiler), after is" +
-               " $($afterFlavour.Compiler). A difference could then be code generation rather than" +
-               " the source change. Pass -AllowMixedCompiler if comparing the compilers IS the point.")
-    }
-    if ($beforeFlavour.Config -ne $afterFlavour.Config) {
-        Write-Host ("WARNING : configuration differs — before is $($beforeFlavour.Config), after is" +
-                    " $($afterFlavour.Config).") -ForegroundColor Yellow
-    }
-} else {
-    Write-Host "NOTE    : compiler could not be read off both paths; the mixed-compiler check is not active." -ForegroundColor Yellow
+if ($beforeFlavour -and $afterFlavour -and $beforeFlavour.Config -ne $afterFlavour.Config) {
+    Write-Host ("WARNING : configuration differs — before is $($beforeFlavour.Config), after is" +
+                " $($afterFlavour.Config).") -ForegroundColor Yellow
 }
 
 $positionList = @(Resolve-PositionList -Path $Positions)

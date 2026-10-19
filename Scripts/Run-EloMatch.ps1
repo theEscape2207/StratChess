@@ -418,9 +418,6 @@ if ($ReferenceExe -ne '' -and -not $PSBoundParameters.ContainsKey('ReferenceTag'
     $refName = "ref-$([IO.Path]::GetFileNameWithoutExtension($ReferenceExe))"
 }
 
-# Defaults to the shipping (clang-cl) build deliberately. Elo is only comparable
-# between binaries from the same compiler: an MSVC candidate measured against the
-# clang reference would show the ~25% nps compiler gap as a phantom regression.
 # -AllowMissing: -Resume needs no candidate build, and the non-resume path does
 # its own Test-Path below with build instructions.
 if ($CandidateExe -eq '') {

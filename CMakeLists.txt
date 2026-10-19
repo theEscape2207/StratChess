@@ -7,10 +7,15 @@ cmake_minimum_required(VERSION 3.25)
 project(StratChess CXX)
 
 # Builds on Linux (GCC/Clang) and on Windows via clang-cl + Ninja, configured by
-# the windows-clang-cl preset in CMakePresets.json.
+# the windows-clang-cl presets in CMakePresets.json.
 #
-# clang-cl is what ships; the MSVC presets are for development and debugging,
-# and the two compilers are never measured against each other.
+# clang-cl is the only Windows toolchain; cl.exe is refused rather than built
+# with flags nothing here was written for.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    message(FATAL_ERROR
+        "cl.exe is not supported. Build with clang-cl: the windows-clang-cl presets, "
+        "or build.ps1.")
+endif()
 
 # Magic.h indexes the sliding-attack tables with _pext_u64, so the engine needs
 # x86-64 with BMI2 (Intel Haswell 2013 / AMD Excavator 2015 onwards). There is
@@ -32,7 +37,7 @@ endif()
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)          # matches MSVC ConformanceMode=true
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Debug information goes in the object, not a side PDB. ccache cannot cache /Zi --
 # a PDB is shared mutable state with nothing self-contained to store -- so this is
@@ -194,10 +199,9 @@ set(STRAT_SANITIZE "" CACHE STRING
 option(STRAT_SANITIZE_RECOVER
        "Let sanitizers report and continue rather than abort (survey mode; CI must leave this OFF)" OFF)
 
-if(STRAT_SANITIZE AND (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
-                       OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+if(STRAT_SANITIZE AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
     message(FATAL_ERROR
-            "STRAT_SANITIZE is not supported on MSVC or clang-cl. Build on Linux -- "
+            "STRAT_SANITIZE is not supported on clang-cl. Build on Linux -- "
             "the sanitize-linux job in .github/workflows/build-and-test.yml is the "
             "reference invocation.")
 endif()
@@ -211,8 +215,7 @@ endif()
 option(STRAT_STDLIB_DEBUG
        "Build against libstdc++ debug mode (_GLIBCXX_DEBUG). GCC/libstdc++ only." OFF)
 
-if(STRAT_STDLIB_DEBUG AND (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
-                           OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+if(STRAT_STDLIB_DEBUG AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
     message(FATAL_ERROR
             "STRAT_STDLIB_DEBUG is libstdc++-only and does nothing against the MSVC "
             "standard library, which enables the equivalent checks through "
@@ -273,28 +276,17 @@ function(strat_configure_target tgt)
     # PCH makes GCC process defines.h twice per TU (it does not carry #pragma once
     # state across the PCH boundary), which is ~60 redefinition errors.
     #
-    # Three drivers, three spellings, and the wrong one is rarely a hard error:
-    #
-    #   clang-cl runs the same frontend as a Unix clang build but parses MSVC
-    #   driver syntax. -Wall is taken as MSVC /Wall, which clang maps to
-    #   -Weverything; -fconstexpr-steps= is accepted by the driver and dropped
-    #   before it reaches the frontend; -include has no equivalent at all and its
-    #   argument becomes a second input file, failing every TU on /Fo.
-    #
-    #   MSVC understands none of the GNU spellings and reports each as a D9002
-    #   warning before carrying on, so -mavx2/-mbmi2 would go missing with the
-    #   build still succeeding -- the reason the nps gate, not just a clean
-    #   compile, is what qualifies a change to this function.
+    # Two drivers, two spellings, and the wrong one is rarely a hard error.
+    # clang-cl runs the same frontend as a Unix clang build but parses MSVC
+    # driver syntax. -Wall is taken as MSVC /Wall, which clang maps to
+    # -Weverything; -fconstexpr-steps= is accepted by the driver and dropped
+    # before it reaches the frontend; -include has no equivalent at all and its
+    # argument becomes a second input file, failing every TU on /Fo. A dropped
+    # flag leaves the build green -- the reason the nps gate, not just a clean
+    # compile, is what qualifies a change to this function.
     set(compat_header ${CMAKE_SOURCE_DIR}/StratEngine/Compat.h)
 
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-        # /arch:AVX2 also enables BMI2, which is what Magic.h's _pext_u64 needs.
-        target_compile_options(${tgt} PRIVATE
-            /W4 /WX /utf-8 /permissive-
-            /arch:AVX2
-            /constexpr:steps100000000
-            /FI${compat_header})
-    elseif(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         # -falign-functions=64 starts every function on a cache line, so a cold-code
         # size change no longer moves the hot path within its line -- the smaller half
         # of the nps swing that makes two node-identical builds read differently. It
@@ -321,8 +313,7 @@ function(strat_configure_target tgt)
 
     # Windows reproducibility needs both flags: COFF objects and PE images each carry
     # timestamps. The compile flag settles the objects; the link flag settles the image.
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
-       OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         target_compile_options(${tgt} PRIVATE /Brepro)
         target_link_options(${tgt} PRIVATE /Brepro)
         # Recursive search needs headroom for retained frames and compiler-dependent scratch.
@@ -334,8 +325,8 @@ function(strat_configure_target tgt)
         target_compile_definitions(${tgt} PRIVATE _GLIBCXX_DEBUG _GLIBCXX_DEBUG_PEDANTIC)
     endif()
 
-    # Outside the chain above because the MSVC and clang-cl branches are already
-    # excluded by the FATAL_ERROR guard, so this only ever runs for GCC or a Unix
+    # Outside the chain above because the clang-cl branch is already excluded by
+    # the FATAL_ERROR guard, so this only ever runs for GCC or a Unix
     # clang. The same flags go on the compile and the link line: -fsanitize=
     # selects the runtime libraries the link needs, not just the instrumentation.
     if(STRAT_SANITIZE)
@@ -389,8 +380,7 @@ strat_configure_target(StratChessEvolved)
 # without, which Test-ReleaseReproducibility.ps1 keeps true.
 #
 # Engine target only -- the map exists to describe what ships.
-if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
-   OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
     target_link_options(StratChessEvolved PRIVATE
         /MAP:$<TARGET_FILE_DIR:StratChessEvolved>/StratChessEvolved.map)
 endif()

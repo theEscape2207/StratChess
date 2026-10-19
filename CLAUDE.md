@@ -46,15 +46,12 @@ Live backlog is GitHub Issues (`theEscape2207/StratChess`) via `gh`, bodies alwa
 .\build.ps1 run-tests ["[tag]"]      # build tests, run fast tier (~[slow]), optional tag filter
 .\build.ps1 extended-tests           # include [slow]
 .\build.ps1 all -Config Debug        # debug build
-.\build.ps1 main -Compiler msvc      # MSVC instead of clang-cl
 ```
 
 From an agent shell: `pwsh -ExecutionPolicy Bypass -File <abs>\build.ps1 <target>`. It imports the
 VS environment via `vswhere` itself — never hard-code a VS path.
 
-**clang-cl is what ships**; MSVC is the second toolchain, for debugging and because it honours flags
-clang-cl silently drops. **Never measure with an MSVC build** — the compiler gap shows up as a
-phantom regression.
+**clang-cl is the only Windows toolchain** and what ships.
 
 Visual Studio setup, `/clang:` flag traps, dependencies, the compiler cache and raw CMake:
 `Docs/Workflow.md` → Part 3.

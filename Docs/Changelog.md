@@ -23,6 +23,19 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-19: Drop the MSVC (cl.exe) toolchain
+
+### Removed
+- The `windows-msvc` and `windows-msvc-debug` presets, the cl.exe branch of `strat_configure_target`,
+  and `-Compiler` from `build.ps1`, `Get-BuildArtifact.ps1`, `Run-Lint.ps1` and
+  `Compare-SearchEquivalence.ps1`, along with the latter's `-AllowMixedCompiler` guard: only clang-cl
+  builds remain, so there is no mixed pair left to refuse. No CI job built cl.exe, so it went
+  untested, yet every build change still had to account for it. Configuring with cl.exe now fails
+  with a message naming clang-cl. The engine binary is unchanged.
+
+### Changed
+- `CMakePresets.json` declares CMake 3.25, matching `CMakeLists.txt`.
+
 ## 2026-10-18: Changelog rule and check (#734, slice 3)
 
 ### Added

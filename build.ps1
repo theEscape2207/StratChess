@@ -4,10 +4,10 @@
 
 .DESCRIPTION
     Drives the CMake presets in CMakePresets.json and exposes simple build verbs.
-    Defaults to Release with clang-cl, which is the shipping configuration.
+    Builds with clang-cl, the only Windows toolchain; defaults to Release.
 
     Imports the Visual Studio developer environment itself, so this works from a
-    plain PowerShell, a git hook or an agent session — clang-cl and cl need
+    plain PowerShell, a git hook or an agent session — clang-cl needs
     INCLUDE/LIB set, and nothing outside a Developer Prompt has them.
 
 .PARAMETER Verb
@@ -22,11 +22,6 @@
 
 .PARAMETER Config
     Build configuration: Release (default) or Debug.
-
-.PARAMETER Compiler
-    clang-cl (default, what ships) or msvc. MSVC is supported for development and
-    debugging; do not measure with it, since nps and Elo are only comparable
-    between binaries from the same compiler.
 
 .PARAMETER Coverage
     Build the test binary into the windows-clang-cl-coverage preset, instrumented for
@@ -52,7 +47,6 @@
     .\build.ps1 run-tests "[formatter]"
     .\build.ps1 extended-tests
     .\build.ps1 all -Config Debug
-    .\build.ps1 main -Compiler msvc
     .\build.ps1 tests -Coverage
     .\build.ps1 -SelfTest
 #>
@@ -68,9 +62,6 @@ param(
     [ValidateSet('Release', 'Debug')]
     [string]$Config = 'Release',
 
-    [ValidateSet('clang-cl', 'msvc')]
-    [string]$Compiler = 'clang-cl',
-
     [switch]$Coverage,
 
     [switch]$SelfTest
@@ -81,13 +72,13 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = $PSScriptRoot
 
-$Preset = "windows-$Compiler"
+$Preset = 'windows-clang-cl'
 if ($Config -eq 'Debug') { $Preset += '-debug' }
 if ($Coverage) {
     # Only 'tests': a run verb would scatter default.profraw into the working directory,
     # and the engine binary is never instrumented.
-    if ($Verb -ne 'tests' -or $Compiler -ne 'clang-cl' -or $Config -ne 'Release') {
-        Write-Error "-Coverage takes the 'tests' verb with -Compiler clang-cl -Config Release. Run Scripts/Get-Coverage.ps1 for a report."
+    if ($Verb -ne 'tests' -or $Config -ne 'Release') {
+        Write-Error "-Coverage takes the 'tests' verb with -Config Release. Run Scripts/Get-Coverage.ps1 for a report."
         exit 1
     }
     $Preset += '-coverage'
@@ -480,14 +471,8 @@ function Import-VsDevEnvironment {
     # Check the compiler by name here rather than letting CMake fail later: a
     # missing clang-cl otherwise surfaces as a configure error about a broken
     # compiler, which does not say which VS component to install.
-    $compilerExe = if ($Compiler -eq 'msvc') { 'cl' } else { 'clang-cl' }
-    if (-not (Get-Command $compilerExe -ErrorAction SilentlyContinue)) {
-        $hint = if ($Compiler -eq 'msvc') {
-            "Install the MSVC v14x build tools VS component."
-        } else {
-            "Install the 'C++ Clang tools for Windows' VS component, or build with -Compiler msvc."
-        }
-        Write-Error "$compilerExe not on PATH after vcvars64. $hint"
+    if (-not (Get-Command clang-cl -ErrorAction SilentlyContinue)) {
+        Write-Error "clang-cl not on PATH after vcvars64. Install the 'C++ Clang tools for Windows' VS component."
         exit 1
     }
 }
@@ -623,9 +608,7 @@ function Invoke-CMakeBuild {
     # commit's copy of this file).
     Push-Location $RepoRoot
     try {
-        # Only clang-cl, the shipping toolchain, compiles through ccache: MSVC would add
-        # another ~78 MB per generation to the cache for a compiler nothing measures with.
-        $compilerCache = if ($Compiler -eq 'clang-cl') { Get-SharedCompilerCache } else { $null }
+        $compilerCache = Get-SharedCompilerCache
         if ($compilerCache) {
             # A caller that already chose a cache directory keeps it. The shared one is a
             # default for interactive and hook builds, not a policy: overriding it
@@ -635,7 +618,7 @@ function Invoke-CMakeBuild {
             if (-not $env:CCACHE_DIR) {
                 $env:CCACHE_DIR = $compilerCache
             }
-            # ~55 MB per generation of the two clang-cl presets, so 1G holds ~18 of them.
+            # ~55 MB per generation of the clang-cl presets, so 1G holds ~18 of them.
             $env:CCACHE_MAXSIZE = '1G'
             # Hash the compiler itself rather than trusting its mtime, which a rebuilt or
             # replaced clang-cl leaves untouched. Costs ~1.4 s of an 11.7 s warm build.
@@ -687,7 +670,7 @@ function Invoke-CMakeBuild {
 }
 
 Import-VsDevEnvironment
-Write-Host "Preset: $Preset | Config: $Config | Compiler: $Compiler" -ForegroundColor DarkGray
+Write-Host "Preset: $Preset | Config: $Config" -ForegroundColor DarkGray
 
 # ---------------------------------------------------------------------------
 # Verbs

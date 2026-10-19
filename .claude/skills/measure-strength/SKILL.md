@@ -108,7 +108,7 @@ is not unsigned decimal digits, which is all its UCI parser accepts. Shard count
 failed-shard rule: [`reference/strength-lab.md`](reference/strength-lab.md).
 
 Locally, build the candidate first (`.\build.ps1 main`) — `Run-EloMatch.ps1` does not build it, and
-`build.ps1` defaults to the shipping clang-cl build, the only one comparable against the reference.
+`build.ps1` builds the shipping clang-cl binary.
 
 ```
 pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Run-Bench.ps1 -Exe <path>
@@ -154,10 +154,10 @@ running one is skill `analyze-games`.
 ## The rule that silently invalidates everything
 
 **Never compare binaries from different compilers.** Both run, both look healthy; the compiler gap
-alone is worth tens of Elo and gets credited to whatever change is under test. So never measure an
-MSVC build against a clang one — `Get-BuildArtifact.ps1` defaults to the shipping clang-cl build for
-that reason — and never read a GCC-built CI-lab row against a local clang-cl row. Match Lazy SMP
-thread count across candidate and reference too.
+alone is worth tens of Elo and gets credited to whatever change is under test. The MSVC-built
+`elo-reference-v1` is the one Windows exception: its delta includes the compiler change, and
+`Run-EloMatch.ps1` warns. Never read a GCC-built CI-lab row against a local clang-cl row. Match Lazy
+SMP thread count across candidate and reference too.
 
 ## Speed
 

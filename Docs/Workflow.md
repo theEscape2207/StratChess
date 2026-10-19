@@ -34,7 +34,8 @@ Four things are non-negotiable and are the reason most of this file exists:
 
 - **Every task forks fresh from `origin/main`.** Never from `master`, never from the previous task.
 - **A batch reporting a time loss, illegal move or disconnect is discarded, never reported.**
-- **Never measure an MSVC build against a clang-cl one.** The compiler gap alone is worth tens of Elo.
+- **Never compare binaries from different compilers** (the MSVC-built `elo-reference-v1`, a GCC lab
+  row). The compiler gap alone is worth tens of Elo.
 - **The goal is measured positive Elo.** Speed serves that; it is not the objective in itself.
 
 ---
@@ -302,17 +303,16 @@ without anyone noticing, a mitigation adopted because it sounded prudent. Mechan
 precisely, than any Windows-side checking option. Cost is not a consideration: the repository is
 public, so standard-runner minutes are free.
 
-**Do not add a Windows Debug configuration to any gate.** Its unique checks are subsumed. MSVC's
-`/RTC1` finds uninitialised locals and stack-frame corruption; ASan finds the latter better and MSan
-the former far better. `windows-msvc-debug` exists for interactive debugging, not for validation.
+**Do not add a Windows Debug configuration to any gate.** It has no unique checks: clang-cl ignores
+`/RTC1` (below), and ASan and MSan find stack-frame corruption and uninitialised locals better than
+it would. `windows-clang-cl-debug` exists for interactive debugging, not for validation.
 
 **Windows CI is not redundant, and does not become redundant when TSan and MSan land.** It covers a
 different axis — *toolchain*, not bug class — and Linux cannot cover it by construction:
 
 - clang-cl silently mistranslates or drops flags. Two of three spellings failed silently in #84, and
   `/RTC1` is a live example today: clang-cl accepts it, emits no diagnostic even under
-  `-Wunused-command-line-argument`, and produces byte-identical object files. MSVC honours it
-  (+53% object size on the same source).
+  `-Wunused-command-line-argument`, and produces byte-identical object files.
 - The MSVC standard library, the `_MSC_VER`/`_WIN32` sites, and the lld-link ThinLTO link of the
   binary that actually ships exist nowhere else.
 
@@ -480,8 +480,8 @@ git worktree remove --force <...>\bench-ref
 ```
 
 **Copy the exe out before removing the worktree** — that is the step that makes it survive. Then run
-`Run-Bench.ps1 -Exe` once per binary. Both sides must come from the same compiler, which they do if
-both used `build.ps1`'s clang-cl default.
+`Run-Bench.ps1 -Exe` once per binary. Both sides come from clang-cl, the only Windows
+toolchain.
 
 **A measured slowdown needs a stated benefit that outweighs it**, in correctness, robustness,
 maintainability or clarity — written down in the PR, not assumed. A slowdown with no such statement
@@ -705,8 +705,8 @@ The rest of it is non-obvious in these ways:
   not long-path aware, and fails with `RC1109` under a deep build path.
 - **`/clang:` prefixes** on the warning and constexpr flags. clang-cl silently mistranslates the
   plain GNU spellings (`-Wall` is read as `/Wall` → `-Weverything`; `-fconstexpr-steps=` is dropped
-  before reaching the frontend), and MSVC ignores them with a D9002 warning while still producing a
-  binary. A clean compile does not prove a flag arrived — check `cmake --build --verbose`.
+  before reaching the frontend). A clean compile does not prove a flag arrived — check
+  `cmake --build --verbose`.
 
 ---
 
@@ -722,8 +722,8 @@ cmake --build --preset windows-clang-cl    # build every target
 cmake --build --preset windows-clang-cl --target StratChessTests
 ```
 
-Presets: `windows-clang-cl`, `windows-clang-cl-debug`, `windows-msvc`, `windows-msvc-debug`.
-clang-cl is what ships; MSVC is for development and debugging only, never for measurement.
+Presets: `windows-clang-cl`, `windows-clang-cl-debug`, `windows-clang-cl-coverage`. clang-cl is the
+only Windows toolchain; `CMakeLists.txt` refuses `cl.exe`.
 
 Configuring is only needed when the build tree does not exist — Ninja re-runs CMake by itself when
 `CMakeLists.txt` or `CMakePresets.json` change. Add `--verbose` to `cmake --build` to see the real
@@ -779,7 +779,7 @@ reuse the attachment.
 
 ## Reproducing a sanitizer finding
 
-There is no preset and no `build.ps1` verb: `-fsanitize=` is refused on MSVC and clang-cl, so this
+There is no preset and no `build.ps1` verb: `-fsanitize=` is refused on clang-cl, so this
 only ever runs on Linux. On WSL, the export-and-extract route in the CI job's image:
 
 ```
