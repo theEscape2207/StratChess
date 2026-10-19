@@ -793,7 +793,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	};
 
 	// This ply's slot of the improving stack, written before any child is searched. A real eval is
-	// needed only at depth >= lmr_min_depth, and that loses nothing: LMR reads the flag only at such
+	// needed only at depth >= lmr_min_depth, and that loses nothing: LMR reads the trend only at such
 	// a node, and depth never rises along a path (singular keeps a child at its parent's depth), so
 	// every ancestor it reads had that depth too and stored a real eval unless it was in check.
 	// An exclusion frame writes nothing: it is its parent's position at the parent's ply, often
@@ -1135,8 +1135,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 					                  tuning_.lmr_log_base, tuning_.lmr_log_divisor, lmr_extra);
 					record_lmr_reach(td.telemetry.lmr, depth, move_number, scored_idx[si].first, history_r,
 					                 tuning_.lmr_log_base, tuning_.lmr_log_divisor, lmr_extra);
-					// The relief comes after the history clamp: nearly every base sits at the cap and
-					// history moves few of them, so taken off any earlier it would be swallowed.
+					// The relief comes after the history clamp: the base usually sits at the cap, where an
+					// earlier subtraction would be swallowed.
 					const int R = std::max(1, history_r - lmr_relief);
 					assert(depth - 1 - R >= 1 || tuning_.lmr_min_depth < 3);
 

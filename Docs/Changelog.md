@@ -32,7 +32,11 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   at `depth >= lmr_min_depth`, the only frames LMR reads. The offset enters before the `depth - 2`
   cap, so the history shift can still cancel it. At 0 the search is node-identical and the stack
   costs one store per frame.
-- Results: pending the strength lab at `LmrImprovingOffset=1`.
+- `LmrImprovingRelief` (`SearchTuning::lmr_improving_relief`, 0-3, default 0): plies taken off R,
+  down to 1, at a node whose eval is higher than two plies earlier. It applies after the history
+  clamp, because most bases sit at the cap. A node with no eval to compare gets neither option.
+- Results: `LmrImprovingOffset=1` measured -1.1 ± 3.6 Elo in the strength lab. `LmrImprovingRelief=1`
+  is pending.
 
 ## 2026-10-18: Changelog rule and check (#734, slice 3)
 

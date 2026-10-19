@@ -111,7 +111,7 @@ inline int lmr_reduction(int depth, int move_number, int ordering_score, int his
 
 enum class EvalTrend : uint8_t { Unknown, Improving, NotImproving };
 
-// Whether the node at ply is improving: its static eval beats the one at ply - 2, or at ply - 4 when
+// The eval trend at ply: Improving when its static eval beats the one at ply - 2, or at ply - 4 when
 // ply - 2 has none (that ancestor was in check). Evaluate() scores for the side to move, and ply,
 // ply - 2 and ply - 4 share it -- a null move advances the ply too -- so the values compare directly.
 // A missing value gives Unknown, which earns neither the extra reduction nor the relief.
