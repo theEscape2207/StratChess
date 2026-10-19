@@ -47,6 +47,10 @@ comparable with a Linux CI row**: different compiler, different machine, differe
 | 2026-09-16 | candidate-4e02d0a | 4e02d0a | 20 | 10+0.1 | -52.51 +/- 159.22 | smoke |
 | 2026-10-06 | candidate-c82dc6e | 79c3217 | 1400 | 10+0.1 | 8.19 +/- 12.95 | inconclusive @ 1400 |
 | 2026-10-08 | `main` @ c5879027e: MSVC, GCC/WSL (nps, #753) | clang-cl, same commit | n/a (bench) | depth 13 | n/a (MSVC -23.4% nps, GCC -6.9%) | calibration |
+| 2026-10-19 | 719af11 (Threads=2, #850) | 719af11 (Threads=1) | 500 | 10+0.1 | 83.57 +/- 22.86 | discarded |
+| 2026-10-19 | 719af11 (Threads=4, #850) | 719af11 (Threads=2) | 500 | 10+0.1 | 65.38 +/- 22.09 | gain |
+| 2026-10-19 | 719af11 (Threads=8, #850) | 719af11 (Threads=4) | 500 | 10+0.1 | 71.89 +/- 21.51 | gain |
+| 2026-10-19 | 719af11 (Threads=2, #850, re-run) | 719af11 (Threads=1) | 500 | 10+0.1 | 76.98 +/- 21.98 | gain |
 
 ## Row detail
 
@@ -221,3 +225,14 @@ Reference is the merge-base build passed as `-ReferenceExe` with `-ReferenceTag 
 | MSVC | 2,029,623 | 2,004,813 | 2.69% | 1,919,737 - 2,062,806 | -23.4% |
 
 **Node counts and best moves are identical across all three toolchains** on every position, so nps compares like with like and a wall-time comparison was not needed. Each A/A passed its own node-equivalence check; A/A intervals: clang-cl +0.55% [+0.02, +1.08], GCC +0.25% [-0.13, +0.63], MSVC -1.44% [-2.62, -0.25]. MSVC's spread is a level shift, not one noisy round: all three arms ran ~2.05M nps through round 4's first run, then ~1.95M (-5%) for the rest of the series, which points at the machine rather than the build. The median of rounds 1-3 alone is 2,054,879 (-22.4% vs clang-cl), so the conclusion stands. The clang-cl/GCC gap mixes toolchain with OS paging (huge-page TT on Linux, #686; plain pages on Windows, #684) and WSL virtualisation: it says where the toolchains differ, not why (#753 D5). Raw CSVs were not retained.
+
+### 2026-10-19 -- Lazy SMP thread scaling, 719af11 (#850) (4 x 500 games)
+
+Same clang-cl Release binary on both sides, only `Threads` differs; default book and Hash 192 MB. Concurrency 4 / 2 / 1 for the three steps, so threads per game x concurrency never exceeds the 12 physical cores. `+dirty` in the script's original labels was this ledger's own appended row, not a source change. The options reached the engine: mean reported depth rises with threads in every step (1t 12.46 / 2t 13.19; 2t 12.87 / 4t 13.47; 4t 13.41 / 8t 13.96).
+
+- **2 vs 1 — discarded.** One time loss by the `Threads=1` side (game 113, 25 ms overrun); do not read its Elo.
+- **2 vs 1, re-run:** Ptnml(0-2) [6, 32, 96, 79, 37], 60.90%. Zero time losses, illegal moves or disconnects.
+- **4 vs 2:** Ptnml(0-2) [8, 36, 94, 79, 33], 59.30%. Zero time losses, illegal moves or disconnects.
+- **8 vs 4:** Ptnml(0-2) [4, 40, 88, 86, 32], 60.20%. Zero time losses, illegal moves or disconnects.
+
+All three valid steps sit within error of each other (+77 / +65 / +72), so scaling has not levelled off by 8 threads. The HX 370 mixes Zen 5 and Zen 5c cores and leaves thread placement to the OS, which adds noise that is largest in the 8 vs 4 step.
