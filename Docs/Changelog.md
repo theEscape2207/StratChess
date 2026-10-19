@@ -23,6 +23,18 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-19: Improving flag for late move pruning (#851, slice 2)
+
+### Added
+- `LateMovePruningNotImprovingCut` (default 0, range 0-8): late move pruning starts that many
+  legal moves earlier (index 12 - cut) at a node whose static eval does not beat the one two plies
+  back. Hypothesis: late quiets recover less often when the side to move is not improving.
+- The eval stack and `eval_trend()` from #848 (PR #849, closed), re-ported after the reverse
+  futility slice (PR #854) closed unmerged. The stack is written at every depth while a reader is
+  on, since a reader's ancestors sit at any depth above it; with the option at 0 it evaluates
+  nothing and the search is unchanged. Writing it costs about 1.5% nps, about 4% in endgames
+  (local.md, 2026-10-19).
+
 ## 2026-10-18: Changelog rule and check (#734, slice 3)
 
 ### Added
