@@ -12,10 +12,21 @@ across runs measures the search's shape as much as its speed: the same reference
 +0.02 (run 36495197163), and a change that reshapes the tree moves Δ for that reason alone. The
 Elo of each run is in [`ci-per-change.md`](ci-per-change.md).
 
-All rows: 10+0.1, `Threads=1`, GCC 15 on `ubuntu-26.04`.
+10+0.1 and `Threads=1` unless the row says otherwise. Runs before 2026-10-06 built with GCC 13 on
+`ubuntu-24.04`, later ones with GCC 15 on `ubuntu-26.04` (#476).
 
 | Run date | Run | Candidate | Reference | Games | Cand. mean | Ref. mean | Δ [95%] |
 |---|---|---|---|---|---|---|---|
+| 2026-08-28 | 33215162562 | ff5d2f5, LMR depth clamp keeps one ply (#363) | be5ca11 | 19980 | 11.60 | 11.67 | −0.081 [−0.085, −0.078] |
+| 2026-08-31 | 33429454765 | e792a81, drawish-ending scaling (#128) | b3ab55a | 19980 | 11.65 | 11.67 | −0.011 [−0.014, −0.008] |
+| 2026-09-01 | 33568346899 | 0e5e9c3, KR vs KR scaled (#436) | 8fd70c3 | 19980 | 11.69 | 11.68 | +0.003 [−0.000, +0.006] |
+| 2026-09-05 | 33989392373 | 86877f7, minor-piece outposts (#112) | 9708c65 | 19980 | 11.53 | 11.54 | −0.017 [−0.020, −0.014] |
+| 2026-09-11 | 34657777302 | ad7a422, compact TT + `Hash` 256 (#442), **18+0.18** | c191d08 | 20000 | 13.33 | 13.32 | +0.013 [+0.010, +0.017] |
+| 2026-09-13 | 34788035846 | 0722ee5, TT generation per search (#544) | 19ff12b | 19980 | 12.28 | 12.20 | +0.012 [+0.008, +0.015] |
+| 2026-09-18 | 35336326192 | e2ff7d2 at `Contempt=20` (#452) | e2ff7d2 | 19980 | 12.62 | 12.63 | −0.004 [−0.008, −0.001] |
+| 2026-09-27 | 36354288096 | e11a58a, deepening stops early only on mate (#652) | f58f052 | 19980 | 12.69 | 12.54 | +0.163 [+0.155, +0.170] |
+| 2026-09-29 | 36495197163 | 455352e, opposite-bishop scale (#599) | 0c01b00 | 19980 | 12.86 | 12.85 | +0.020 [+0.017, +0.024] |
+| 2026-10-06 | 37518249596 | c82dc6e, lock-free TT (#747), **`Threads=4`** | 79c3217 | 6624 | 12.51 | 12.30 | +0.199 [+0.192, +0.205] |
 | 2026-10-09 | 37964064691 | c16e692, TT prefetch (#776) | f07859d | 26640 | 11.74 | 11.60 | +0.133 [+0.130, +0.136] |
 | 2026-10-12 | 38312922668 | cd97a1f, `LmrHistoryDivisor` screen, arms A/B/C (#816) | cd97a1f | 19980 | 11.75 / 12.13 / 11.90 | 11.95 | pooled −0.021 [−0.025, −0.018] |
 | 2026-10-15 | 38825283241 | cced4d1, legal-only in-check move lists (#823) | 663e2c5 | 23976 | 11.97 | 11.79 | +0.194 [+0.191, +0.198] |
@@ -27,6 +38,15 @@ All rows: 10+0.1, `Threads=1`, GCC 15 on `ubuntu-26.04`.
 | 2026-10-19 | 39208302248 | 6b24787, `LmrImprovingRelief=1` (#848) | 719af11 | 19980 | 11.93 | 12.14 | −0.225 [−0.229, −0.221] |
 
 ## Row detail
+
+**Trend, 2026-08-28 to 2026-09-29.** At 10+0.1, reference depth went from 11.5-11.7 (08-28 to
+09-05) to 12.2-12.9 (09-13 to 09-29). Then it fell to 11.60 by 2026-10-09. Two things landed in
+between that this ledger cannot separate: singular extensions on by default (#95, 2026-10-03),
+and the lab moving to GCC 15 on `ubuntu-26.04`. 09-11 (18+0.18) and 10-06 (`Threads=4`) are not on
+the 10+0.1 single-thread scale.
+
+**36354288096 changes the tree:** deepening that no longer stops early on a large score completes
+more iterations, so +0.16 is search policy, not speed.
 
 **Trend, 2026-10-09 to 2026-10-19.** Reference mean depth rose from 11.60 to 12.0-12.2, about
 +0.5 plies, mostly the speed changes #776, #823, #832 and #837 landing on `main`.
