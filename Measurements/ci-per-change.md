@@ -11,6 +11,8 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-19 | 6b24787, `LmrImprovingRelief=1`: R - 1 at improving nodes, after the history clamp (#848; PR #849, never merged) | 719af11 | 19980 | 10+0.1 | **-13.71 +/- 3.56** | regression |
+| 2026-10-18 | d7b7939, `LmrImprovingOffset=1`: R + 1 at non-improving nodes, before the `depth-2` cap (#848; PR #849, never merged) | 719af11 | 19980 | 10+0.1 | **-1.06 +/- 3.56** | inconclusive @ 19980 |
 | 2026-10-17 | eac04e2, staged move generation in `pvs()` (#839; node-identical, a speed change only) | 12bf7d1 | 19980 | 10+0.1 | **+2.96 +/- 3.49** | inconclusive @ 19980 |
 | 2026-10-17 | df34ce5, per-thread pawn-structure cache (#837; node-identical, a speed change only) | 295fa5f | 19980 | 10+0.1 | **+10.78 +/- 3.50** | gain |
 | 2026-10-16 | 83b4cf9, static evaluation in the TT entry (#832; node-identical, a speed change only) | 0fb63d0 | 19980 | 10+0.1 | **+14.82 +/- 3.53** | gain |
@@ -94,6 +96,17 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-19 -- 6b24787, `LmrImprovingRelief=1` (#848) (19980 games)
+
+**Gating run for the second #848 variant, design D6 (design record `848 - lmr-improving.md`), declared before dispatch with the same ship rule as the offset run below.** [Run `39208302248`](https://github.com/theEscape2207/StratChess/actions/runs/39208302248), about 3 h 19 min, 18 shards x 555 pairs, reference the merge base `719af11`, candidate options `LmrImprovingRelief=1` (offset 0). Pooled Ptnml(0-2) [900, 2475, 3819, 2105, 691], score 48.03%, interval [-17.27, -10.15]; 2 of 18 shards favour the candidate by score. The relief comes off R after the history clamp, so it reaches nearly every reduction at an improving node with R > 1. The screen below puts 94% of bases at the cap, and history moves only about 5% of them. The result says the capped reductions at improving nodes are worth keeping. No screen or wall clock was run for this arm.
+
+### 2026-10-18 -- d7b7939, `LmrImprovingOffset=1` (#848) (19980 games)
+
+**Gating run for PR #849, ship rule "Elo minus its error bar above 0", declared in the design doc before dispatch.** [Run `39162362280`](https://github.com/theEscape2207/StratChess/actions/runs/39162362280), about 3 h 18 min, 18 shards x 555 pairs, reference the merge base `719af11`, candidate options `LmrImprovingOffset=1`. Pooled Ptnml(0-2) [772, 2370, 3792, 2259, 797], score 49.85%, interval [-4.62, +2.50]; 9 of 18 shards favour the candidate by score. Inputs, both on the local clang-cl build:
+- **Profile screen** (offset 0 vs 1, 8 seeds, depth 12, `Tests/profile-screen.fen`): nodes -3.0% +/- 1.8%, late-cut work -1.7% +/- 2.6%, endgame group -8.4%. Reduced-search node share fell from 42.5% to 40.5%, and re-searches stayed at 0.3% of reductions. Already 93.7% of reduced quiets had their base at the `depth-2` cap at offset 0, so a pre-cap +1 changed R for few moves.
+- **Fixed-depth 14 wall clock** (`Compare-WallClock.ps1`, merge base vs a default-1 build): 1.01 +/- 0.05, 427 s to 414 s in total.
+- **Cost at offset 0:** an ordered-pair bench measured -0.35% [-0.46%, -0.25%] nps, with the search node-identical.
 
 ### 2026-10-17 -- eac04e2, staged move generation in `pvs()` (#839) (19980 games)
 
