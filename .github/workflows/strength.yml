@@ -86,8 +86,8 @@ env:
   # .claude/plans/retained/public-repo-and-strength-lab.md).
   BOOK_URL: https://raw.githubusercontent.com/official-stockfish/books/04738d057446e749cb071d58bac39df7f13efb47/UHO_4060_v3.epd.zip
   BOOK_FILE: UHO_4060_v3.epd
-  # Shared dependency checkouts, as in build-and-test.yml. A reference older than #860
-  # ignores it and clones, as it always has: its build tree is never cached.
+  # Shared dependency checkouts, as in build-and-test.yml. A reference without
+  # cmake/DependencySources.cmake ignores it and clones: its build tree is never cached.
   STRAT_DEPS_SOURCE_CACHE: ${{ github.workspace }}/build/dep-sources
 
 # Every Linux job below pins ubuntu-26.04, whose image ships Ninja and CMake on
@@ -318,7 +318,7 @@ jobs:
 
       # Same key as build-and-test.yml and nightly.yml, so this shares their
       # cache entry rather than paying for its own clone of the dependencies.
-      - name: Cache FetchContent dependencies
+      - name: Cache dependency sources
         uses: actions/cache@v6
         with:
           path: build/dep-sources

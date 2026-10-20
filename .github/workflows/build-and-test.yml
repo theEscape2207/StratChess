@@ -151,7 +151,7 @@ jobs:
       # Keyed on the pinned dependency tags, matching the Windows job's approach.
       # Not matrix-scoped: FetchContent sources have no per-configuration content,
       # so both legs want the identical cache.
-      - name: Cache FetchContent dependencies
+      - name: Cache dependency sources
         uses: actions/cache@v6
         with:
           path: build/dep-sources
@@ -262,7 +262,7 @@ jobs:
 
       # Same key as build-linux: FetchContent sources are identical whatever the
       # build type or instrumentation, so this shares that job's cache entry.
-      - name: Cache FetchContent dependencies
+      - name: Cache dependency sources
         uses: actions/cache@v6
         with:
           path: build/dep-sources
@@ -345,7 +345,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Cache FetchContent dependencies
+      - name: Cache dependency sources
         uses: actions/cache@v6
         with:
           path: build/dep-sources
@@ -567,7 +567,7 @@ jobs:
           # resolve origin/main...HEAD. Same reason classify sets this.
           fetch-depth: 0
 
-      - name: Cache FetchContent dependencies
+      - name: Cache dependency sources
         uses: actions/cache@v6
         with:
           path: build/dep-sources

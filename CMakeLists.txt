@@ -1,6 +1,6 @@
 # 3.30 is the lowest version where CMP0168 defaults to NEW: FetchContent populates in-process,
 # so a dependency handed a source directory (cmake/DependencySources.cmake) skips population and
-# shares nothing but sources (#860). It also brings CMP0141, without which
+# shares nothing but sources. It also brings CMP0141, without which
 # CMAKE_MSVC_DEBUG_INFORMATION_FORMAT below is inert.
 cmake_minimum_required(VERSION 3.30)
 project(StratChess CXX)
@@ -102,12 +102,12 @@ endif()
 #
 # Deliberately no FIND_PACKAGE_ARGS: a system or vcpkg copy at a different
 # version would silently satisfy the pin -- and Catch2 is pinned exactly because
-# behaviour differs across versions -- while the shared source cache already
-# leaves no clone to skip.
+# behaviour differs across versions -- while every scripted and CI build reads
+# the shared source cache, so there is no clone left to skip.
 # ---------------------------------------------------------------------------
 
 # Every tree builds its dependencies into its own _deps. A normal variable, so it
-# also shadows a -D FETCHCONTENT_BASE_DIR, which scripts building pre-#860 commits
+# also shadows a -D FETCHCONTENT_BASE_DIR, which scripts building older commits
 # still pass for those commits' sake.
 set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps")
 include(FetchContent)

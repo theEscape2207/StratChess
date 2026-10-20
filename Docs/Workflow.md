@@ -582,7 +582,9 @@ is backed up.
 The scripts name these paths themselves, so moving a folder means changing each script that names
 it. **`DepSources\` can be moved or deleted freely**: it holds sources only, and a missing tag is
 re-cloned. An existing build tree records the path in its `CMakeCache.txt`, so after a move delete
-the build trees or reconfigure them with `-D STRAT_DEPS_SOURCE_CACHE=<new path>`.
+the build trees or reconfigure them with `-D STRAT_DEPS_SOURCE_CACHE=<new path>`. **Moving `Deps\`
+moves only the `*-src` folders**, then deletes the old trees that use it: they record absolute
+`*-build` paths, and moved whole they broke once the old path was gone (#768).
 
 ### Design records
 
@@ -630,9 +632,9 @@ needs network on every fresh tree.
 | CI | `build/dep-sources`, cached by `actions/cache` | workflow-level `env:` |
 
 The environment is what lets an existing tree adopt the cache: Ninja's own re-run of CMake inherits
-it. The first value is cached in `CMakeCache.txt` and wins afterwards; moving it:
+it. A non-empty value is cached in `CMakeCache.txt` and wins afterwards; moving it:
 [Support folders](#support-folders). A bare `cmake --preset` from a shell without the variable fetches
-privately.
+privately, and that tree adopts the cache once a configure sees the variable.
 
 Scripts that build an arbitrary older commit (`Measure-CpuProfile.ps1 -Before`, `WslBuild.ps1`) also
 pass the old `FETCHCONTENT_BASE_DIR`, so a pre-#860 commit still finds its cache in `Deps\`; a

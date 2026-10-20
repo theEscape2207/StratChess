@@ -1,5 +1,5 @@
 # Shared dependency sources: one checkout per dependency and tag, used by every build tree on
-# the machine, while each tree compiles its own copy into its own _deps (#860).
+# the machine, while each tree compiles its own copy into its own _deps.
 #
 # strat_declare_dependency(<name> GIT_REPOSITORY <url> GIT_TAG <tag> [FetchContent args...])
 #
@@ -15,16 +15,18 @@
 #   place. file(LOCK) serializes concurrent configures, and only the lock holder writes the .tmp,
 #   so a leftover one is from a killed configure and is removed before cloning again.
 #
-# The variable's first value comes from the environment, which is how build.ps1 and CI hand it to
-# every configure, including the ones Ninja re-runs by itself. After that the cached value wins.
+# An empty value is filled from the environment, which is how build.ps1 and CI hand it to every
+# configure, including the ones Ninja re-runs by itself; so a tree first configured without it
+# adopts it later. A non-empty cached value wins.
 
-if(NOT DEFINED STRAT_DEPS_SOURCE_CACHE AND DEFINED ENV{STRAT_DEPS_SOURCE_CACHE})
-    file(TO_CMAKE_PATH "$ENV{STRAT_DEPS_SOURCE_CACHE}" strat_deps_source_cache_default)
-else()
-    set(strat_deps_source_cache_default "")
-endif()
-set(STRAT_DEPS_SOURCE_CACHE "${strat_deps_source_cache_default}" CACHE PATH
+set(STRAT_DEPS_SOURCE_CACHE "" CACHE PATH
     "Shared dependency checkouts, one per <name>-<tag>. Empty: fetch into this tree's _deps.")
+if(NOT STRAT_DEPS_SOURCE_CACHE AND DEFINED ENV{STRAT_DEPS_SOURCE_CACHE})
+    set(STRAT_DEPS_SOURCE_CACHE "$ENV{STRAT_DEPS_SOURCE_CACHE}" CACHE PATH
+        "Shared dependency checkouts, one per <name>-<tag>. Empty: fetch into this tree's _deps." FORCE)
+endif()
+# Windows callers hand over backslashes, through the environment or -D alike.
+file(TO_CMAKE_PATH "${STRAT_DEPS_SOURCE_CACHE}" strat_deps_source_root)
 
 function(strat_declare_dependency name)
     cmake_parse_arguments(PARSE_ARGV 1 arg "" "GIT_REPOSITORY;GIT_TAG" "")
@@ -32,8 +34,8 @@ function(strat_declare_dependency name)
         message(FATAL_ERROR "strat_declare_dependency(${name}) needs GIT_REPOSITORY and GIT_TAG.")
     endif()
 
-    if(STRAT_DEPS_SOURCE_CACHE)
-        set(root "${STRAT_DEPS_SOURCE_CACHE}/_deps")
+    if(strat_deps_source_root)
+        set(root "${strat_deps_source_root}/_deps")
         set(dir "${root}/${name}-${arg_GIT_TAG}")
         if(NOT IS_DIRECTORY "${dir}")
             file(MAKE_DIRECTORY "${root}")

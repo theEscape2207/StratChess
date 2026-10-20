@@ -449,11 +449,11 @@ function Import-VsDevEnvironment {
     return $vsRoot
 }
 
-function Get-SharedDepsCache {
+function Initialize-SharedDepsCaches {
     <#
-        The pre-#860 FetchContent cache in StratChessSupport, for -Before refs older than #860; a
-        current commit forces its own _deps and ignores it. Also sets STRAT_DEPS_SOURCE_CACHE, the
-        shared sources a current commit reads, unless already set -- as build.ps1 does.
+        Sets STRAT_DEPS_SOURCE_CACHE, the shared sources a current commit reads, unless already set
+        -- as build.ps1 does. Returns the FetchContent cache that a -Before ref without
+        cmake/DependencySources.cmake uses; a current commit forces its own _deps and ignores it.
     #>
     $commonDir = & git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $commonDir) { return $null }
@@ -775,7 +775,7 @@ if ($Reanalyse) {
         after  = @{ ref = $After; commit = $refs['after'].Commit; dirty = $refs['after'].Dirty }
         depth  = $Depth; beforeRuns = $BeforeRuns; positions = $positionCount; platform = $(if ($linuxArm) { 'linux' } else { 'windows' })
     } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $outPath 'metadata.json') -Encoding utf8
-    $depsCache = if ($linuxArm) { $null } else { Get-SharedDepsCache }
+    $depsCache = if ($linuxArm) { $null } else { Initialize-SharedDepsCaches }
 
     # Interleaved before/after/before, so drift over the window shows up in the before spread.
     $runPlan = @(@{ Arm = 'before'; Index = 1 }; @{ Arm = 'after'; Index = 1 })

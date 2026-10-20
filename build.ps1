@@ -482,8 +482,8 @@ function Import-VsDevEnvironment {
 # clones and the rest need no network. Each tree still builds them privately.
 #
 # Handed over through the environment, not -D, so Ninja's own re-run of CMake inherits it
-# too: that is how a tree configured before #860 adopts the cache on its next build. A
-# value already set wins, which is how CI points it at the directory it caches.
+# too: that is how a tree configured without the variable adopts the cache on its next
+# build. A value already set wins, which is how CI points it at the directory it caches.
 function Set-SharedDepSources {
     if ($env:STRAT_DEPS_SOURCE_CACHE) { return }
 
