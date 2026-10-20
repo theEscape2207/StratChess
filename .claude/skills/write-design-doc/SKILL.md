@@ -34,7 +34,8 @@ A design that can alter evaluation or search goes to `eval-reviewer` and/or `sea
 (routing: skill `open-pull-request` → Specialised reviewers) after the self-review, before the
 cross-agent hand-off. Brief it with the document's path, the issue and the baseline commit. Save
 its report verbatim as the design record `<issue> - <name>.domain-review.md` (`Docs/Workflow.md` →
-Design records), with the reviewed revision and baseline at the top and a disposition under each
+Design records), with a `Domain:` line listing its findings' tags, the reviewed revision and
+baseline at the top, and a disposition under each
 finding, as skill `cross-agent-review` → Author defines them. Done when every finding has one.
 
 When a later review or measurement changes a domain assumption — a magnitude, a placement, the

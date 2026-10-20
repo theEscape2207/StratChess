@@ -29,6 +29,8 @@ Read the live sources first; the term list moves faster than any checklist:
 - `Docs/EngineContracts.md` → Search internals — contempt, dead-draw scores, the pawn cache.
 - `Measurements/` and `../StratChessSupport/EvalDatasets/README.md` for what earlier eval
   attempts and eval-error surveys found.
+- Earlier domain reviews of the same area: grep `../StratChessSupport/DesignRecords/*.domain-review.md`
+  for the tag (`Domain: eval/passed-pawns`). Reuse a finding that still holds at the baseline, citing it.
 
 ## What to examine
 
@@ -83,7 +85,9 @@ name the probe the author should run.
 ## Output
 
 1. **Verdict**: Sound / Needs changes / Blocking.
-2. **Findings**, most severe first. Each: rank (Blocking / Add / Clarify), `file:line` or D-number,
+2. **Findings**, most severe first. Each: a domain tag `eval/<topic>` (a short kebab name for the
+   term, e.g. `eval/passed-pawns`, `eval/king-safety`, `eval/endgame-scale`; reuse an existing tag
+   where one fits), rank (Blocking / Add / Clarify), `file:line` or D-number,
    what goes wrong *on the board* (a FEN or position class, which side, which phase), and the
    cheapest check that settles it.
 3. **Verification**: each check, run or cited, with the binary and the result.

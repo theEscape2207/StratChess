@@ -28,6 +28,8 @@ Read the live sources first; the engine moves faster than any checklist:
 - The touched region of `AIPerplex.cpp` (`pvs()`, `quiescence()`, the `*_eligible()` helpers),
   plus `Sort.cpp` and `ThreadData.h` for ordering and history.
 - `Measurements/` for what earlier attempts at the same idea measured.
+- Earlier domain reviews of the same area: grep `../StratChessSupport/DesignRecords/*.domain-review.md`
+  for the tag (`Domain: search/lmr`). Reuse a finding that still holds at the baseline, citing it.
 
 ## What to examine
 
@@ -79,7 +81,9 @@ name the probe the author should run.
 ## Output
 
 1. **Verdict**: Sound / Needs changes / Blocking.
-2. **Findings**, most severe first. Each: rank (Blocking / Add / Clarify), `file:line` or D-number,
+2. **Findings**, most severe first. Each: a domain tag `search/<topic>` (a short kebab name for the
+   feature, e.g. `search/lmr`, `search/singular`, `search/tt`; reuse an existing tag where one
+   fits), rank (Blocking / Add / Clarify), `file:line` or D-number,
    what goes wrong *in play* (which positions, which node class), and the cheapest check that
    settles it.
 3. **Verification**: each check, run or cited, with the binary and the result.
