@@ -860,7 +860,7 @@ build/windows-clang-cl/StratChessTests.exe "[eval]"   # one tag (see Coverage Ma
 
 `build.ps1 run-tests` excludes `[slow]`; `build.ps1 extended-tests` includes it.
 
-Framework is Catch2 v3, amalgamated, fetched and pinned by `FetchContent`, and compiled into each build tree's own `_deps`.
+Framework is Catch2 v3 (its library target, not the amalgamated file), fetched and pinned by `FetchContent`, and compiled into each build tree's own `_deps`.
 
 Adding a new `.cpp` needs no project edit — `CMakeLists.txt` globs `StratChessTests/*.cpp` with
 `CONFIGURE_DEPENDS`, so creating the file is enough.

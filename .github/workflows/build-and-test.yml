@@ -149,7 +149,7 @@ jobs:
           python3 .github/scripts/test_dependency_releases.py --self-test
 
       # Keyed on the pinned dependency tags, matching the Windows job's approach.
-      # Not matrix-scoped: FetchContent sources have no per-configuration content,
+      # Not matrix-scoped: dependency sources have no per-configuration content,
       # so both legs want the identical cache.
       - name: Cache dependency sources
         uses: actions/cache@v6
@@ -159,7 +159,7 @@ jobs:
 
       # ccache in front of the compiler. The install rationale, the bump policy and
       # why the object cache is keyed per configuration all live in the composite
-      # action. Note the key varies by matrix leg where the FetchContent key above
+      # action. Note the key varies by matrix leg where the dependency-source key above
       # deliberately does not: those sources are identical across configurations,
       # these compiler command lines are not.
       - name: Set up ccache
@@ -260,7 +260,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Same key as build-linux: FetchContent sources are identical whatever the
+      # Same key as build-linux: dependency sources are identical whatever the
       # build type or instrumentation, so this shares that job's cache entry.
       - name: Cache dependency sources
         uses: actions/cache@v6
@@ -450,7 +450,7 @@ jobs:
         shell: pwsh
     # Matches the per-configuration cap most Linux jobs use. Both legs cache, so the six
     # entries across the workflow total about 2.6 GB against the repository-wide 10 GB
-    # budget shared with the FetchContent caches.
+    # budget shared with the dependency-source caches.
     env:
       CCACHE_MAXSIZE: 400M
     steps:
