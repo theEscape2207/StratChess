@@ -233,6 +233,13 @@ struct ThreadData {
 		return rows;
 	}
 
+	// The ordering inputs for a node at ply, scoring quiets with cont.
+	MoveScoringContext scoring_context(int ply, ContinuationRows cont) const noexcept
+	{
+		assert(ply >= 0 && ply < MAX_PLY);
+		return {board, killers[ply][0], killers[ply][1], history, cont};
+	}
+
 	static bool is_quiet(const Move& move) noexcept
 	{
 		return !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move);
@@ -256,8 +263,7 @@ struct ThreadData {
 	// At a cutoff by the quiet move at sorted index cut_index, penalizes every quiet move sorted
 	// before it that completed its child search. A move skipped by pruning, rejected as illegal
 	// or excluded has no bit set: it was judged, not tried.
-	void penalize_searched_quiets(eColor side, const MoveList& move_list,
-	                              const std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
+	void penalize_searched_quiets(eColor side, const MoveList& move_list, const ScoredMoves& scored_idx,
 	                              const SearchedMoves& searched, int cut_index, int depth,
 	                              ContinuationRows rows = {}) noexcept
 	{

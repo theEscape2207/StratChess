@@ -218,10 +218,9 @@ class AIPerlexTestFixture {
 
 		const Move k0 = ai->td_.killers[ply][0];
 		const Move k1 = ai->td_.killers[ply][1];
-		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored{};
+		ScoredMoves scored{};
 		const int n = static_cast<int>(list.size());
-		MoveSorter::ScoreMoves(list, n, copy, copy.GetCurrentColor(), Move::EmptyMove(), k0, k1, ai->td_.history,
-		                       scored);
+		MoveSorter::ScoreMoves(list, n, {copy, k0, k1, ai->td_.history, {}}, Move::EmptyMove(), scored);
 
 		LateMoveTally tally;
 		int legal_index = 0;
@@ -335,10 +334,10 @@ class AIPerlexTestFixture {
 		MoveGenerator::ComputeLegalMoves(board_, list);
 		REQUIRE(!list.empty());
 
-		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored{};
+		ScoredMoves scored{};
 		const int n = static_cast<int>(list.size());
-		MoveSorter::ScoreMoves(list, n, board_, board_.GetCurrentColor(), Move::EmptyMove(), Move::EmptyMove(),
-		                       Move::EmptyMove(), ai->td_.history, scored);
+		MoveSorter::ScoreMoves(list, n, {board_, Move::EmptyMove(), Move::EmptyMove(), ai->td_.history, {}},
+		                       Move::EmptyMove(), scored);
 		return list[scored[0].second];
 	}
 
