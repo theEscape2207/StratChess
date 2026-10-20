@@ -108,7 +108,8 @@ helper does the following:
       leftover can only come from a killed configure. That makes recovery from an interrupted
       clone automatic, with nothing to remove by hand.
    3. Run `git clone --depth 1 --branch <tag>` into that `.tmp`.
-   4. Publish it with `file(RENAME <tmp> <final> NO_REPLACE RESULT r)`.
+   4. Publish it with `file(RENAME <tmp> <final> RESULT r)`. Not `NO_REPLACE`: on Linux it fails
+      for any directory (probe below); a plain rename already refuses a non-empty destination.
 
    A failed clone or a non-zero `r` removes the `.tmp`, then raises `FATAL_ERROR` with git's output
    or `r`. A non-zero `r` should be unreachable under the lock and the re-check.
@@ -208,8 +209,10 @@ unreachable rather than corrupting them.
   `-D FETCHCONTENT_BASE_DIR=<shared>` and set the normal variable. The output landed in
   `<tree>/_deps`, and `<shared>` was never created.
 - **`file(LOCK)` blocks a second configure, and the OS releases the lock when the holding process is
-  killed.** `file(RENAME … NO_REPLACE)` fails if the destination exists; without `NO_REPLACE` it
-  would replace it. Both are taken from CMake's documentation and not run. Validation steps 6 and 7
+  killed.** Revised in implementation: `file(RENAME … NO_REPLACE)` returns "Operation not
+  permitted" for a directory on Linux (CMake 4.2.3), even onto a missing destination; on Windows
+  (4.3.1) it works. A plain `RENAME` onto a non-empty directory fails on both ("Access is denied" /
+  "Directory not empty") and leaves the destination intact, so it is used instead. Both are taken from CMake's documentation and not run. Validation steps 6 and 7
   settle them.
 - **Workflow-level `env` can read `github.workspace`.** Taken from GitHub's context-availability
   table and not run. The PR's first CI run settles it: the configure log shows the checkouts under

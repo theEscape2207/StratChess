@@ -67,7 +67,10 @@ function(strat_clone_dependency name repository tag dir)
         message(FATAL_ERROR "Cloning ${name} ${tag} from ${repository} failed (${rc}):\n${out}")
     endif()
 
-    file(RENAME "${tmp}" "${dir}" NO_REPLACE RESULT renamed)
+    # No NO_REPLACE: on Linux it fails for any directory ("Operation not permitted"). A plain
+    # rename already refuses a non-empty destination on Windows and Linux, and the lock and
+    # re-check leave none.
+    file(RENAME "${tmp}" "${dir}" RESULT renamed)
     if(NOT renamed EQUAL 0)
         file(REMOVE_RECURSE "${tmp}")
         message(FATAL_ERROR "Publishing ${dir} failed: ${renamed}")
