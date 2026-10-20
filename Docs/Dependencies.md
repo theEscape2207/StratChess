@@ -69,16 +69,14 @@ repositories after 60 days without activity; re-enable it in Actions if that hap
 1. Build the current pin from the task branch before copying a baseline; an existing executable
    may be from another revision. For Catch2, use the capture commands below and record the fast
    tier's test-case and assertion counts.
-2. Change the `GIT_TAG` in `CMakeLists.txt`. The first build afterwards checks out the new version
-   in the shared `StratChessSupport/Deps` cache, which every worktree on the machine uses
-   ([`Workflow.md` → Dependency cache](Workflow.md#dependency-cache)). Coordinate with any other
-   local builds using that cache: different pins share the same source checkout. A new tag may
-   need network even when the cache already exists.
-3. Change the CI cache keys. The `actions/cache` keys for the dependencies spell every version
-   literally, across `build-and-test.yml`, `nightly.yml` and `strength.yml`. Update both `cmake-deps-`
-   and `win-deps-` keys. CMake normally updates a restored checkout to the requested tag, but
-   caches are immutable: an unchanged key keeps restoring the old dependency tree. Find every
-   occurrence with `rg -n 'catch2-v' .github/workflows` and check that the old tag is gone.
+2. Change the `GIT_TAG` in `CMakeLists.txt`. The first configure afterwards clones the new tag into
+   its own `<name>-<tag>` directory of the shared source cache, so it needs network once; other
+   worktrees still on the old pin keep using the old directory
+   ([`Workflow.md` → Dependency cache](Workflow.md#dependency-cache)).
+3. Change the CI cache keys. The `dep-sources-` keys spell every version literally, across
+   `build-and-test.yml`, `nightly.yml` and `strength.yml`. Caches are immutable: under an unchanged
+   key every job clones the new tag and nothing saves it. Find every occurrence with
+   `rg -n 'catch2-v' .github/workflows` and check that the old tag is gone.
 4. Run `build.ps1 all`.
 5. Validate according to what the dependency reaches (next section).
 6. Add a `Docs/Changelog.md` entry that names the versions and the evidence. This is a Build-tier
@@ -119,7 +117,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Baseline tests failed' }
 
 After changing the pin and every dependency cache key, rebuild and verify the version actually
 consumed. Read the source path from the build's cache rather than assuming a shared-cache location;
-CI and direct preset builds use `build/_deps` instead. Replace `<new-tag>` with the intended tag.
+a tree configured without `STRAT_DEPS_SOURCE_CACHE` fetches into its own `_deps`. Replace `<new-tag>` with the intended tag.
 
 ```powershell
 $expectedTag = '<new-tag>'

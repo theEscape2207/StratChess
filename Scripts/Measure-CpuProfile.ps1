@@ -450,11 +450,18 @@ function Import-VsDevEnvironment {
 }
 
 function Get-SharedDepsCache {
-    <# FetchContent's cache in StratChessSupport beside the main checkout, shared with build.ps1. #>
+    <#
+        The pre-#860 FetchContent cache in StratChessSupport, for -Before refs older than #860; a
+        current commit forces its own _deps and ignores it. Also sets STRAT_DEPS_SOURCE_CACHE, the
+        shared sources a current commit reads, unless already set -- as build.ps1 does.
+    #>
     $commonDir = & git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $commonDir) { return $null }
-    $mainCheckout = $commonDir -replace '[\\/]\.git[\\/]?$', ''
-    return (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessSupport\Deps') -replace '\\', '/'
+    $support = Join-Path (Split-Path ($commonDir -replace '[\\/]\.git[\\/]?$', '') -Parent) 'StratChessSupport'
+    if (-not $env:STRAT_DEPS_SOURCE_CACHE) {
+        $env:STRAT_DEPS_SOURCE_CACHE = (Join-Path $support 'DepSources') -replace '\\', '/'
+    }
+    return (Join-Path $support 'Deps') -replace '\\', '/'
 }
 
 function Build-ProfileVariant {

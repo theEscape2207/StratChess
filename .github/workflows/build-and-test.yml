@@ -15,6 +15,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Shared dependency checkouts (cmake/DependencySources.cmake), restored by each job's
+# dep-sources cache step. Set here rather than per call so every configure inherits it:
+# raw cmake, build.ps1, and the re-runs Ninja starts itself. Workflow-level env can read
+# github.workspace but not runner.temp; build/ is gitignored.
+env:
+  STRAT_DEPS_SOURCE_CACHE: ${{ github.workspace }}/build/dep-sources
+
 # Every Linux job below pins ubuntu-26.04, which ships Ninja, CMake and LLVM 22
 # on PATH -- no job needs an install step. Do not add one: it puts an apt mirror
 # on the critical path of every job, and a stalled mirror hangs `apt-get update`
@@ -147,8 +154,8 @@ jobs:
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       # ccache in front of the compiler. The install rationale, the bump policy and
       # why the object cache is keyed per configuration all live in the composite
@@ -258,8 +265,8 @@ jobs:
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       # ccache in front of the compiler. The install rationale, the bump policy and
       # why the object cache is keyed per configuration all live in the composite
@@ -341,8 +348,8 @@ jobs:
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       # ccache in front of the compiler. The install rationale, the bump policy and
       # why the object cache is keyed per configuration all live in the composite
@@ -449,10 +456,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Every Windows preset points FETCHCONTENT_BASE_DIR at build/_deps, so the
-      # Release and Debug legs share one dependency clone and one cache entry.
+      # Sources only, at the workflow's STRAT_DEPS_SOURCE_CACHE: each preset still
+      # compiles them into its own build tree.
       #
-      # The key is intentionally NOT matrix-scoped: the FetchContent sources are
+      # The key is intentionally NOT matrix-scoped: the dependency sources are
       # identical across configurations. On a cold cache both legs race to save it
       # and the loser logs "Unable to reserve cache ... another job may be creating
       # this cache" — a warning, not a failure, and the next run hits the cache
@@ -461,8 +468,8 @@ jobs:
       - name: Cache dependencies
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: win-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-win-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       # BOTH legs (#380). Release was cached first (#377) and moved the job by only
       # ~5 s, because this is a two-leg matrix and both legs must finish -- so the
@@ -563,8 +570,8 @@ jobs:
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       # Configured with clang, NOT the default GCC, and this is load-bearing.
       # strat_configure_target emits the GNU spelling -fconstexpr-ops-limit= for GCC

@@ -1,9 +1,8 @@
-# 3.25 for CMP0141, which is what makes CMAKE_MSVC_DEBUG_INFORMATION_FORMAT below
-# do anything at all -- with the policy unset the variable is inert and /Zi comes
-# from CMAKE_CXX_FLAGS_DEBUG instead. This is the minimum the build needs, not a
-# general modernisation: raising the baseline further flips every policy in
-# between at once and is issue #382.
-cmake_minimum_required(VERSION 3.25)
+# 3.30 is the lowest version where CMP0168 defaults to NEW: FetchContent populates in-process,
+# so a dependency handed a source directory (cmake/DependencySources.cmake) skips population and
+# shares nothing but sources (#860). It also brings CMP0141, without which
+# CMAKE_MSVC_DEBUG_INFORMATION_FORMAT below is inert.
+cmake_minimum_required(VERSION 3.30)
 project(StratChess CXX)
 
 # Builds on Linux (GCC/Clang) and on Windows via clang-cl + Ninja, configured by
@@ -38,6 +37,10 @@ endif()
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# No C++ modules here. Left on (CMP0155), Ninja adds an uncached scan step and dyndep edges to every
+# C++23 source, dependencies included. Turn it back on only if modules are adopted.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 # Debug information goes in the object, not a side PDB. ccache cannot cache /Zi --
 # a PDB is shared mutable state with nothing self-contained to store -- so this is
@@ -99,10 +102,16 @@ endif()
 #
 # Deliberately no FIND_PACKAGE_ARGS: a system or vcpkg copy at a different
 # version would silently satisfy the pin -- and Catch2 is pinned exactly because
-# behaviour differs across versions -- while build/_deps is cached in every job
-# that builds, so there is no clone left to skip.
+# behaviour differs across versions -- while the shared source cache already
+# leaves no clone to skip.
 # ---------------------------------------------------------------------------
+
+# Every tree builds its dependencies into its own _deps. A normal variable, so it
+# also shadows a -D FETCHCONTENT_BASE_DIR, which scripts building pre-#860 commits
+# still pass for those commits' sake.
+set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps")
 include(FetchContent)
+include(cmake/DependencySources.cmake)
 
 # This build is -Werror and /WX everywhere, and an imported target's include
 # directories arrive as ordinary -I paths -- so every warning in a dependency's
@@ -111,27 +120,26 @@ include(FetchContent)
 set(SPDLOG_SYSTEM_INCLUDES ON)
 set(JSON_SystemInclude ON)
 
-FetchContent_Declare(spdlog
+# EXCLUDE_FROM_ALL on spdlog: it is consumed header-only, but its CMakeLists defines
+# the compiled library unconditionally. Left in the default target set it builds
+# seven translation units -- one of them the bundled {fmt} -- that nothing links.
+strat_declare_dependency(spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog
     GIT_TAG        v1.17.0
-    GIT_SHALLOW    TRUE)
+    GIT_SHALLOW    TRUE
+    EXCLUDE_FROM_ALL)
 
-FetchContent_Declare(nlohmann_json
+strat_declare_dependency(nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json
     GIT_TAG        v3.12.0
     GIT_SHALLOW    TRUE)
 
-FetchContent_Declare(catch2
+strat_declare_dependency(catch2
     GIT_REPOSITORY https://github.com/catchorg/Catch2
     GIT_TAG        v3.16.1
     GIT_SHALLOW    TRUE)
 
 FetchContent_MakeAvailable(spdlog nlohmann_json catch2)
-
-# spdlog is consumed header-only, but its CMakeLists defines the compiled library
-# unconditionally. Left in the default target set it builds seven translation
-# units -- one of them the bundled {fmt} -- that nothing links.
-set_property(TARGET spdlog PROPERTY EXCLUDE_FROM_ALL TRUE)
 
 # Catch2's 107 sources are compiled as one unit per 16, not one each. They are
 # dominated by header parsing, not by their own code: the whole library as a

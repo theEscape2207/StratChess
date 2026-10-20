@@ -14,6 +14,10 @@ concurrency:
   group: nightly
   cancel-in-progress: false
 
+# Shared dependency checkouts, as in build-and-test.yml.
+env:
+  STRAT_DEPS_SOURCE_CACHE: ${{ github.workspace }}/build/dep-sources
+
 # Every Linux job below pins ubuntu-26.04, which ships Ninja, CMake and LLVM 22
 # on PATH -- no job needs an install step. Do not add one: it puts an apt mirror
 # on the critical path of every job, and a stalled mirror hangs `apt-get update`
@@ -59,8 +63,8 @@ jobs:
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       - name: Set up ccache
         id: ccache
@@ -107,8 +111,8 @@ jobs:
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       - name: Set up ccache
         if: matrix.config == 'Release'
@@ -141,8 +145,8 @@ jobs:
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       - name: Set up ccache
         id: ccache
@@ -181,8 +185,8 @@ jobs:
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       - name: Set up ccache
         id: ccache
@@ -218,8 +222,8 @@ jobs:
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       # clang, not the default GCC: a GCC database carries -fconstexpr-ops-limit=,
       # which the clang driver rejects, and every TU then fails to parse. See the
@@ -269,8 +273,8 @@ jobs:
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       - name: Configure lint database
         run: >
@@ -299,8 +303,8 @@ jobs:
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       - name: Every script self-test
         # Validate-PrePR runs only the self-tests of scripts a change touched, which is
@@ -403,8 +407,8 @@ jobs:
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       - name: Coverage of the fast tier
         shell: pwsh

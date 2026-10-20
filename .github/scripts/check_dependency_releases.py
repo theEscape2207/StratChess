@@ -22,14 +22,14 @@ def version(tag):
 def read_pins(text):
     text = re.sub(r'(?m)#.*$', '', text)
     pins = []
-    for name, declaration in re.findall(r'FetchContent_Declare\(\s*(\w+)\s+(.*?)\)', text, re.S):
+    for name, declaration in re.findall(r'strat_declare_dependency\(\s*(\w+)\s+(.*?)\)', text, re.S):
         source = re.search(r'GIT_REPOSITORY\s+https://github\.com/([\w.-]+/[\w.-]+)\s', declaration)
         tag = re.search(r'GIT_TAG\s+(\S+)', declaration)
         if not source or not tag or version(tag[1]) is None or '-' in tag[1]:
             raise ValueError(f'{name}: expected a GitHub repository and numeric release tag')
         pins.append((name, source[1].removesuffix('.git'), tag[1]))
     if len(pins) != 3 or {pin[0] for pin in pins} != {'spdlog', 'nlohmann_json', 'catch2'}:
-        raise ValueError('Expected exactly spdlog, nlohmann_json and catch2 FetchContent pins')
+        raise ValueError('Expected exactly spdlog, nlohmann_json and catch2 strat_declare_dependency pins')
     return pins
 
 

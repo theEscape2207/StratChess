@@ -23,7 +23,7 @@ class ReleaseChecks(unittest.TestCase):
         pins = checker.read_pins(source)
         self.assertEqual([pin[0] for pin in pins], ['spdlog', 'nlohmann_json', 'catch2'])
         with self.assertRaises(ValueError):
-            checker.read_pins(source.replace('FetchContent_Declare(catch2', '# removed(catch2'))
+            checker.read_pins(source.replace('strat_declare_dependency(catch2', '# removed(catch2'))
         with self.assertRaises(ValueError):
             checker.read_pins(re.sub(r'GIT_TAG\s+\S+', 'GIT_TAG main', source, count=1))
         tool = checker.read_fastchess_pin(
