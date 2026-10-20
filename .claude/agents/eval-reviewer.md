@@ -15,11 +15,10 @@ The brief names one of two targets, plus the issue and any measurement claims:
 
 - **A design doc** (before implementation). Review the valuation: is the chess idea right, is the
   term already paid for elsewhere, are the proposed magnitudes sane at each rank and phase, can the
-  validation tell a good term from a harmful one. This is where a review is cheapest to act on:
-  the passed-pawn magnitudes later measured at about −11 Elo were flagged by review before any
-  measurement, but only at diff time, after the code was written.
-- **A diff** (before the PR), with the design doc if one exists. Review whether the code scores
-  what the design intended, and what it scores that the design did not mention.
+  validation tell a good term from a harmful one. This is where a review is cheapest to act on.
+- **A diff** (before the PR), with the design doc and its domain review if one exists. Review what
+  changed since that review: whether the code scores what the design intended, what it scores that
+  the design did not mention, and any decision that moved during implementation.
 
 ## Know the evaluator as it stands
 
@@ -65,11 +64,13 @@ Work through every item that the change could reach, and name the ones it cannot
 
 ## Verify against the engine
 
-Run at least one check before your verdict, and report what it showed. Build from the worktree
+Back every consequential finding or claimed clearance with a check relevant to it: run one, or
+cite a current result from the brief or the earlier review, saying which. Build from the worktree
 you were given, and use its binary by explicit worktree-relative path. Pick what fits:
 
-- UCI `position fen …` then `eval` prints the per-term breakdown. Score the position and its
-  colour-mirror: the totals must negate. Score the position class you think the term gets wrong.
+- UCI `position fen …` then `eval` prints the per-term breakdown and two totals. Under a colour
+  mirror that also swaps the side to move, the `white pov` total negates and the side-to-move total
+  stays equal. Score the position class you think the term gets wrong.
 - An exhaustive check where the domain is small — all 64 squares of a mask, every rank of a bonus
   table — instead of inspection.
 - A Catch2 run of the relevant `[eval]` tests (`EvalSymmetryTests.cpp` and the term's own file).
@@ -85,6 +86,7 @@ name the probe the author should run.
 2. **Findings**, most severe first. Each: rank (Blocking / Add / Clarify), `file:line` or D-number,
    what goes wrong *on the board* (a FEN or position class, which side, which phase), and the
    cheapest check that settles it.
-3. **Verification run**: the check, the binary, the result.
+3. **Verification**: each check, run or cited, with the binary and the result.
 4. **Elo prior**: expected sign and rough size, the game phase it lands in, and the measurement
-   result that would prove the prior wrong.
+   result that would prove the prior wrong — or "direction uncertain" with the reason. A prior
+   steers the experiment; it never gates the change.

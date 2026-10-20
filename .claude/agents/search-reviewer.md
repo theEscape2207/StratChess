@@ -15,8 +15,9 @@ The brief names one of two targets, plus the issue and any measurement claims:
 - **A design doc** (before implementation). Review the hypothesis: is the mechanism the right
   one, is the expected gain plausible, does a decision fight a feature already in the tree, is the
   validation able to fail. This is where a review is cheapest to act on.
-- **A diff** (before the PR), with the design doc if one exists. Review whether the code does what
-  the search needs, and what the diff changes that the design did not mention.
+- **A diff** (before the PR), with the design doc and its domain review if one exists. Review what
+  changed since that review: whether the code does what the search needs, what the diff changes
+  that the design did not mention, and any decision that moved during implementation.
 
 ## Know the tree as it stands
 
@@ -62,7 +63,8 @@ Work through every item that the change could reach, and name the ones it cannot
 
 ## Verify against the engine
 
-Run at least one check before your verdict, and report what it showed. Build from the worktree
+Back every consequential finding or claimed clearance with a check relevant to it: run one, or
+cite a current result from the brief or the earlier review, saying which. Build from the worktree
 you were given, and use its binary by explicit worktree-relative path. Pick what fits:
 
 - `Scripts\Compare-SearchEquivalence.ps1 -After <exe>` for a change claiming to preserve behaviour.
@@ -80,7 +82,8 @@ name the probe the author should run.
 2. **Findings**, most severe first. Each: rank (Blocking / Add / Clarify), `file:line` or D-number,
    what goes wrong *in play* (which positions, which node class), and the cheapest check that
    settles it.
-3. **Verification run**: the check, the binary, the result.
+3. **Verification**: each check, run or cited, with the binary and the result.
 4. **Elo prior**: expected sign and rough size, where it comes from (fewer nodes, better
    decisions, fewer blunders in a named pattern), and the measurement result that would prove the
-   prior wrong.
+   prior wrong — or "direction uncertain" with the reason. A prior steers the experiment; it never
+   gates the change.

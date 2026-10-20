@@ -156,11 +156,18 @@ design doc and lists removed behaviour, plus the specialised reviewers and CI ar
 PR round found only wording on tooling and docs PRs (#624), and nothing on an engine PR that had
 already been through those reviews and a strength lab (#667).
 
-**Division of labour.** `code-review` reviews the **diff** for standards and spec. `eval-reviewer`
-and `search-reviewer` review the **domain** — chess validity, search interactions, Elo prior — on
-the design doc first and the diff second, because a wrong valuation or mechanism is cheapest to
-catch before it is coded. The cross-agent reviewer reviews the **design doc**'s logic and
-provenance. Each axis has one owner; overlap is where cost blows up for little added signal. The PR body states which approved decisions changed during
+**Division of labour.** Each review has a primary responsibility. It reuses established evidence,
+and still challenges a consequential assumption, contradiction or gap wherever it occurs.
+
+| Question | Primary |
+|---|---|
+| Does the valuation or search mechanism make chess sense; what interactions could defeat it? | `eval-reviewer` / `search-reviewer`, on the design doc first and the diff second |
+| Does the whole proposal fit the problem, preserve contracts and justify its cost; does its evidence support the decision? | cross-agent reviewer, using the specialist's `.domain-review.md` as evidence |
+| Does the implementation follow the approved design and the coding standards? | `code-review` |
+
+A wrong valuation or mechanism is cheapest to catch before it is coded, which is why the specialist
+reviews the design doc. The cross-agent reviewer re-opens domain analysis only with a concrete
+reason: an unsupported premise, conflicting evidence, or consequences that warrant it. The PR body states which approved decisions changed during
 implementation, and the Harvest table is the natural place to notice them.
 
 **How to run a round** — the `*.review.md` channel, ranks, dispositions, lifecycle — is skill
@@ -598,6 +605,7 @@ past decisions and for retros, so a missed copy is tolerable and nothing is back
 | Design doc | `<issue> - <name>.md` |
 | Its `.progress.md` ledger | `<issue> - <name>.progress.md` |
 | Its cross-agent review | `<issue> - <name>.review.md` |
+| Its specialist domain review | `<issue> - <name>.domain-review.md` |
 | A PR review | `<issue> - <name> - PR <n>.review.md` |
 
 - `<name>` is the plan's kebab file name in `.claude/plans/`, e.g.
