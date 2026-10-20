@@ -30,12 +30,18 @@ Either way, the artifact's author edits the artifact; the reviewer edits only th
 
 ## Reviewer
 
+You own the soundness of the whole proposal: problem fit, alternatives, contract coverage,
+evidence, validation and proportion.
+
 1. Read the artifact, its originating issue with comments, and every source file, script and doc it
    cites. Read the artifact and anything it adds or changes at the **reviewed revision** — the
    author's worktree or the issue body — and existing code at the **baseline**, `origin/main` or the
-   commit the artifact names. Cover every bullet of the design doc's Review focus, every entry of its
-   "Assumptions I cannot verify from the code", and every number: re-derive it, or find who
-   measured it.
+   commit the artifact names. Note the main risks you see **before** opening a specialist's
+   `.domain-review.md`, so your read stays independent; then use that review to focus verification.
+   Cover every bullet of the design doc's Review focus, every entry of its "Assumptions I cannot
+   verify from the code", and every number: re-derive it, find who measured it, or cite the domain
+   review's check of it. Re-open its analysis only with a concrete reason — an unsupported premise,
+   conflicting evidence, or consequences that warrant it.
 2. Look for **provenance** (a number nobody measured, a default that has since changed) and **logical
    form** (a dichotomy that does not hold, a gate that cannot fail). Also look for **proportion**: a
    plan heavier than its diff, or a check that is true by construction.
@@ -44,8 +50,8 @@ Either way, the artifact's author edits the artifact; the reviewer edits only th
    finding cites `file:line` evidence and proposes a concrete change.
 4. Report to the user: the review's path or comment URL, and the count per rank.
 
-Done when every cited claim is verified, refuted or marked unverified, and every finding is ranked
-with evidence.
+Done when every cited claim is verified, refuted, cited to the domain review or marked unverified,
+and every finding is ranked with evidence.
 
 ## Author
 

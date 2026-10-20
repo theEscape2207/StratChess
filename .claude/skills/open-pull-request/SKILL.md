@@ -66,19 +66,18 @@ PR. Each nearby-debt item:
 
 ### Specialised reviewers
 
-Check the diff and dispatch if it touches the domain:
+Dispatch by what the change can alter, not by file name; the same rule routes a design doc
+(skill `write-design-doc`). Check the diff with `git diff --name-only origin/main...HEAD`.
 
-```
-git diff --name-only origin/main...HEAD
-```
-
-- `Eval.cpp/.h` → `eval-reviewer`. **`Eval.h` counts** — every term weight lives there
-  (`PASSED_PAWN_*`, `BISHOP_PAIR_*`, `CONNECTED_ROOKS_*`, `CASTLING_*`, the mobility weights,
-  `PASSED_PAWN_RANK_SCALE`), so the whole evaluation can be retuned without touching `Eval.cpp`.
-- `defines.h` → `eval-reviewer` **when the diff touches `g_Eval_Bitboards` (the PSTs) or
-  `g_iPieceValues` (material values)**. They live there, not in `Eval.cpp`. Other `defines.h` edits
-  do not need it.
-- `AIPerplex.cpp/.h`, `ThreadData.h` (killers/history), `Sort.cpp/.h` (MVV-LVA) → `search-reviewer`
+- **The score a position gets** → `eval-reviewer`. For example `Eval.cpp/.h` (**`Eval.h` counts**:
+  every term weight lives there, so the evaluation can be retuned without touching `Eval.cpp`),
+  `PawnCache.h`, and `defines.h` when it touches `g_Eval_Bitboards` (the PSTs) or `g_iPieceValues`
+  (material); other `defines.h` edits do not need it.
+- **The tree searched, the move chosen, or when the search stops** → `search-reviewer`. For example
+  `AIPerplex.cpp/.h`, `ThreadData.h` (killers/history), `Sort.cpp/.h`, `See.cpp`,
+  `TranspositionTable.*`, `SearchTuning.def` defaults, `IterationPolicy.*`, `SearchControl.*`,
+  `SearchLimits.*`.
+- Both, when a change crosses — an eval change aimed at pruning, or a search change reading eval.
 
 They run on the session's model whatever the code-review mode. **Default is to dispatch**; the
 script only reminds, it never blocks. A narrow self-certification
@@ -86,7 +85,10 @@ carve-out exists for logging-only diffs — its six conditions are in `Docs/Work
 `search-reviewer` may be skipped. Read them before claiming a skip, and state the skip in the PR
 body so it is auditable.
 
-Brief a reviewer with the diff as a file and the tests already run with their results. Write review
+Brief a reviewer with the diff as a file, the tests already run with their results, and for a
+specialised reviewer also the issue, the design doc and its `.domain-review.md` if they exist, and
+any measurement claimed. A specialised reviewer reviews the domain only; `code-review` owns
+standards and spec. Write review
 files as UTF-8 into the worktree's `build/`, which git ignores: a path outside the worktree can be
 unreadable to a reviewer's tools, and Windows PowerShell's `>` writes UTF-16, which reads as binary.
 Create `build/` if it is missing (a Docs or Tooling change never builds), then

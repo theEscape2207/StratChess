@@ -28,6 +28,20 @@ Run it yourself, fix inline, no subagent:
   change touches (duplicated, dead or stale code), and check the plan does not add to it. The same
   lens reviews the diff: `Docs/CodingStandards.md`.
 
+## Domain review
+
+A design that can alter evaluation or search goes to `eval-reviewer` and/or `search-reviewer`
+(routing: skill `open-pull-request` → Specialised reviewers) after the self-review, before the
+cross-agent hand-off. Brief it with the document's path, the issue and the baseline commit. Save
+its report verbatim as the design record `<issue> - <name>.domain-review.md` (`Docs/Workflow.md` →
+Design records), with a `Domain:` line listing its findings' tags, the reviewed revision and
+baseline at the top, and a disposition under each
+finding, as skill `cross-agent-review` → Author defines them. Done when every finding has one.
+
+When a later review or measurement changes a domain assumption — a magnitude, a placement, the
+node classes or positions affected — send that change alone back to the specialist and append its
+answer to the same file. Wording and bookkeeping fixes need no return trip.
+
 Then land the document in one commit (`Docs/Workflow.md` → Design document lifecycle), route it to
 review (skill `cross-agent-review`) and, once approved, execute it (skill `exec-plan`).
 
@@ -43,6 +57,7 @@ reports it:
 - **Where:** <absolute path to the document>, branch `<branch>` (local | pushed), commit `<sha>`
 - **Baseline:** `origin/main` `<sha>`
 - **Self-review:** ran; <only findings that changed a decision, scope, cost or risk, else "none changed a decision">
+- **Domain review:** <absolute path to the `.domain-review.md`> | not search or eval
 ```
 
 What the reviewer should aim at goes in the document's Review focus section, not in this block. The
