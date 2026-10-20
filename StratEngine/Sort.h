@@ -40,22 +40,29 @@ class MoveSorter final {
 	// -piece/16, so a quiet sorts below every capture and the heaviest quiet sorts last.
 	// Asserted, because passing a mixed list is silent in Release.
 	static void SortMovesByValue(MoveList& moveList, const Board& board);
-	// A capture SEE does not call losing, or any promotion, scores this plus its MVV-LVA value: above
-	// both killer scores, so it outranks everything ComputeQuiets() can add.
+	// The hash move's score, above every tier.
+	static constexpr int kHashMoveScore = 1'900'000;
+	// A capture SEE does not call losing, or any promotion, scores in [this, this + kCaptureTierSpan):
+	// above both killer scores, so it outranks everything ComputeQuiets() can add.
 	static constexpr int kGoodCaptureTier = 1'000'000;
 	static constexpr int kKiller0Score = 900'000;
 	static constexpr int kKiller1Score = 800'000;
-	// The lowest tier above the quiets: a losing capture scores this plus its MVV-LVA value.
+	// The lowest tier above the quiets: a losing capture scores in [this, this + kCaptureTierSpan).
 	static constexpr int kLosingCaptureTier = 700'000;
 	static_assert(kGoodCaptureTier > kKiller0Score && kKiller0Score > kKiller1Score &&
 	              kKiller1Score > kLosingCaptureTier);
 	// Inside a capture tier: tier + kCaptureHistoryOffset + kCaptureMvvLvaScale * mvv_lva + the
-	// capture-history entry. The offset is ThreadData::HISTORY_MAX, asserted there with the tier span.
+	// capture-history entry. The offset is ThreadData::HISTORY_MAX, asserted there.
 	static constexpr int kCaptureHistoryOffset = 16'384;
 	static constexpr int kCaptureMvvLvaScale = 16;
 	// The largest MoveHelper::Value() of a legal capture or promotion: a queen promotion taking a queen.
 	static constexpr int kMaxMvvLva =
 	    2 * g_iPieceValues[QUEEN >> 1] - g_iPieceValues[PAWN] - (g_iPieceValues[PAWN] >> 4);
+	// Bounds every in-tier score: two history bounds (the offset and the entry) plus the scaled MVV-LVA.
+	static constexpr int kCaptureTierSpan = 2 * kCaptureHistoryOffset + kCaptureMvvLvaScale * kMaxMvvLva + 1;
+	static_assert(kLosingCaptureTier + kCaptureTierSpan <= kKiller1Score &&
+	                  kGoodCaptureTier + kCaptureTierSpan <= kHashMoveScore,
+	              "capture scores must stay inside their tier");
 	// The row and column of a capture or promotion's capture-history entry.
 	static int CaptureHistoryRow(const Board& board, const Move& mv) noexcept;
 	static int CaptureHistoryColumn(const Board& board, const Move& mv) noexcept;
@@ -63,8 +70,9 @@ class MoveSorter final {
 	// Score all moves in [0, n) into out_scored_idx as (score, original_index) pairs,
 	// sorted descending by score. Priority: hash move -> SEE >= 0 captures and all promotions
 	// -> killer0 -> killer1 -> SEE < 0 captures -> quiets, with generation order as the final
-	// tie-break. A quiet scores its history entry plus its entry in each continuation row present;
-	// quiescence passes none.
+	// tie-break. A quiet scores its history entry plus its entry in each continuation row present,
+	// and a capture or promotion adds its capture-history entry when the context has the table;
+	// quiescence passes neither.
 	static void ScoreMoves(const MoveList& moveList, int n, const MoveScoringContext& ctx, const Move& hash_move,
 	                       ScoredMoves& out_scored_idx);
 	// As ScoreMoves, but only out_scored_idx[0] is in order; [1, n) is unordered until OrderRemaining.

@@ -27,12 +27,8 @@ struct ThreadData {
 	// A quiet's score sums its history entry and two continuation entries.
 	static_assert(3 * HISTORY_MAX < MoveSorter::kLosingCaptureTier, "quiet scores must stay below every other tier");
 	static_assert(HISTORY_MAX <= INT16_MAX, "continuation entries are int16_t");
-	// A capture's score spans [tier, tier + 2 * HISTORY_MAX + scale * kMaxMvvLva), which must stay below
-	// the next tier up.
+	// MoveSorter's capture tiers are sized for entries bounded by HISTORY_MAX.
 	static_assert(MoveSorter::kCaptureHistoryOffset == HISTORY_MAX);
-	static_assert(2 * HISTORY_MAX + MoveSorter::kCaptureMvvLvaScale * MoveSorter::kMaxMvvLva <
-	                  MoveSorter::kKiller1Score - MoveSorter::kLosingCaptureTier,
-	              "capture scores must stay inside their tier");
 
 	static constexpr uint16_t kNoContinuation = 0xFFFF;
 	using ContinuationHistory = std::array<std::array<int16_t, kPieceSquares>, kPieceSquares>;
@@ -88,7 +84,8 @@ struct ThreadData {
 
 	// Capture history: [row: continuation_index(effective moving piece, to)][column: victim >> 1], so a
 	// promotion is keyed by the promoted piece and column 7 is a promotion that captures nothing;
-	// column 6 is never written. Updated at pvs() cutoffs, read by pvs() ordering only, and with the
+	// columns 5 and 6 are never written (no legal
+	// move captures a king). Updated at pvs() cutoffs, read by pvs() ordering only, and with the
 	// CaptureHistory switch off neither happens. Cleared and aged like history; inline because it is
 	// only 12 KB.
 	int16_t capture_history[kPieceSquares][8];

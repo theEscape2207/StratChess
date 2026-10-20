@@ -1382,7 +1382,8 @@ void AIPerplex::order_quiescence_moves(ThreadData& td, MoveList& move_list, bool
 
 	const int move_count = static_cast<int>(move_list.size());
 	ScoredMoves scored_idx;
-	MoveSorter::ScoreMoves(move_list, move_count, td.scoring_context(ply, {}, false), Move::EmptyMove(), scored_idx);
+	MoveSorter::ScoreMoves(move_list, move_count, td.scoring_context(ply, {}, /*use_capture_history=*/false),
+	                       Move::EmptyMove(), scored_idx);
 
 	MoveList ordered;
 	for (int i = 0; i < move_count; ++i)

@@ -26,14 +26,7 @@ namespace {
 		ScoredMoves scored_idx{};
 		int n = 0;
 		Move at(int i) const { return list[scored_idx[static_cast<size_t>(i)].second]; }
-		int score_of(const Move& m) const
-		{
-			for (int i = 0; i < n; ++i)
-				if (at(i) == m)
-					return scored_idx[static_cast<size_t>(i)].first;
-			FAIL("move not in list");
-			return 0;
-		}
+		int score_of(const Move& m) const { return scored_idx[static_cast<size_t>(index_of(m))].first; }
 		int index_of(const Move& m) const
 		{
 			for (int i = 0; i < n; ++i)
@@ -44,13 +37,12 @@ namespace {
 		}
 	};
 
-	Ordered order(const ThreadData& td, bool use_capture_history)
+	Ordered order(const ThreadData& td, bool use_capture_history, const Move& hash_move = Move::EmptyMove())
 	{
 		Ordered o;
 		MoveGenerator::ComputeLegalMoves(td.board, o.list);
 		o.n = static_cast<int>(o.list.size());
-		MoveSorter::ScoreMoves(o.list, o.n, td.scoring_context(0, {}, use_capture_history), Move::EmptyMove(),
-		                       o.scored_idx);
+		MoveSorter::ScoreMoves(o.list, o.n, td.scoring_context(0, {}, use_capture_history), hash_move, o.scored_idx);
 		return o;
 	}
 
@@ -117,6 +109,24 @@ TEST_CASE("Capture history - a cutoff penalizes exactly the searched captures so
 		check_entries(cut_index);
 		CHECK(td->capture_history_entry(o.at(cut_index)) == 0);
 	}
+}
+
+TEST_CASE("Capture history - a failed hash capture takes the malus, a cutting one the bonus", "[search][history]")
+{
+	auto td = thread_data(kCaptures);
+	const Move hash = MoveFormatter::FromUCI("d3c4", td->board); // sorts below dxe4 without the hash
+	const Ordered o = order(*td, true, hash);
+	REQUIRE(o.at(0) == hash);
+	ThreadData::SearchedMoves searched;
+	searched.set(0);
+	searched.set(1);
+
+	td->update_capture_history(o.list, o.scored_idx, searched, 1, 3);
+	CHECK(td->capture_history_entry(hash) == -9);
+
+	td->clear_history();
+	td->update_capture_history(o.list, o.scored_idx, searched, 0, 3);
+	CHECK(td->capture_history_entry(hash) == 9);
 }
 
 TEST_CASE("Capture history - a fed entry reorders inside a tier, never across tiers", "[search][history]")

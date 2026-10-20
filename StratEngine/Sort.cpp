@@ -122,9 +122,9 @@ void MoveSorter::ScoreUnordered(const MoveList& moveList, int first, int n, cons
 		int s = 0;
 
 		if (mv == hash_move) {
-			s = 1'900'000;
+			s = kHashMoveScore;
 		} else if (MoveHelper::IsCapture(mv) || MoveHelper::IsPromote(mv)) {
-			// SEE picks the tier, MVV-LVA scores within it. Two tripwires, both measured:
+			// SEE picks the tier, MVV-LVA and capture history score within it. Two tripwires, both measured:
 			//
 			// Demoting the losing tier below the quiets is the tempting change and costs tens of
 			// percent in nodes. Captures are never LMR-reduced wherever they sit, so postponing
@@ -138,17 +138,17 @@ void MoveSorter::ScoreUnordered(const MoveList& moveList, int first, int n, cons
 			//
 			// Inside a tier, capture history adds to the scaled MVV-LVA. The offset keeps every score at
 			// or above its tier's constant, which staged generation's kGoodCaptureTier trigger rests on.
-			// At scale 16 an entry at its bound is worth about ten pawns of victim, so a well-fed entry
+			// At the current scale an entry at its bound is worth about ten pawns of victim, so a well-fed entry
 			// may invert even PxQ against PxP inside a tier, by design; MVV-LVA still orders rare
 			// triples. With no table the score is increasing in mvv_lva, so the order is unchanged.
 			const int mvv_lva = MoveHelper::Value(mv, board.GetEffectiveMovPiece(mv), board.GetCapturedPiece(mv));
 			assert(mvv_lva >= 0 && mvv_lva <= kMaxMvvLva);
-			int within = kCaptureHistoryOffset + kCaptureMvvLvaScale * mvv_lva;
+			int in_tier = kCaptureHistoryOffset + kCaptureMvvLvaScale * mvv_lva;
 			if (ctx.capture_history != nullptr)
-				within += ctx.capture_history[CaptureHistoryRow(board, mv)][CaptureHistoryColumn(board, mv)];
+				in_tier += ctx.capture_history[CaptureHistoryRow(board, mv)][CaptureHistoryColumn(board, mv)];
 
-			s = (!MoveHelper::IsCapture(mv) || See::see_ge(board, mv, 0)) ? kGoodCaptureTier + within
-			                                                              : kLosingCaptureTier + within;
+			s = (!MoveHelper::IsCapture(mv) || See::see_ge(board, mv, 0)) ? kGoodCaptureTier + in_tier
+			                                                              : kLosingCaptureTier + in_tier;
 		} else if (mv == ctx.killer0) {
 			s = kKiller0Score;
 		} else if (mv == ctx.killer1) {
@@ -174,7 +174,7 @@ int MoveSorter::CaptureHistoryRow(const Board& board, const Move& mv) noexcept
 	return continuation_index(board.GetEffectiveMovPiece(mv), mv.to());
 }
 
-// 0-5 for a pawn to king victim, 7 for NO_PIECE: a promotion that captures nothing.
+// 0-4 for a pawn to queen victim, 7 for NO_PIECE: a promotion that captures nothing.
 int MoveSorter::CaptureHistoryColumn(const Board& board, const Move& mv) noexcept
 {
 	return static_cast<int>(board.GetCapturedPiece(mv)) >> 1;
