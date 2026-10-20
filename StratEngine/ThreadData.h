@@ -27,6 +27,12 @@ struct ThreadData {
 	// A quiet's score sums its history entry and two continuation entries.
 	static_assert(3 * HISTORY_MAX < MoveSorter::kLosingCaptureTier, "quiet scores must stay below every other tier");
 	static_assert(HISTORY_MAX <= INT16_MAX, "continuation entries are int16_t");
+	// A capture's score spans [tier, tier + 2 * HISTORY_MAX + scale * kMaxMvvLva), which must stay below
+	// the next tier up.
+	static_assert(MoveSorter::kCaptureHistoryOffset == HISTORY_MAX);
+	static_assert(2 * HISTORY_MAX + MoveSorter::kCaptureMvvLvaScale * MoveSorter::kMaxMvvLva <
+	                  MoveSorter::kKiller1Score - MoveSorter::kLosingCaptureTier,
+	              "capture scores must stay inside their tier");
 
 	static constexpr uint16_t kNoContinuation = 0xFFFF;
 	using ContinuationHistory = std::array<std::array<int16_t, kPieceSquares>, kPieceSquares>;
@@ -79,6 +85,13 @@ struct ThreadData {
 	// for a quiet move that cut, lowered for the quiets searched before it. Can be negative, and
 	// |entry| <= HISTORY_MAX always holds (see apply_history()).
 	int32_t history[2][64][64];
+
+	// Capture history: [row: continuation_index(effective moving piece, to)][column: victim >> 1], so a
+	// promotion is keyed by the promoted piece and column 7 is a promotion that captures nothing;
+	// column 6 is never written. Updated at pvs() cutoffs, read by pvs() ordering only, and with the
+	// CaptureHistory switch off neither happens. Cleared and aged like history; inline because it is
+	// only 12 KB.
+	int16_t capture_history[kPieceSquares][8];
 
 	// cont_key[p] is continuation_index() of the move that led to ply p, or kNoContinuation after a
 	// null move and at the root, whose game move's piece is not recorded. Written by pvs() only for a
@@ -179,7 +192,11 @@ struct ThreadData {
 		killers[ply][0] = move;
 	}
 
-	void clear_history() noexcept { std::memset(history, 0, sizeof(history)); }
+	void clear_history() noexcept
+	{
+		std::memset(history, 0, sizeof(history));
+		std::memset(capture_history, 0, sizeof(capture_history));
+	}
 
 	void age_history() noexcept
 	{
@@ -191,6 +208,9 @@ struct ThreadData {
 			for (auto& from : side)
 				for (auto& score : from)
 					score /= 2;
+		for (auto& row : capture_history)
+			for (auto& score : row)
+				score = static_cast<int16_t>(score / 2);
 	}
 
 	// Per-search reset of the ply-indexed state, with the continuation table's once-per-search ageing.
@@ -233,11 +253,13 @@ struct ThreadData {
 		return rows;
 	}
 
-	// The ordering inputs for a node at ply, scoring quiets with cont.
-	MoveScoringContext scoring_context(int ply, ContinuationRows cont) const noexcept
+	// The ordering inputs for a node at ply, scoring quiets with cont, and captures with capture
+	// history when use_capture_history is set.
+	MoveScoringContext scoring_context(int ply, ContinuationRows cont, bool use_capture_history) const noexcept
 	{
 		assert(ply >= 0 && ply < MAX_PLY);
-		return {board, killers[ply][0], killers[ply][1], history, cont};
+		return {
+		    board, killers[ply][0], killers[ply][1], history, cont, use_capture_history ? capture_history : nullptr};
 	}
 
 	static bool is_quiet(const Move& move) noexcept
@@ -271,6 +293,30 @@ struct ThreadData {
 		for (int i = 0; i < cut_index; ++i)
 			if (searched[static_cast<size_t>(i)])
 				penalize_history(side, move_list[scored_idx[static_cast<size_t>(i)].second], depth, rows);
+	}
+
+	// At a cutoff by the move at sorted index cut_index, any kind: a bonus if it is a capture or
+	// promotion, and a malus for every capture or promotion sorted before it that completed its child
+	// search. board must hold the node's position.
+	void update_capture_history(const MoveList& move_list, const ScoredMoves& scored_idx, const SearchedMoves& searched,
+	                            int cut_index, int depth) noexcept
+	{
+		assert(cut_index >= 0 && cut_index < static_cast<int>(MoveList::MAX_MOVES));
+		const int32_t bonus = history_bonus(depth);
+		for (int i = 0; i < cut_index; ++i) {
+			const Move& move = move_list[scored_idx[static_cast<size_t>(i)].second];
+			if (searched[static_cast<size_t>(i)] && !is_quiet(move))
+				apply_history(capture_history_entry(move), -bonus);
+		}
+		const Move& cutter = move_list[scored_idx[static_cast<size_t>(cut_index)].second];
+		if (!is_quiet(cutter))
+			apply_history(capture_history_entry(cutter), bonus);
+	}
+
+	int16_t& capture_history_entry(const Move& move) noexcept
+	{
+		return capture_history[MoveSorter::CaptureHistoryRow(board, move)]
+		                      [MoveSorter::CaptureHistoryColumn(board, move)];
 	}
 
 	// Threefold repetition and the fifty-move rule (thread-local board). Neither applies at

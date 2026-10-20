@@ -883,7 +883,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const eColor side = td.board.GetCurrentColor();
 
 	const ContinuationRows cont_rows = td.continuation_rows(ply, tuning_.continuation_history_plies);
-	const MoveScoringContext scoring = td.scoring_context(ply, cont_rows);
+	const MoveScoringContext scoring = td.scoring_context(ply, cont_rows, tuning_.capture_history_enabled);
 	// Orders only [0]; the loop orders the rest on reaching si == 1, since most nodes never search a
 	// second move.
 	MoveSorter::ScoreMovesBestFirst(move_list, n, scoring, hash_move, scored_idx);
@@ -1209,6 +1209,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				if (ThreadData::is_quiet(move))
 					td.penalize_searched_quiets(side, move_list, scored_idx, searched, si, depth, cont_rows);
 				td.update_history(side, move, depth, cont_rows);
+				// Unlike the quiet rule, every cutoff penalizes the captures searched before it, a quiet's
+				// included: the malus only ranks captures against each other, and one that failed has
+				// failed whatever cut later.
+				if (tuning_.capture_history_enabled)
+					td.update_capture_history(move_list, scored_idx, searched, si, depth);
 				break;
 			}
 		}
@@ -1377,7 +1382,7 @@ void AIPerplex::order_quiescence_moves(ThreadData& td, MoveList& move_list, bool
 
 	const int move_count = static_cast<int>(move_list.size());
 	ScoredMoves scored_idx;
-	MoveSorter::ScoreMoves(move_list, move_count, td.scoring_context(ply, {}), Move::EmptyMove(), scored_idx);
+	MoveSorter::ScoreMoves(move_list, move_count, td.scoring_context(ply, {}, false), Move::EmptyMove(), scored_idx);
 
 	MoveList ordered;
 	for (int i = 0; i < move_count; ++i)

@@ -99,6 +99,11 @@ TUNING_FIELD(bool,    staged_generation_enabled, true, false, true, true, nullpt
 // search node-identical to one without it; it is the kill switch.
 TUNING_FIELD(int,     continuation_history_plies, 2, 0, 2, true, nullptr, true)
 
+// Capture history: captures and promotions learn from pvs() cutoffs which ones cut, ordered by it
+// inside their SEE tier. Off reads and writes no table and leaves the search node-identical to one
+// without it; exposed so a match can turn it off on one binary.
+TUNING_FIELD(bool,    capture_history_enabled, true, false, true, true, "CaptureHistory", true)
+
 // Contempt: how many centipawns a draw is scored BELOW equality, for the side the engine is
 // playing. At 0 every drawn score is GameValues::Draw
 // and the engine is indifferent between repeating and playing on in a position it believes equal.

@@ -29,6 +29,8 @@ struct MoveScoringContext {
 	const Move& killer1;
 	const int32_t (&history)[2][64][64];
 	ContinuationRows cont;
+	// ThreadData::capture_history, or nullptr for no history term in the capture scores.
+	const int16_t (*capture_history)[8] = nullptr;
 };
 
 class MoveSorter final {
@@ -47,6 +49,16 @@ class MoveSorter final {
 	static constexpr int kLosingCaptureTier = 700'000;
 	static_assert(kGoodCaptureTier > kKiller0Score && kKiller0Score > kKiller1Score &&
 	              kKiller1Score > kLosingCaptureTier);
+	// Inside a capture tier: tier + kCaptureHistoryOffset + kCaptureMvvLvaScale * mvv_lva + the
+	// capture-history entry. The offset is ThreadData::HISTORY_MAX, asserted there with the tier span.
+	static constexpr int kCaptureHistoryOffset = 16'384;
+	static constexpr int kCaptureMvvLvaScale = 16;
+	// The largest MoveHelper::Value() of a legal capture or promotion: a queen promotion taking a queen.
+	static constexpr int kMaxMvvLva =
+	    2 * g_iPieceValues[QUEEN >> 1] - g_iPieceValues[PAWN] - (g_iPieceValues[PAWN] >> 4);
+	// The row and column of a capture or promotion's capture-history entry.
+	static int CaptureHistoryRow(const Board& board, const Move& mv) noexcept;
+	static int CaptureHistoryColumn(const Board& board, const Move& mv) noexcept;
 
 	// Score all moves in [0, n) into out_scored_idx as (score, original_index) pairs,
 	// sorted descending by score. Priority: hash move -> SEE >= 0 captures and all promotions

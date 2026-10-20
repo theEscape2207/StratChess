@@ -56,6 +56,7 @@ namespace {
 		bool late_move_pruning_enabled;
 		bool staged_generation_enabled;
 		int continuation_history_plies;
+		bool capture_history_enabled;
 		int contempt;
 	};
 
@@ -93,6 +94,7 @@ namespace {
 	SAME_MEMBER(late_move_pruning_enabled)
 	SAME_MEMBER(staged_generation_enabled)
 	SAME_MEMBER(continuation_history_plies)
+	SAME_MEMBER(capture_history_enabled)
 	SAME_MEMBER(contempt)
 #undef SAME_MEMBER
 	static_assert(sizeof(SearchTuning) == sizeof(BaselineTuning));
@@ -518,6 +520,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name FrontierFutility type check default true",
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
 	    "option name LateMovePruning type check default true",
+	    "option name CaptureHistory type check default true",
 	    // No negative half: SearchTuningSchema's read_uci() accepts unsigned decimal digits only,
 	    // so an advertised negative minimum would be a value the engine then refuses to apply.
 	    "option name Contempt type spin default 0 min 0 max 100",
