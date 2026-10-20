@@ -16,6 +16,21 @@ struct ContinuationRows {
 	bool empty() const noexcept { return one_ply == nullptr && two_ply == nullptr; }
 };
 
+// (score, original_index) pairs, one per move in the list.
+using ScoredMoves = std::array<std::pair<int, int>, MoveList::MAX_MOVES>;
+
+// A node's move-ordering inputs, built once per node. The hash move is not here: ScoreAppended
+// scores without one. Killers and history are references, so a staged frame reads them when it
+// scores its quiets, not when it builds the context. Every member must outlive the context. The side
+// whose history row is read is the board's side to move.
+struct MoveScoringContext {
+	const Board& board;
+	const Move& killer0;
+	const Move& killer1;
+	const int32_t (&history)[2][64][64];
+	ContinuationRows cont;
+};
+
 class MoveSorter final {
   public:
 	// Sorts the list by MVV-LVA, descending; equal values keep generation order. The list must
@@ -38,31 +53,22 @@ class MoveSorter final {
 	// -> killer0 -> killer1 -> SEE < 0 captures -> quiets, with generation order as the final
 	// tie-break. A quiet scores its history entry plus its entry in each continuation row present;
 	// quiescence passes none.
-	static void ScoreMoves(const MoveList& moveList, int n, const Board& board, eColor side, const Move& hash_move,
-	                       const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
-	                       std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
-	                       ContinuationRows cont = {});
+	static void ScoreMoves(const MoveList& moveList, int n, const MoveScoringContext& ctx, const Move& hash_move,
+	                       ScoredMoves& out_scored_idx);
 	// As ScoreMoves, but only out_scored_idx[0] is in order; [1, n) is unordered until OrderRemaining.
 	// For n <= 1 the result is already fully ordered.
-	static void ScoreMovesBestFirst(const MoveList& moveList, int n, const Board& board, eColor side,
-	                                const Move& hash_move, const Move& killer0, const Move& killer1,
-	                                const int32_t (&history)[2][64][64],
-	                                std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
-	                                ContinuationRows cont = {});
+	static void ScoreMovesBestFirst(const MoveList& moveList, int n, const MoveScoringContext& ctx,
+	                                const Move& hash_move, ScoredMoves& out_scored_idx);
 	// Scores the moves appended at [first, n) as ScoreMoves would, for a list with no hash move, and
 	// leaves [0, first) alone. Unordered, like ScoreMovesBestFirst's tail.
-	static void ScoreAppended(const MoveList& moveList, int first, int n, const Board& board, eColor side,
-	                          const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
-	                          std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
-	                          ContinuationRows cont = {});
+	static void ScoreAppended(const MoveList& moveList, int first, int n, const MoveScoringContext& ctx,
+	                          ScoredMoves& scored_idx);
 	// Swaps the best of [first, n) to first, leaving the rest unordered.
-	static void SelectBest(const MoveList& moveList, std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
-	                       int first, int n);
+	static void SelectBest(const MoveList& moveList, ScoredMoves& scored_idx, int first, int n);
 	// Puts [first, n) in ScoreMoves' order. Requires 0 <= first and n <= MAX_MOVES; does nothing when
 	// fewer than two entries remain (n - first < 2), so OrderRemaining(.., 1, 0) is a no-op.
 	// moveList supplies the profile tie-break key.
-	static void OrderRemaining(const MoveList& moveList,
-	                           std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx, int first, int n);
+	static void OrderRemaining(const MoveList& moveList, ScoredMoves& scored_idx, int first, int n);
 	// A quiet move's continuation-history column. board holds the position it is played from.
 	static int QuietContinuationColumn(const Board& board, const Move& quiet) noexcept;
 	~MoveSorter() = default;
@@ -72,9 +78,6 @@ class MoveSorter final {
 
 	// The scoring every ScoreMoves entry point shares: (score, original_index) pairs for [first, n), in
 	// generation order.
-	static void ScoreUnordered(const MoveList& moveList, int first, int n, const Board& board, eColor side,
-	                           const Move& hash_move, const Move& killer0, const Move& killer1,
-	                           const int32_t (&history)[2][64][64],
-	                           std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
-	                           ContinuationRows cont);
+	static void ScoreUnordered(const MoveList& moveList, int first, int n, const MoveScoringContext& ctx,
+	                           const Move& hash_move, ScoredMoves& out_scored_idx);
 };

@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-20 | 58224b9, `LateMovePruningNotImprovingCut=4`: LMP index 12 - 4 at not-improving nodes (#851; PR #862, never merged) | e11bbe4 | 32000 | 10+0.1 | **+1.79 +/- 2.82** | inconclusive @ 32000 |
 | 2026-10-19 | e6cd42f, `ReverseFutilityImprovingRelief=50`: RFP slack `margin*depth - 50` at improving nodes, floored at 0 (#851; PR #854, never merged) | 03141cb | 19980 | 10+0.1 | **-2.75 +/- 3.54** | inconclusive @ 19980 |
 | 2026-10-19 | 6b24787, `LmrImprovingRelief=1`: R - 1 at improving nodes, after the history clamp (#848; PR #849, never merged) | 719af11 | 19980 | 10+0.1 | **-13.71 +/- 3.56** | regression |
 | 2026-10-18 | d7b7939, `LmrImprovingOffset=1`: R + 1 at non-improving nodes, before the `depth-2` cap (#848; PR #849, never merged) | 719af11 | 19980 | 10+0.1 | **-1.06 +/- 3.56** | inconclusive @ 19980 |
@@ -97,6 +98,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-20 -- 58224b9, `LateMovePruningNotImprovingCut=4` (#851) (32000 games)
+
+**Gating run for PR #862, ship rule "Elo minus its error bar above 0", declared in design D7 before dispatch.** [Run `39310694260`](https://github.com/theEscape2207/StratChess/actions/runs/39310694260), about 4 h 40 min, 20 shards x 800 pairs, reference the merge base `e11bbe4`, candidate options `LateMovePruningNotImprovingCut=4`. Sized above the usual 20k to narrow the bar, since no follow-up run could be dispatched unattended. Pooled Ptnml(0-2) [1262, 3641, 6050, 3764, 1283], score 50.26%, interval [-1.03, +4.61]; 13 of 20 shards favour the candidate by score. Holding +1.79 would take about 79,400 games to exclude zero; the owner judged that not worth pursuing. The candidate carries the eval stack's cost as well as the cut: an ordered-pair probe with tracking forced on and no reader read a median -1.47%, unresolved, with endgames -4.1% / -3.7% resolved (`local.md`, 2026-10-19). Profile screen beforehand (`Compare-SearchProfile.ps1 -Seeds 8 -Depth 12`, PR build at 0 vs 4): nodes -2.8% +/- 1.8, late-cut work -2.2% +/- 2.6, LMP skips +16.3%; endgame nodes -6.5% (skips +36.7%), others -2.8%; best-move changes and score swing unchanged. The option passed the build job's advertised-option check and was set in every shard; no PGN check was made.
 
 ### 2026-10-19 -- e6cd42f, `ReverseFutilityImprovingRelief=50` (#851) (19980 games)
 

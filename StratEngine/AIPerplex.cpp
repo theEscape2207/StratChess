@@ -878,15 +878,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	Move best_move;
 
 	// Stack-allocated scored index array — zero heap allocation per call.
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+	ScoredMoves scored_idx;
 	int n = static_cast<int>(move_list.size());
 	const eColor side = td.board.GetCurrentColor();
 
 	const ContinuationRows cont_rows = td.continuation_rows(ply, tuning_.continuation_history_plies);
+	const MoveScoringContext scoring = td.scoring_context(ply, cont_rows);
 	// Orders only [0]; the loop orders the rest on reaching si == 1, since most nodes never search a
 	// second move.
-	MoveSorter::ScoreMovesBestFirst(move_list, n, td.board, side, hash_move, td.killers[ply][0], td.killers[ply][1],
-	                                td.history, scored_idx, cont_rows);
+	MoveSorter::ScoreMovesBestFirst(move_list, n, scoring, hash_move, scored_idx);
 
 	// Singular extension: if the transposition table's move is much better than every
 	// alternative, search it one ply deeper. The verification runs HERE, before the move
@@ -998,8 +998,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			const int first_quiet = n;
 			MoveGenerator::ComputeQuiets(td.board, move_list);
 			n = static_cast<int>(move_list.size());
-			MoveSorter::ScoreAppended(move_list, first_quiet, n, td.board, side, td.killers[ply][0], td.killers[ply][1],
-			                          td.history, scored_idx, cont_rows);
+			MoveSorter::ScoreAppended(move_list, first_quiet, n, scoring, scored_idx);
 			// At si == 0 only the front needs ordering; the si == 1 sort above orders the rest.
 			if (si == 0)
 				MoveSorter::SelectBest(move_list, scored_idx, 0, n);
@@ -1377,9 +1376,8 @@ void AIPerplex::order_quiescence_moves(ThreadData& td, MoveList& move_list, bool
 	}
 
 	const int move_count = static_cast<int>(move_list.size());
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(move_list, move_count, td.board, td.board.GetCurrentColor(), Move::EmptyMove(),
-	                       td.killers[ply][0], td.killers[ply][1], td.history, scored_idx);
+	ScoredMoves scored_idx;
+	MoveSorter::ScoreMoves(move_list, move_count, td.scoring_context(ply, {}), Move::EmptyMove(), scored_idx);
 
 	MoveList ordered;
 	for (int i = 0; i < move_count; ++i)

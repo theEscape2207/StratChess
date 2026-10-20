@@ -30,8 +30,7 @@ static constexpr const char* FEN_SORT = "4k3/8/8/8/8/8/r7/R3K3 w - - 0 1";
 
 // Helper: find the score assigned to a specific move in out_scored_idx.
 // Returns INT_MIN if not found.
-static int FindScore(const std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx, const MoveList& moveList,
-                     int n, const Move& target)
+static int FindScore(const ScoredMoves& scored_idx, const MoveList& moveList, int n, const Move& target)
 {
 	for (int i = 0; i < n; ++i) {
 		if (moveList[scored_idx[i].second] == target)
@@ -55,8 +54,8 @@ TEST_CASE("Sort - Hash move scores 1'900'000 and sorts first", "[sort]")
 	const Move killer0, killer1;
 	int32_t history[2][64][64] = {};
 
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, hash_move, killer0, killer1, history, scored_idx);
+	ScoredMoves scored_idx;
+	MoveSorter::ScoreMoves(moveList, n, {board, killer0, killer1, history, {}}, hash_move, scored_idx);
 
 	REQUIRE(FindScore(scored_idx, moveList, n, hash_move) == 1'900'000);
 	REQUIRE(moveList[scored_idx[0].second] == hash_move);
@@ -84,8 +83,8 @@ TEST_CASE("Sort - an empty hash move promotes nothing", "[sort]")
 	const Move null_move, killer0, killer1;
 	int32_t history[2][64][64] = {};
 
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	ScoredMoves scored_idx;
+	MoveSorter::ScoreMoves(moveList, n, {board, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	for (int i = 0; i < n; ++i)
 		REQUIRE(scored_idx[i].first < 1'900'000);
@@ -108,8 +107,8 @@ TEST_CASE("Sort - Capture scores above 1'000'000 (winning capture category)", "[
 	const Move null_move, killer0, killer1;
 	int32_t history[2][64][64] = {};
 
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	ScoredMoves scored_idx;
+	MoveSorter::ScoreMoves(moveList, n, {board, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	const int cap_score = FindScore(scored_idx, moveList, n, capture);
 	REQUIRE(cap_score >= 1'000'000); // winning-capture category
@@ -140,8 +139,8 @@ TEST_CASE("Sort - Killer0 scores 900'000; beats quiet move with no history", "[s
 	const Move null_move, killer1;
 	int32_t history[2][64][64] = {};
 
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	ScoredMoves scored_idx;
+	MoveSorter::ScoreMoves(moveList, n, {board, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	REQUIRE(FindScore(scored_idx, moveList, n, killer0) == 900'000);
 	REQUIRE(FindScore(scored_idx, moveList, n, quiet_no_history) == 0);
@@ -183,8 +182,8 @@ TEST_CASE("Sort - the SEE tier chain, winning capture down to losing capture", "
 	int32_t history[2][64][64] = {};
 	history[WHITE][e1][e2] = 500;
 
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	ScoredMoves scored_idx;
+	MoveSorter::ScoreMoves(moveList, n, {board, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	const int winning_score = FindScore(scored_idx, moveList, n, winning);
 	const int killer_score = FindScore(scored_idx, moveList, n, killer0);
@@ -224,8 +223,8 @@ TEST_CASE("Sort - two SEE-winning captures order by MVV-LVA within the tier", "[
 	const Move null_move, killer0, killer1;
 	int32_t history[2][64][64] = {};
 
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	ScoredMoves scored_idx;
+	MoveSorter::ScoreMoves(moveList, n, {board, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	REQUIRE(FindScore(scored_idx, moveList, n, by_pawn) >= 1'000'000);
 	REQUIRE(FindScore(scored_idx, moveList, n, by_rook) >= 1'000'000);
@@ -254,8 +253,8 @@ TEST_CASE("Sort - a promotion onto a defended square is still tactical", "[sort]
 
 		const Move null_move, killer0, killer1;
 		int32_t history[2][64][64] = {};
-		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-		MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+		ScoredMoves scored_idx;
+		MoveSorter::ScoreMoves(moveList, n, {board, killer0, killer1, history, {}}, null_move, scored_idx);
 
 		REQUIRE(FindScore(scored_idx, moveList, n, *it) >= 1'000'000);
 	}
@@ -277,8 +276,8 @@ TEST_CASE("Sort - a promotion onto a defended square is still tactical", "[sort]
 
 		const Move null_move, killer0, killer1;
 		int32_t history[2][64][64] = {};
-		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-		MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+		ScoredMoves scored_idx;
+		MoveSorter::ScoreMoves(moveList, n, {board, killer0, killer1, history, {}}, null_move, scored_idx);
 
 		REQUIRE(FindScore(scored_idx, moveList, n, *it) >= 1'000'000);
 	}
@@ -308,8 +307,8 @@ TEST_CASE("Sort - a non-capturing promotion is tactical, not a quiet", "[sort]")
 	const Move null_move, killer0, killer1;
 	int32_t history[2][64][64] = {};
 
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	ScoredMoves scored_idx;
+	MoveSorter::ScoreMoves(moveList, n, {board, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	const int queen_score = FindScore(scored_idx, moveList, n, queen_promotion);
 	const int knight_score = FindScore(scored_idx, moveList, n, knight_promotion);
@@ -338,17 +337,15 @@ TEST_CASE("Sort - Quiet move with positive history scores exactly that history v
 	int32_t history[2][64][64] = {};
 	history[WHITE][e1][d1] = 42; // inject a history score
 
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+	ScoredMoves scored_idx;
+	MoveSorter::ScoreMoves(moveList, n, {board, killer0, killer1, history, {}}, null_move, scored_idx);
 
 	REQUIRE(FindScore(scored_idx, moveList, n, quiet_move) == 42);
 }
 
-using ScoredIdx = std::array<std::pair<int, int>, MoveList::MAX_MOVES>;
-
 // The order every entry point must produce, computed without Sort.cpp's comparator: the scored pairs
 // back in generation order, then stably sorted by score, descending.
-static std::vector<std::pair<int, int>> ReferenceOrder(const ScoredIdx& scored_idx, int n)
+static std::vector<std::pair<int, int>> ReferenceOrder(const ScoredMoves& scored_idx, int n)
 {
 	std::vector<std::pair<int, int>> ref(scored_idx.begin(), scored_idx.begin() + n);
 	std::ranges::sort(ref, {}, &std::pair<int, int>::second);
@@ -356,26 +353,26 @@ static std::vector<std::pair<int, int>> ReferenceOrder(const ScoredIdx& scored_i
 	return ref;
 }
 
-static std::vector<std::pair<int, int>> Prefix(const ScoredIdx& scored_idx, int n)
+static std::vector<std::pair<int, int>> Prefix(const ScoredMoves& scored_idx, int n)
 {
 	return {scored_idx.begin(), scored_idx.begin() + n};
 }
 
 // ScoreMoves, and ScoreMovesBestFirst followed by OrderRemaining(.., 1, n), both give the reference
 // order; before OrderRemaining only [0] is promised. Returns whether the best-first tail was out of order.
-static bool CheckEveryPathGivesReferenceOrder(const MoveList& moveList, const Board& board, eColor side,
-                                              const Move& hash_move, const Move& killer0, const Move& killer1,
+static bool CheckEveryPathGivesReferenceOrder(const MoveList& moveList, const Board& board, const Move& hash_move,
+                                              const Move& killer0, const Move& killer1,
                                               const int32_t (&history)[2][64][64])
 {
 	const int n = static_cast<int>(moveList.size());
 
-	ScoredIdx full;
-	MoveSorter::ScoreMoves(moveList, n, board, side, hash_move, killer0, killer1, history, full);
+	ScoredMoves full;
+	MoveSorter::ScoreMoves(moveList, n, {board, killer0, killer1, history, {}}, hash_move, full);
 	const auto ref = ReferenceOrder(full, n);
 	REQUIRE(Prefix(full, n) == ref);
 
-	ScoredIdx lazy;
-	MoveSorter::ScoreMovesBestFirst(moveList, n, board, side, hash_move, killer0, killer1, history, lazy);
+	ScoredMoves lazy;
+	MoveSorter::ScoreMovesBestFirst(moveList, n, {board, killer0, killer1, history, {}}, hash_move, lazy);
 	bool tail_was_unordered = false;
 	if (n > 0) {
 		REQUIRE(lazy[0] == ref[0]);
@@ -408,7 +405,7 @@ TEST_CASE("Sort - lazy ordering matches the full order with a cold history table
 	const Move killer1 = FindBySquares(moveList, g2, g3);
 	int32_t history[2][64][64] = {};
 
-	REQUIRE(CheckEveryPathGivesReferenceOrder(moveList, board, WHITE, hash_move, killer0, killer1, history));
+	REQUIRE(CheckEveryPathGivesReferenceOrder(moveList, board, hash_move, killer0, killer1, history));
 }
 
 TEST_CASE("Sort - lazy ordering matches the full order with history ties among the quiets", "[sort]")
@@ -423,7 +420,7 @@ TEST_CASE("Sort - lazy ordering matches the full order with history ties among t
 			history[WHITE][from][to] = (from * 7 + to) % 5 * 100; // five values, so many ties
 	}
 	const Move no_move;
-	CheckEveryPathGivesReferenceOrder(moveList, board, WHITE, no_move, no_move, no_move, history);
+	CheckEveryPathGivesReferenceOrder(moveList, board, no_move, no_move, no_move, history);
 }
 
 TEST_CASE("Sort - lazy ordering matches the full order with promotions", "[sort]")
@@ -435,7 +432,7 @@ TEST_CASE("Sort - lazy ordering matches the full order with promotions", "[sort]
 
 	const Move no_move;
 	int32_t history[2][64][64] = {};
-	CheckEveryPathGivesReferenceOrder(moveList, board, WHITE, no_move, no_move, no_move, history);
+	CheckEveryPathGivesReferenceOrder(moveList, board, no_move, no_move, no_move, history);
 }
 
 TEST_CASE("Sort - lazy ordering on lists of zero, one and two moves", "[sort]")
@@ -449,17 +446,17 @@ TEST_CASE("Sort - lazy ordering on lists of zero, one and two moves", "[sort]")
 	int32_t history[2][64][64] = {};
 
 	MoveList empty;
-	CheckEveryPathGivesReferenceOrder(empty, board, WHITE, no_move, killer, no_move, history);
+	CheckEveryPathGivesReferenceOrder(empty, board, no_move, killer, no_move, history);
 
 	MoveList single;
 	single.push(quiet);
-	CheckEveryPathGivesReferenceOrder(single, board, WHITE, no_move, killer, no_move, history);
+	CheckEveryPathGivesReferenceOrder(single, board, no_move, killer, no_move, history);
 
 	// The killer is generated second, so best-first must swap it into [0].
 	MoveList pair;
 	pair.push(quiet);
 	pair.push(killer);
-	CheckEveryPathGivesReferenceOrder(pair, board, WHITE, no_move, killer, no_move, history);
+	CheckEveryPathGivesReferenceOrder(pair, board, no_move, killer, no_move, history);
 }
 
 // SortMovesByValue reads only the moving and the captured piece, so these lists pair pieces freely
