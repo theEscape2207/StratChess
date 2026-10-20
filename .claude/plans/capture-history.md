@@ -10,7 +10,9 @@ history. Step 0 (#871) ran at depth 12 over the 200 positions of `Tests/profile-
 Captures made 28.5% of late cuts. Of those, 93% came after an earlier capture had been searched and
 failed, and 89% were a good capture cutting after a failed good capture: the ordering inside the
 tier got them wrong. The nodes spent before those cuts are 11.8% of all late-cut work, about 4.5% of
-total nodes. That is a ceiling, not an expected saving. Learning which captures actually cut, per
+total nodes. That is a loose ceiling, not an expected saving. The span counted runs from the start
+of the move loop, so it includes the subtree of a hash move that failed, which capture history
+cannot reorder. Learning which captures actually cut, per
 moving piece, target square and victim, can win back part of it.
 
 ## Review focus
@@ -64,8 +66,11 @@ This applies to both tiers, with the same expression in each.
 - **Offset.** `HISTORY_MAX` keeps every score in a tier at or above that tier's constant. The
   staged-generation trigger (`scored_idx[si].first < kGoodCaptureTier`) depends on that.
 - **Scale.** At 16, one pawn of victim value is 1,600 points. An entry at its bound, 16,384 points,
-  is worth about ten pawns. Gravity keeps typical entries far below the bound, so MVV-LVA still
-  orders the captures the table knows little about.
+  is worth about ten pawns. Gravity does not keep frequent entries small. A capture that keeps
+  cutting moves toward ±`HISTORY_MAX`, whatever the bonus. With only 6,144 cells, the common
+  (piece, to, victim) triples get close to that bound even after halving. So a well-fed table can,
+  by design, invert even PxQ against PxP inside the good tier (850 × 16 = 13,600, inside the
+  32,768 spread). MVV-LVA still orders the rare triples.
 - **When off**, the history term is 0 and the score is an increasing affine function of
   `mvv_lva`. That preserves the order, ties included, so the tree is node-identical.
 - **Range.** `mvv_lva` is never negative in either tier: the smallest victim is a pawn at 100, and
@@ -111,10 +116,14 @@ apply to 12 KB. Rejected: never aging the table, which would let early-game entr
 
 The context gets `const int16_t (*capture_history)[8]`. A null pointer means no history term.
 
-- `ThreadData::scoring_context()` passes the table when the switch is on, and null when it is off.
-- In-check quiescence (`AIPerplex.cpp`, its `scoring_context(ply, {})` call) passes null, so
-  quiescence ordering keeps its exact current order. Its scores move by the offset and scale,
-  which a monotone change leaves invisible.
+- `ThreadData` cannot see `tuning_`, so `scoring_context(ply, cont, bool capture_history)` takes
+  an explicit third parameter with no default. It passes the table when the parameter is true and
+  null otherwise. Having no default forces every caller to choose.
+- `pvs()` (its `scoring_context` call before `ScoreMovesBestFirst`) passes
+  `tuning_.capture_history_enabled`.
+- In-check quiescence (its `scoring_context(ply, {})` call) passes `false`, so quiescence keeps its
+  exact current order. Its scores move only by the offset and scale, which a monotone change leaves
+  invisible.
 
 The staged frames read capture scores at frame start, as they do today. `ScoreAppended` scores only
 the quiets. So the staged-frame timing contract (`Docs/EngineContracts.md`) gains no new reader.
@@ -136,7 +145,9 @@ closes. Per the standing rule, the end state is either a default-true switch or 
   expected Elo. Verifying would mean reading a current `search.cpp` and `movepick.cpp`. Nothing
   depends on it: the lab decides either way.
 - **The ceiling turns into saved nodes.** Step 0 bounds what perfect ordering inside a tier could
-  save. It does not bound what a learned table achieves. The screen's late-cut work and the lab
+  save, and it overstates even that: the span includes a failed hash move's subtree, usually the
+  largest. search-reviewer estimates a realistic saving of 1–2% of nodes. Nothing gates on the
+  number, so it was not re-probed. It does not bound what a learned table achieves. The screen's late-cut work and the lab
   measure the real effect. The step-0 run has one tree and no seeds. It is spread across positions,
   not carried by a few: the reachable share per position has a mean of 10.0%, an SD of 6.6% and a
   maximum of 59.6%.
@@ -168,6 +179,8 @@ call. Nothing before the lab gates it (#636 Method).
   - captures searched before a cut take the malus, on a capture cut and on a quiet cut;
   - a well-fed entry reorders captures inside a tier but never across tiers;
   - off writes nothing;
+  - with the switch on and a fed table, in-check quiescence orders exactly as it does with the
+    table empty;
   - the on/off staged-generation test passes with capture history on.
 - **Screen.** `Compare-SearchProfile.ps1 -Seeds 8 -Depth 12 -Positions Tests/profile-screen.fen`
   against the merge base: late-cut work and nodes, with ±2 SE. A local cherry-pick of the step-0
