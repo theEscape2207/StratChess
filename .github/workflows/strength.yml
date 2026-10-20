@@ -86,6 +86,9 @@ env:
   # .claude/plans/retained/public-repo-and-strength-lab.md).
   BOOK_URL: https://raw.githubusercontent.com/official-stockfish/books/04738d057446e749cb071d58bac39df7f13efb47/UHO_4060_v3.epd.zip
   BOOK_FILE: UHO_4060_v3.epd
+  # Shared dependency checkouts, as in build-and-test.yml. A reference without
+  # cmake/DependencySources.cmake ignores it and clones: its build tree is never cached.
+  STRAT_DEPS_SOURCE_CACHE: ${{ github.workspace }}/build/dep-sources
 
 # Every Linux job below pins ubuntu-26.04, whose image ships Ninja and CMake on
 # PATH -- `-G Ninja` needs no install step. Do not add one: it puts an Ubuntu apt
@@ -315,11 +318,11 @@ jobs:
 
       # Same key as build-and-test.yml and nightly.yml, so this shares their
       # cache entry rather than paying for its own clone of the dependencies.
-      - name: Cache FetchContent dependencies
+      - name: Cache dependency sources
         uses: actions/cache@v6
         with:
-          path: build/_deps
-          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
+          path: build/dep-sources
+          key: dep-sources-spdlog-v1.17.0-json-v3.12.0-catch2-v3.16.1
 
       # Release only. Both sides are built from the same compiler with the same
       # flags, which is the invariant every Elo number in this project depends

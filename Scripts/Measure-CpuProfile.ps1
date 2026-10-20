@@ -449,12 +449,19 @@ function Import-VsDevEnvironment {
     return $vsRoot
 }
 
-function Get-SharedDepsCache {
-    <# FetchContent's cache in StratChessSupport beside the main checkout, shared with build.ps1. #>
+function Initialize-SharedDepsCaches {
+    <#
+        Sets STRAT_DEPS_SOURCE_CACHE, the shared sources a current commit reads, unless already set
+        -- as build.ps1 does. Returns the FetchContent cache that a -Before ref without
+        cmake/DependencySources.cmake uses; a current commit forces its own _deps and ignores it.
+    #>
     $commonDir = & git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $commonDir) { return $null }
-    $mainCheckout = $commonDir -replace '[\\/]\.git[\\/]?$', ''
-    return (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessSupport\Deps') -replace '\\', '/'
+    $support = Join-Path (Split-Path ($commonDir -replace '[\\/]\.git[\\/]?$', '') -Parent) 'StratChessSupport'
+    if (-not $env:STRAT_DEPS_SOURCE_CACHE) {
+        $env:STRAT_DEPS_SOURCE_CACHE = (Join-Path $support 'DepSources') -replace '\\', '/'
+    }
+    return (Join-Path $support 'Deps') -replace '\\', '/'
 }
 
 function Build-ProfileVariant {
@@ -768,7 +775,7 @@ if ($Reanalyse) {
         after  = @{ ref = $After; commit = $refs['after'].Commit; dirty = $refs['after'].Dirty }
         depth  = $Depth; beforeRuns = $BeforeRuns; positions = $positionCount; platform = $(if ($linuxArm) { 'linux' } else { 'windows' })
     } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $outPath 'metadata.json') -Encoding utf8
-    $depsCache = if ($linuxArm) { $null } else { Get-SharedDepsCache }
+    $depsCache = if ($linuxArm) { $null } else { Initialize-SharedDepsCaches }
 
     # Interleaved before/after/before, so drift over the window shows up in the before spread.
     $runPlan = @(@{ Arm = 'before'; Index = 1 }; @{ Arm = 'after'; Index = 1 })

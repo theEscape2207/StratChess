@@ -52,7 +52,7 @@ runs:
     # failure, it happens only on the first run after a version bump, and the entry is
     # content-identical whoever wins, since the version and its verified hash are pinned here.
     # Do not "fix" it by adding the job or matrix name to the key: that stores four identical
-    # copies of the same binary against a shared budget. Same reasoning as the FetchContent
+    # copies of the same binary against a shared budget. Same reasoning as the dependency-source
     # cache keys in build-and-test.yml.
     #
     # The key varies by runner OS and by nothing else: the two platforms need different
@@ -189,7 +189,7 @@ runs:
     # One entry per configuration, never shared. The split is for hit rate and eviction, not
     # correctness: ccache hashes the full compiler command line, so the sanitizer and
     # _GLIBCXX_DEBUG flags already make a cross-configuration hit impossible even off a single
-    # shared entry. The FetchContent caches in build-and-test.yml are deliberately NOT
+    # shared entry. The dependency-source caches in build-and-test.yml are deliberately NOT
     # matrix-scoped because their sources are identical across configurations; that reasoning
     # does not carry over here.
     #

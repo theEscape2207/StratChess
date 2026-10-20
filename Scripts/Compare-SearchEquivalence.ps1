@@ -88,7 +88,7 @@
 
 .PARAMETER CacheRoot
     Where -BaselineRef builds are cached. Defaults to StratChessSupport\Equivalence
-    beside the main checkout, the same placement build.ps1 uses for its shared FetchContent
+    beside the main checkout, the same placement build.ps1 uses for its shared dependency
     cache.
 
 .PARAMETER AllowSameBinary
@@ -503,7 +503,7 @@ function New-BaselineBinary {
         # Setting the location cannot be delegated to build.ps1: -BaselineRef builds
         # whatever build.ps1 that commit shipped.
         #
-        # Its shared FetchContent cache resolves through the common git dir, so no
+        # Its shared dependency cache resolves through the common git dir, so no
         # dependency is re-cloned for the throwaway tree.
         & pwsh -ExecutionPolicy Bypass -File (Join-Path $wt 'build.ps1') main -Config $ConfigName | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "Baseline build failed (exit $LASTEXITCODE) for $Ref ($short)." }

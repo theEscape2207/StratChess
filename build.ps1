@@ -477,35 +477,27 @@ function Import-VsDevEnvironment {
     }
 }
 
-# FetchContent clones spdlog, nlohmann/json and Catch2 on a build tree's first
-# configure, so without this every new worktree re-clones all three over the
-# network. Point them at one cache in StratChessSupport beside the main checkout
-# instead: only the first worktree on a machine pays for the clone, and the rest
-# need no network.
+# Shared dependency sources (cmake/DependencySources.cmake): one checkout per tag in
+# StratChessSupport beside the main checkout, so only the first worktree on a machine
+# clones and the rest need no network. Each tree still builds them privately.
 #
-# Overridden via -D rather than in CMakePresets.json because a preset's
-# cacheVariables cannot be redefined by CMakeUserPresets.json (duplicate preset
-# names are an error), and inheriting under a new name would also change
-# binaryDir, which Get-BuildArtifact.ps1 depends on.
-#
-# Skipped in CI: the workflow caches build/_deps by that exact path, and a
-# runner is discarded after every job so there is nothing to share.
-#
-# Changing this path strands existing build trees: Docs/Workflow.md -> Support folders.
-function Get-SharedDepsCache {
-    if ($env:GITHUB_ACTIONS -eq 'true') { return $null }
+# Handed over through the environment, not -D, so Ninja's own re-run of CMake inherits it
+# too: that is how a tree configured without the variable adopts the cache on its next
+# build. A value already set wins, which is how CI points it at the directory it caches.
+function Set-SharedDepSources {
+    if ($env:STRAT_DEPS_SOURCE_CACHE) { return }
 
     $commonDir = & git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $commonDir) { return $null }
+    if ($LASTEXITCODE -ne 0 -or -not $commonDir) { return }
 
     $mainCheckout = $commonDir -replace '[\\/]\.git[\\/]?$', ''
-    return (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessSupport\Deps') -replace '\\', '/'
+    $env:STRAT_DEPS_SOURCE_CACHE = (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessSupport\DepSources') -replace '\\', '/'
 }
 
 # ccache turns a repeated compile into a cache read: a full clang-cl build measured
 # 44.7 s cold and 11.7 s warm, for ~1% overhead when nothing hits. The cache is shared
-# by every worktree on the machine, in StratChessSupport, for the same reason the deps
-# cache is.
+# by every worktree on the machine, in StratChessSupport, for the same reason the
+# dependency sources are.
 #
 # Returns the bare directory, or $null when caching is off: in CI (a runner is discarded
 # after every job) or when ccache is not installed. The caller treats $null as "no
@@ -608,6 +600,7 @@ function Invoke-CMakeBuild {
     # commit's copy of this file).
     Push-Location $RepoRoot
     try {
+        Set-SharedDepSources
         $compilerCache = Get-SharedCompilerCache
         if ($compilerCache) {
             # A caller that already chose a cache directory keeps it. The shared one is a
@@ -637,8 +630,6 @@ function Invoke-CMakeBuild {
             # --log-level=WARNING drops the ~20 lines of compiler-ABI/pthread probing
             # CMake emits on every reconfigure; warnings and errors still surface.
             $configureArgs = @('--preset', $Preset, '--log-level=WARNING')
-            $depsCache = Get-SharedDepsCache
-            if ($depsCache) { $configureArgs += @('-D', "FETCHCONTENT_BASE_DIR=$depsCache") }
             if ($compilerCache) { $configureArgs += @('-D', 'CMAKE_CXX_COMPILER_LAUNCHER:STRING=ccache') }
 
             Invoke-CMakeConfigure -Arguments $configureArgs

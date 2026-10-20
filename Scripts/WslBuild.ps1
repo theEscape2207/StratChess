@@ -29,8 +29,11 @@ rm -rf "$work"
 mkdir -p "$work/src" "$bin_dir"
 trap 'rm -rf "$work"' EXIT
 tar -xf "$tar_path" -C "$work/src"
+# Both caches: a ref without cmake/DependencySources.cmake uses the FetchContent one; a current
+# ref forces its own _deps and reads shared sources instead.
 cmake -S "$work/src" -B "$work/build" -G Ninja --log-level=WARNING -DCMAKE_BUILD_TYPE=Release \
-    ${flags:+"-DCMAKE_CXX_FLAGS=$flags"} "-DFETCHCONTENT_BASE_DIR=$deps"
+    ${flags:+"-DCMAKE_CXX_FLAGS=$flags"} "-DFETCHCONTENT_BASE_DIR=$deps" \
+    "-DSTRAT_DEPS_SOURCE_CACHE=$HOME/strat-wsl-dep-sources"
 cmake --build "$work/build" --target StratChessEvolved --parallel
 cp "$work/build/StratChessEvolved" "$bin_dir/"
 grep -E '^CMAKE_(CXX_COMPILER|CXX_FLAGS|BUILD_TYPE):' "$work/build/CMakeCache.txt"
@@ -52,7 +55,7 @@ function ConvertTo-WslPath {
 }
 
 function Get-WslDepsDir {
-    <# The FetchContent cache on ext4, shared by every WSL build so dependencies download once. #>
+    <# The FetchContent cache of refs without cmake/DependencySources.cmake on ext4, for older refs; build.sh adds the shared sources. #>
     return "$(Invoke-Wsl -Argument 'printenv', 'HOME')/strat-wsl-deps"
 }
 

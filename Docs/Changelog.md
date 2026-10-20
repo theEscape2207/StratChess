@@ -23,6 +23,34 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-20: Shared dependency sources, private dependency builds (#860)
+
+### Changed
+- `cmake_minimum_required` and `CMakePresets.json` 3.25 → **3.30**, the first version where
+  CMP0168 defaults to NEW. Under the old policy every local tree shared one `FETCHCONTENT_BASE_DIR`,
+  including Catch2's compiled `catch2-build` and the population sub-builds. That put a latent race
+  and mismatched `Catch2.lib` files behind the test binary, and the cache worked only through the
+  OLD policy (#857). C++ module scanning (CMP0155) is turned off: there are no modules, and it would
+  add an uncached scan step to every source.
+- New `cmake/DependencySources.cmake`: `STRAT_DEPS_SOURCE_CACHE` holds one checkout per dependency
+  and tag (`<cache>/_deps/<name>-<tag>`), cloned under a lock on first use and handed to FetchContent
+  as its source directory. Every tree now builds its dependencies into its own `_deps`. A pin bump
+  clones a new directory instead of updating a shared one in place.
+- `build.ps1` and `Measure-CpuProfile.ps1` set the variable to `StratChessSupport\DepSources`
+  through the environment, so an existing tree adopts it on its next build; `WslBuild.ps1` passes
+  `$HOME/strat-wsl-dep-sources`. CI sets it per workflow and caches `build/dep-sources`; every
+  `cmake-deps-*`/`win-deps-*` key became `dep-sources-*`, so the first run after this rebuilds
+  ccache cold. `Deps\` stays for pre-#860 commits.
+- spdlog's `EXCLUDE_FROM_ALL` moved into its declaration (CMake 3.28).
+
+### Results
+- Engine binary unchanged: identical SHA-256 on Windows clang-cl and on WSL GCC Release. The
+  expanded compile and link commands are identical apart from the dependency paths, in all four
+  configurations.
+- Windows clang-cl Release, 3 runs each (median, range), before → after: fresh configure 6.2 s
+  (6.1–6.4) → 4.1 s (4.05–4.06); cold build without ccache 33.8 s (32.8–34.1) → 31.9 s (31.1–32.0),
+  now including Catch2's compile; no-op 0.11 s both.
+
 ## 2026-10-20: MoveSorter scoring context (#841)
 
 ### Changed

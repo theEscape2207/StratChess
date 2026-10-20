@@ -46,7 +46,10 @@ when the diff fails. Nightly's `lint-deep-windows` job runs all three over the w
 Consequence for the deps cache: `main` now only builds on Build/Engine merges, and `actions/cache`
 is branch-scoped so a PR can only restore a cache saved there. This is safe because the key is static
 and changes only on a dependency bump, which is a `CMakeLists.txt` edit and so still Build tier — and
-because eviction is seven days without *access*, which every PR restore refreshes.
+because eviction is seven days without *access*, which every PR restore refreshes. The cache holds
+dependency sources only, at `build/dep-sources`; each workflow hands that path to every configure
+through a workflow-level `STRAT_DEPS_SOURCE_CACHE`
+([`Workflow.md` → Dependency cache](Workflow.md#dependency-cache)).
 
 **ccache fronts the compiler on every build job**: the four Linux ones (`build-linux` Release and
 Debug, `sanitize-linux`, `tsan-linux`) and Nightly's Linux builds via
@@ -58,7 +61,7 @@ drop the launcher when the install reports unavailable: CMake does not check tha
 so it configures happily and then fails at the first Ninja edge.
 
 Caching the Windows Debug leg is why `CMakeLists.txt` sets `CMAKE_MSVC_DEBUG_INFORMATION_FORMAT` to
-`Embedded` (`/Z7`) and requires CMake 3.25 for CMP0141 — ccache cannot cache `/Zi`. Both legs matter
+`Embedded` (`/Z7`), which needs CMP0141 (CMake 3.25+; the minimum is 3.30) — ccache cannot cache `/Zi`. Both legs matter
 because this is a two-leg matrix: the job takes the duration of the slower leg, so caching one alone
 moved it ~5 s (#377/#380).
 
@@ -86,7 +89,7 @@ Each caching job keeps its own entry (`ccache-linux-gcc15-release`, `-debug`,
 `-debug`) at `CCACHE_MAXSIZE=400M` (`sanitize-linux`: 600M). `actions/cache`
 entries are immutable, so **every PR run writes six new ones** and the store carries a generation per
 run until LRU trims it — an order of magnitude more than one generation, against a budget shared with
-the FetchContent deps cache. That sharing was the risk this change was gated on: churn evicting a
+the dependency-source cache. That sharing was the risk this change was gated on: churn evicting a
 deps entry costs a fresh clone, turning ccache net negative while every job still reports green.
 
 **Nightly reuses three of those keys** (`-release`, `-asan-ubsan-stdlibdebug`,

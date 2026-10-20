@@ -569,7 +569,8 @@ is backed up.
 
 | Folder | What | Used by |
 |---|---|---|
-| `Deps\` | FetchContent checkouts of spdlog, nlohmann/json and Catch2 | `build.ps1`, `Measure-CpuProfile.ps1` |
+| `DepSources\` | Shared checkouts of spdlog, nlohmann/json and Catch2, one per tag: [Dependency cache](#dependency-cache) | `build.ps1`, `Measure-CpuProfile.ps1` |
+| `Deps\` | The pre-#860 FetchContent cache, sources plus build trees | builds of commits older than #860 (`-BaselineRef`, `-Before`) |
 | `Ccache\` | Compiler cache for clang-cl builds | `build.ps1` |
 | `Equivalence\` | Cached baseline builds | `Compare-SearchEquivalence.ps1 -BaselineRef` |
 | `EngineTesting\` | fastchess, Stockfish, perftcheck, opening books, cached reference builds | `Run-EloMatch.ps1`, `Run-PerftCheck.ps1`, `analyze_external_quality.py` |
@@ -579,9 +580,11 @@ is backed up.
 | `CpuProfiles\` | CPU-profile traces worth keeping, each with its matching binaries, one `<date>-<issue>\` folder per study | kept by hand from `Measure-CpuProfile.ps1` output |
 
 The scripts name these paths themselves, so moving a folder means changing each script that names
-it. **Moving `Deps\` moves only the `*-src` folders**, then deletes the build trees: an existing tree
-keeps its old `FETCHCONTENT_BASE_DIR`, and the `*-subbuild`/`*-build` folders record absolute
-paths. Moved whole, they broke once the old path was gone and left spdlog's clone empty (#768).
+it. **`DepSources\` can be moved or deleted freely**: it holds sources only, and a missing tag is
+re-cloned. An existing build tree records the path in its `CMakeCache.txt`, so after a move delete
+the build trees or reconfigure them with `-D STRAT_DEPS_SOURCE_CACHE=<new path>`. **Moving `Deps\`
+moves only the `*-src` folders**, then deletes the old trees that use it: they record absolute
+`*-build` paths, and moved whole they broke once the old path was gone (#768).
 
 ### Design records
 
@@ -612,20 +615,30 @@ past decisions and for retros, so a missed copy is tolerable and nothing is back
 
 ## Dependency cache
 
-`FetchContent` clones spdlog, nlohmann/json and Catch2 on the first configure of each build tree, so
-**a fresh worktree's first build needs network**. The committed presets place them in
-`${sourceDir}/build/_deps` — per worktree, and the path CI caches.
+Dependency **sources** are shared; what is built from them is not. Every build tree compiles Catch2
+into its own `<tree>/_deps` (`CMakeLists.txt` forces `FETCHCONTENT_BASE_DIR` there), so presets and
+worktrees never share a `Catch2.lib` (#860).
 
-`build.ps1` overrides that at configure time with `-D FETCHCONTENT_BASE_DIR=<repos>/StratChessSupport/Deps`,
-a single cache beside the main checkout — so only the first worktree on a machine ever clones and the
-rest need no network; moving it: [Support folders](#support-folders). It is skipped when `GITHUB_ACTIONS` is set, leaving CI on `build/_deps` where
-its cache key expects them.
+`STRAT_DEPS_SOURCE_CACHE` names the shared directory. `cmake/DependencySources.cmake` keeps one
+checkout per dependency and tag in `<cache>/_deps/<name>-<tag>`, clones a missing one on first
+configure, and points FetchContent at it. A pin bump therefore clones a new directory and leaves the
+old one untouched; delete old tags by hand. Unset, each tree fetches into its own `_deps`, which
+needs network on every fresh tree.
 
-Done via `-D` rather than a preset because `CMakeUserPresets.json` cannot redefine a preset that
-`CMakePresets.json` already declares — duplicate names are a hard error — and inheriting under a new
-name would change `binaryDir` too, which `Get-BuildArtifact.ps1` depends on. `CMakeUserPresets.json`
-is gitignored regardless: it is CMake's per-developer override file and is machine-specific by
-definition.
+| Where | Value | Handed over by |
+|---|---|---|
+| `build.ps1`, `Measure-CpuProfile.ps1` | `<repos>/StratChessSupport/DepSources` | the environment variable, unless already set |
+| `WslBuild.ps1` | `$HOME/strat-wsl-dep-sources` | `-D`, since the environment does not cross `wsl --exec` |
+| CI | `build/dep-sources`, cached by `actions/cache` | workflow-level `env:` |
+
+The environment is what lets an existing tree adopt the cache: Ninja's own re-run of CMake inherits
+it. A non-empty value is cached in `CMakeCache.txt` and wins afterwards; moving it:
+[Support folders](#support-folders). A bare `cmake --preset` from a shell without the variable fetches
+privately, and that tree adopts the cache once a configure sees the variable.
+
+Scripts that build an arbitrary older commit (`Measure-CpuProfile.ps1 -Before`, `WslBuild.ps1`) also
+pass the old `FETCHCONTENT_BASE_DIR`, so a pre-#860 commit still finds its cache in `Deps\`; a
+current commit ignores it.
 
 ---
 
