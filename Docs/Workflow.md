@@ -156,9 +156,11 @@ design doc and lists removed behaviour, plus the specialised reviewers and CI ar
 PR round found only wording on tooling and docs PRs (#624), and nothing on an engine PR that had
 already been through those reviews and a strength lab (#667).
 
-**Division of labour.** `code-review`, `eval-reviewer` and `search-reviewer` review the **diff**;
-the cross-agent reviewer reviews the **design doc**. Putting both on one artifact is where cost
-blows up for little added signal. The PR body states which approved decisions changed during
+**Division of labour.** `code-review` reviews the **diff** for standards and spec. `eval-reviewer`
+and `search-reviewer` review the **domain** — chess validity, search interactions, Elo prior — on
+the design doc first and the diff second, because a wrong valuation or mechanism is cheapest to
+catch before it is coded. The cross-agent reviewer reviews the **design doc**'s logic and
+provenance. Each axis has one owner; overlap is where cost blows up for little added signal. The PR body states which approved decisions changed during
 implementation, and the Harvest table is the natural place to notice them.
 
 **How to run a round** — the `*.review.md` channel, ranks, dispositions, lifecycle — is skill

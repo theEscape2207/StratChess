@@ -28,6 +28,14 @@ Run it yourself, fix inline, no subagent:
   change touches (duplicated, dead or stale code), and check the plan does not add to it. The same
   lens reviews the diff: `Docs/CodingStandards.md`.
 
+## Domain review
+
+A design touching search or evaluation goes to `search-reviewer` and/or `eval-reviewer` (routing:
+skill `open-pull-request` → Specialised reviewers) after the self-review, before the cross-agent
+hand-off. Brief it with the document's path, the issue and the baseline commit. Fix or reject every
+finding in the document, a rejection with its reason. The review is done when every finding has
+one of those dispositions.
+
 Then land the document in one commit (`Docs/Workflow.md` → Design document lifecycle), route it to
 review (skill `cross-agent-review`) and, once approved, execute it (skill `exec-plan`).
 
@@ -43,6 +51,7 @@ reports it:
 - **Where:** <absolute path to the document>, branch `<branch>` (local | pushed), commit `<sha>`
 - **Baseline:** `origin/main` `<sha>`
 - **Self-review:** ran; <only findings that changed a decision, scope, cost or risk, else "none changed a decision">
+- **Domain review:** <reviewer: N findings, which changed a decision> | not search or eval
 ```
 
 What the reviewer should aim at goes in the document's Review focus section, not in this block. The

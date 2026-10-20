@@ -86,7 +86,9 @@ carve-out exists for logging-only diffs — its six conditions are in `Docs/Work
 `search-reviewer` may be skipped. Read them before claiming a skip, and state the skip in the PR
 body so it is auditable.
 
-Brief a reviewer with the diff as a file and the tests already run with their results. Write review
+Brief a reviewer with the diff as a file, the tests already run with their results, and for a
+specialised reviewer also the issue, the design doc if one exists, and any measurement claimed.
+A specialised reviewer reviews the domain only; `code-review` owns standards and spec. Write review
 files as UTF-8 into the worktree's `build/`, which git ignores: a path outside the worktree can be
 unreadable to a reviewer's tools, and Windows PowerShell's `>` writes UTF-16, which reads as binary.
 Create `build/` if it is missing (a Docs or Tooling change never builds), then
