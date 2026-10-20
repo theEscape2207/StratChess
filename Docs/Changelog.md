@@ -23,6 +23,21 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-21: Capture history (#871)
+
+### Added
+- A per-thread capture-history table, `[continuation_index(moving piece, to)][victim >> 1]`, read by
+  `pvs()` ordering inside each SEE capture tier: `tier + HISTORY_MAX + 16 * MVV-LVA + entry`. At its
+  bound an entry is worth about ten pawns of victim, so a well-fed one can overturn MVV-LVA within a
+  tier but never cross tiers. Every `pvs()` cutoff gives a cutting capture or promotion a bonus and
+  every capture searched before the cut a malus, a quiet cut included, unlike the quiet rule.
+  Cleared and aged like the butterfly table. Quiescence does not read it.
+- UCI check `CaptureHistory`, default on; off is node-identical to the previous search.
+
+### Results
+- Profile screen flat (late-cut work -0.3% ±2.6, nodes +0.6% ±1.8); bench nps -0.7%, within
+  spread. Lab pending.
+
 ## 2026-10-20: Shared dependency sources, private dependency builds (#860)
 
 ### Changed
