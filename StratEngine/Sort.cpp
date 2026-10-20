@@ -111,11 +111,11 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, const Board& board)
 // scores is a separate question with a different answer available to it, and nothing here
 // forecloses it.
 void MoveSorter::ScoreUnordered(const MoveList& moveList, int first, int n, const MoveScoringContext& ctx,
-                                const Move& hash_move,
-                                std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx)
+                                const Move& hash_move, ScoredMoves& out_scored_idx)
 {
 	assert(first >= 0 && first <= n && n <= static_cast<int>(MoveList::MAX_MOVES));
 	const Board& board = ctx.board;
+	const auto& history = ctx.history[static_cast<int>(board.GetCurrentColor())];
 
 	for (int i = first; i < n; ++i) {
 		const Move& mv = moveList[i];
@@ -144,8 +144,7 @@ void MoveSorter::ScoreUnordered(const MoveList& moveList, int first, int n, cons
 		} else if (mv == ctx.killer1) {
 			s = kKiller1Score;
 		} else {
-			assert(static_cast<int>(ctx.side) >= 0 && static_cast<int>(ctx.side) < 2);
-			s = ctx.history[static_cast<int>(ctx.side)][mv.from()][mv.to()];
+			s = history[mv.from()][mv.to()];
 			// Each entry is bounded by HISTORY_MAX, so the sum stays below kLosingCaptureTier; ThreadData
 			// asserts that.
 			if (!ctx.cont.empty()) {
@@ -161,20 +160,19 @@ void MoveSorter::ScoreUnordered(const MoveList& moveList, int first, int n, cons
 }
 
 void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const MoveScoringContext& ctx, const Move& hash_move,
-                            std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx)
+                            ScoredMoves& out_scored_idx)
 {
 	ScoreUnordered(moveList, 0, n, ctx, hash_move, out_scored_idx);
 	OrderRemaining(moveList, out_scored_idx, 0, n);
 }
 
 void MoveSorter::ScoreAppended(const MoveList& moveList, int first, int n, const MoveScoringContext& ctx,
-                               std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx)
+                               ScoredMoves& scored_idx)
 {
 	ScoreUnordered(moveList, first, n, ctx, Move::EmptyMove(), scored_idx);
 }
 
-void MoveSorter::SelectBest(const MoveList& moveList, std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
-                            int first, int n)
+void MoveSorter::SelectBest(const MoveList& moveList, ScoredMoves& scored_idx, int first, int n)
 {
 	if (n - first < 2)
 		return;
@@ -188,15 +186,13 @@ void MoveSorter::SelectBest(const MoveList& moveList, std::array<std::pair<int, 
 }
 
 void MoveSorter::ScoreMovesBestFirst(const MoveList& moveList, int n, const MoveScoringContext& ctx,
-                                     const Move& hash_move,
-                                     std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx)
+                                     const Move& hash_move, ScoredMoves& out_scored_idx)
 {
 	ScoreUnordered(moveList, 0, n, ctx, hash_move, out_scored_idx);
 	SelectBest(moveList, out_scored_idx, 0, n);
 }
 
-void MoveSorter::OrderRemaining(const MoveList& moveList,
-                                std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx, int first, int n)
+void MoveSorter::OrderRemaining(const MoveList& moveList, ScoredMoves& scored_idx, int first, int n)
 {
 	assert(first >= 0 && n <= static_cast<int>(MoveList::MAX_MOVES));
 	if (n - first < 2)

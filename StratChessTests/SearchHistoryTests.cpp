@@ -94,8 +94,8 @@ TEST_CASE("History - a quiet cutoff penalizes exactly the searched quiets sorted
 	MoveList moveList;
 	MoveGenerator::ComputeLegalMoves(board, moveList);
 	const int n = static_cast<int>(moveList.size());
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, {board, WHITE, Move::EmptyMove(), Move::EmptyMove(), td->history, {}},
+	ScoredMoves scored_idx;
+	MoveSorter::ScoreMoves(moveList, n, {board, Move::EmptyMove(), Move::EmptyMove(), td->history, {}},
 	                       Move::EmptyMove(), scored_idx);
 	const auto sorted = [&](int i) { return moveList[scored_idx[static_cast<size_t>(i)].second]; };
 
@@ -181,14 +181,14 @@ TEST_CASE("Continuation history - a large entry outranks a larger history entry 
 	MoveList moveList;
 	MoveGenerator::ComputeLegalMoves(board, moveList);
 	const int n = static_cast<int>(moveList.size());
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+	ScoredMoves scored_idx;
 	const auto first = [&] { return moveList[scored_idx[0].second]; };
 
-	MoveSorter::ScoreMoves(moveList, n, {board, WHITE, Move::EmptyMove(), Move::EmptyMove(), td->history, {}},
+	MoveSorter::ScoreMoves(moveList, n, {board, Move::EmptyMove(), Move::EmptyMove(), td->history, {}},
 	                       Move::EmptyMove(), scored_idx);
 	CHECK(first() == by_history);
 
-	MoveSorter::ScoreMoves(moveList, n, {board, WHITE, Move::EmptyMove(), Move::EmptyMove(), td->history, rows},
+	MoveSorter::ScoreMoves(moveList, n, {board, Move::EmptyMove(), Move::EmptyMove(), td->history, rows},
 	                       Move::EmptyMove(), scored_idx);
 	CHECK(first() == by_continuation);
 }

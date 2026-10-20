@@ -878,12 +878,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	Move best_move;
 
 	// Stack-allocated scored index array — zero heap allocation per call.
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+	ScoredMoves scored_idx;
 	int n = static_cast<int>(move_list.size());
 	const eColor side = td.board.GetCurrentColor();
 
 	const ContinuationRows cont_rows = td.continuation_rows(ply, tuning_.continuation_history_plies);
-	const MoveScoringContext scoring{td.board, side, td.killers[ply][0], td.killers[ply][1], td.history, cont_rows};
+	const MoveScoringContext scoring = td.scoring_context(ply, cont_rows);
 	// Orders only [0]; the loop orders the rest on reaching si == 1, since most nodes never search a
 	// second move.
 	MoveSorter::ScoreMovesBestFirst(move_list, n, scoring, hash_move, scored_idx);
@@ -1376,10 +1376,8 @@ void AIPerplex::order_quiescence_moves(ThreadData& td, MoveList& move_list, bool
 	}
 
 	const int move_count = static_cast<int>(move_list.size());
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	const MoveScoringContext scoring{
-	    td.board, td.board.GetCurrentColor(), td.killers[ply][0], td.killers[ply][1], td.history, {}};
-	MoveSorter::ScoreMoves(move_list, move_count, scoring, Move::EmptyMove(), scored_idx);
+	ScoredMoves scored_idx;
+	MoveSorter::ScoreMoves(move_list, move_count, td.scoring_context(ply, {}), Move::EmptyMove(), scored_idx);
 
 	MoveList ordered;
 	for (int i = 0; i < move_count; ++i)
