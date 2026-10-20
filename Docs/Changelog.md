@@ -26,9 +26,10 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 ## 2026-10-20: MoveSorter scoring context (#841)
 
 ### Changed
-- `MoveSorter`'s scoring entry points take one `MoveScoringContext` (board, side, killers, history,
-  continuation rows) instead of six loose parameters, built once per `pvs()` frame and once per
-  in-check quiescence node. The hash move stays a separate argument, so `ScoreAppended` still
+- `MoveSorter`'s scoring entry points take one `MoveScoringContext` (board, killers, history,
+  continuation rows) instead of six loose parameters, built by `ThreadData::scoring_context` once
+  per `pvs()` frame and once per in-check quiescence node. The history row is the board's side to
+  move's. The score array is the `ScoredMoves` alias. The hash move stays a separate argument, so `ScoreAppended` still
   scores without one by signature. Killers and history are held by reference, so staged frames
   still read them when the quiets are appended. Search is node-identical.
 

@@ -343,8 +343,6 @@ TEST_CASE("Sort - Quiet move with positive history scores exactly that history v
 	REQUIRE(FindScore(scored_idx, moveList, n, quiet_move) == 42);
 }
 
-using ScoredMoves = ScoredMoves;
-
 // The order every entry point must produce, computed without Sort.cpp's comparator: the scored pairs
 // back in generation order, then stably sorted by score, descending.
 static std::vector<std::pair<int, int>> ReferenceOrder(const ScoredMoves& scored_idx, int n)
