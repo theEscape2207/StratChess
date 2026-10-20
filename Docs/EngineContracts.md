@@ -112,8 +112,10 @@ repeats the aborted-frame tripwire; change both together.
   exclude concurrent stores. See [TranspositionTable.h](../StratEngine/TranspositionTable.h).
 - **`ScoreMoves` applies one capture-tier policy to both its callers** — main `pvs()` and in-check
   quiescence. `See::see_ge(board, mv, 0)` splits captures into SEE >= 0 (above the killers, with all
-  promotions) and SEE < 0 (below the killers, still above every quiet); `MoveHelper::Value()` scores
-  within each. Moving the losing tier below the quiets is the tempting change and costs tens of
+  promotions) and SEE < 0 (below the killers, still above every quiet). Within each a move scores
+  `tier + HISTORY_MAX + 16 * MoveHelper::Value() + capture history`; the offset keeps every score at
+  or above its tier, which staged generation's `kGoodCaptureTier` trigger rests on. Only `pvs()` passes
+  the capture-history table; quiescence passes none, so its order is MVV-LVA's alone. Moving the losing tier below the quiets is the tempting change and costs tens of
   percent in nodes: captures are never LMR-reduced, so it only lowers the move number of every quiet
   it steps over.
 - **`pvs()` orders its move list lazily.** `MoveSorter::ScoreMovesBestFirst` orders only
