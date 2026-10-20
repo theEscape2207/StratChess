@@ -420,6 +420,23 @@ class AIPerlexTestFixture {
 	}
 	uint16_t& cont_key(int ply) const { return ai->td_.cont_key[ply]; }
 
+	void set_capture_history(bool enabled) const { ai->tuning_.capture_history_enabled = enabled; }
+	std::pair<int16_t, int16_t> capture_history_range() const
+	{
+		std::pair<int16_t, int16_t> range{0, 0};
+		for (const auto& row : ai->td_.capture_history)
+			for (int16_t score : row)
+				range = {std::min(range.first, score), std::max(range.second, score)};
+		return range;
+	}
+	// The capture-history entry of a capture or promotion on the fixture's board.
+	int16_t& capture_history_entry(std::string_view uci) const
+	{
+		const Move move = MoveFormatter::FromUCI(uci, board_);
+		REQUIRE_FALSE(move.is_null());
+		return ai->td_.capture_history_entry(move);
+	}
+
 	void poke_killer(int ply) const { ai->td_.store_killer(ply, AnyLegalMove()); }
 	bool has_killer(int ply) const { return !ai->td_.killers[ply][0].is_null(); }
 

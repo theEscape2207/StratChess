@@ -74,7 +74,11 @@ namespace {
 
 TEST_CASE("Staged generation searches the same tree", "[search]")
 {
-	SECTION("default tuning") { require_same_tree(SearchTuning{}); }
+	SECTION("default tuning")
+	{
+		REQUIRE(SearchTuning{}.capture_history_enabled); // capture history's scores are read at frame start
+		require_same_tree(SearchTuning{});
+	}
 	SECTION("singular extensions from depth 2, the lowest that keeps depth 2 staged")
 	{
 		SearchTuning tuning;
