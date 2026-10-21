@@ -276,7 +276,7 @@ class AIPerlexTestFixture {
 	}
 
 	// --- Internal iterative reduction pokes ---
-	void set_iir(bool enabled, int min_depth = 5) const
+	void set_iir(bool enabled, int min_depth = SearchTuning{}.iir_min_depth) const
 	{
 		ai->tuning_.iir_enabled = enabled;
 		ai->tuning_.iir_min_depth = min_depth;

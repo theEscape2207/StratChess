@@ -1939,7 +1939,8 @@ bool AIPerplex::late_move_pruning_eligible(int depth, int alpha, int beta, bool 
 	return std::abs(alpha) < GameValues::Mate_Threshold && std::abs(beta) < GameValues::Mate_Threshold;
 }
 
-// A PV node is exempt: it almost never lacks a hash move. A verification search keeps the depth its
+// No hash move also covers a MAIN entry stored without one, such as a fail-low, and a quiescence
+// entry, whose move pvs() does not take. A PV node is exempt: it almost never lacks a hash move. A verification search keeps the depth its
 // caller chose, and an evasion node has too few moves for ordering to be worth a ply.
 bool AIPerplex::iir_eligible(int depth, bool is_pv_node, bool in_check, bool is_exclusion_frame,
                              const Move& hash_move) const

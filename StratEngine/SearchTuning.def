@@ -91,10 +91,10 @@ TUNING_FIELD(int,     frontier_futility_margin,  200,  0,     1000, true, "Front
 TUNING_FIELD(bool,    late_move_pruning_enabled, true, false, true, true, "LateMovePruning", true)
 
 // Internal iterative reduction: a non-PV node with no hash move searches one ply shallower, and the
-// entry it stores orders the next visit. Off while it is measured (#96). The floor of 2 keeps the
-// reduced node above the quiescence hand-off pvs() has already passed.
-TUNING_FIELD(bool,    iir_enabled,   false, false, true,    true, "Iir",         true)
-TUNING_FIELD(int,     iir_min_depth, 5,     2,     MAX_PLY, true, "IirMinDepth", true)
+// entry it stores orders the next visit. The floor of 2 keeps the reduced node above the quiescence
+// hand-off pvs() has already passed.
+TUNING_FIELD(bool,    iir_enabled,   false, false, true,    true, "InternalIterativeReduction", true)
+TUNING_FIELD(int,     iir_min_depth, 5,     2,     MAX_PLY, true, "IirMinDepth",                true)
 
 // Staged generation in pvs(): captures first, quiets only when the loop reaches them. Either value
 // searches the same tree; off is the on/off equivalence test's reference path.

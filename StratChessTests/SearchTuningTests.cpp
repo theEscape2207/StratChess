@@ -396,7 +396,7 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(tuning == expected);
 
 	expected = SearchTuning{};
-	REQUIRE_FALSE(parse_uci("Iir", "true", tuning));
+	REQUIRE_FALSE(parse_uci("InternalIterativeReduction", "true", tuning));
 	expected.iir_enabled = true;
 	CHECK(tuning == expected);
 
@@ -541,7 +541,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name FrontierFutility type check default true",
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
 	    "option name LateMovePruning type check default true",
-	    "option name Iir type check default false",
+	    "option name InternalIterativeReduction type check default false",
 	    "option name IirMinDepth type spin default 5 min 2 max 256",
 	    // No negative half: SearchTuningSchema's read_uci() accepts unsigned decimal digits only,
 	    // so an advertised negative minimum would be a value the engine then refuses to apply.
