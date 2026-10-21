@@ -769,6 +769,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	const bool in_check = td.board.InCheck();
 
+	// Internal iterative reduction. Everything below sees the reduced depth, the TT store included, so
+	// the entry claims only the depth actually searched.
+	if (iir_eligible(depth, is_pv_node, in_check, is_exclusion_frame, hash_move))
+		--depth;
+
 	// The zugzwang floor both pruning guards below rest on, established once per node rather than
 	// once per guard. The two preconditions lead only as an ordering optimisation, so a PV node or
 	// one in check never pays for the popcount; both guards still test them for themselves. A node
@@ -1932,6 +1937,15 @@ bool AIPerplex::late_move_pruning_eligible(int depth, int alpha, int beta, bool 
 	if (beta != alpha + 1)
 		return false;
 	return std::abs(alpha) < GameValues::Mate_Threshold && std::abs(beta) < GameValues::Mate_Threshold;
+}
+
+// A PV node is exempt: it almost never lacks a hash move. A verification search keeps the depth its
+// caller chose, and an evasion node has too few moves for ordering to be worth a ply.
+bool AIPerplex::iir_eligible(int depth, bool is_pv_node, bool in_check, bool is_exclusion_frame,
+                             const Move& hash_move) const
+{
+	return tuning_.iir_enabled && !is_pv_node && !in_check && !is_exclusion_frame && hash_move.is_null() &&
+	       depth >= tuning_.iir_min_depth;
 }
 
 // Staging must not change the tree, and it delays reading the quiets' scores -- history, continuation

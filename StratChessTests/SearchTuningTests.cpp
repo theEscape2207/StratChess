@@ -54,6 +54,8 @@ namespace {
 		bool frontier_futility_enabled;
 		int frontier_futility_margin;
 		bool late_move_pruning_enabled;
+		bool iir_enabled;
+		int iir_min_depth;
 		bool staged_generation_enabled;
 		int continuation_history_plies;
 		int contempt;
@@ -91,6 +93,8 @@ namespace {
 	SAME_MEMBER(frontier_futility_enabled)
 	SAME_MEMBER(frontier_futility_margin)
 	SAME_MEMBER(late_move_pruning_enabled)
+	SAME_MEMBER(iir_enabled)
+	SAME_MEMBER(iir_min_depth)
 	SAME_MEMBER(staged_generation_enabled)
 	SAME_MEMBER(continuation_history_plies)
 	SAME_MEMBER(contempt)
@@ -149,6 +153,8 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.frontier_futility_enabled);
 	CHECK(tuning.frontier_futility_margin == 200);
 	CHECK(tuning.late_move_pruning_enabled);
+	CHECK_FALSE(tuning.iir_enabled);
+	CHECK(tuning.iir_min_depth == 5);
 	CHECK(tuning.staged_generation_enabled);
 	CHECK(tuning.continuation_history_plies == 2);
 	CHECK(tuning.contempt == 0);
@@ -223,6 +229,12 @@ TEST_CASE("SearchTuning bounded fields accept their domain edges and reject beyo
 	CHECK(accepts("reverse_futility_max_depth", MAX_PLY));
 	CHECK(rejection("reverse_futility_max_depth", 0) == Code::OutOfRange);
 	CHECK(rejection("reverse_futility_max_depth", MAX_PLY + 1) == Code::OutOfRange);
+
+	// Depth 1 would reduce to 0, below the quiescence hand-off pvs() has already passed.
+	CHECK(accepts("iir_min_depth", 2));
+	CHECK(accepts("iir_min_depth", MAX_PLY));
+	CHECK(rejection("iir_min_depth", 1) == Code::OutOfRange);
+	CHECK(rejection("iir_min_depth", MAX_PLY + 1) == Code::OutOfRange);
 
 	for (const char* margin_key : {"reverse_futility_margin", "frontier_futility_margin"}) {
 		INFO(margin_key);
@@ -384,6 +396,17 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(tuning == expected);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("Iir", "true", tuning));
+	expected.iir_enabled = true;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("IirMinDepth", "4", tuning));
+	expected.iir_min_depth = 4;
+	CHECK(tuning == expected);
+	CHECK(uci_rejection("IirMinDepth", "1") == Code::OutOfRange);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("Contempt", "20", tuning));
 	expected.contempt = 20;
 	CHECK(tuning == expected);
@@ -518,6 +541,8 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name FrontierFutility type check default true",
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
 	    "option name LateMovePruning type check default true",
+	    "option name Iir type check default false",
+	    "option name IirMinDepth type spin default 5 min 2 max 256",
 	    // No negative half: SearchTuningSchema's read_uci() accepts unsigned decimal digits only,
 	    // so an advertised negative minimum would be a value the engine then refuses to apply.
 	    "option name Contempt type spin default 0 min 0 max 100",

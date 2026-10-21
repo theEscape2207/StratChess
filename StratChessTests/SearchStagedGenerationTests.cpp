@@ -89,6 +89,13 @@ TEST_CASE("Staged generation searches the same tree", "[search]")
 		tuning.singular_min_depth = 1;
 		require_same_tree(tuning);
 	}
+	SECTION("internal iterative reduction from depth 2, which lands reduced frames in the staged band")
+	{
+		SearchTuning tuning;
+		tuning.iir_enabled = true;
+		tuning.iir_min_depth = 2;
+		require_same_tree(tuning);
+	}
 }
 
 TEST_CASE("Staged generation eligibility", "[search]")
