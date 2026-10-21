@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-21 | d9ca256, capture history with `CaptureHistoryDivisor=16` set over UCI: the entry divided by 16, too little to reorder captures across victim classes (#871; PR #873, never merged) | a44e30e | 26640 | 10+0.1 | **-1.37 +/- 3.08** | inconclusive @ 26640; fails the ship rule |
 | 2026-10-21 | d9ca256, capture history with `CaptureHistoryDivisor=8`: the entry divided by 8 before it joins the capture score (#871; PR #873) | a44e30e | 26640 | 10+0.1 | **+0.95 +/- 3.11** | inconclusive @ 26640; fails the ship rule |
 | 2026-10-21 | 8908cbd, capture history: a per-thread `[piece, to][victim]` table read inside each SEE capture tier (#871; PR #873) | a44e30e | 26640 | 10+0.1 | **-1.66 +/- 3.09** | inconclusive @ 26640 |
 | 2026-10-20 | 58224b9, `LateMovePruningNotImprovingCut=4`: LMP index 12 - 4 at not-improving nodes (#851; PR #862, never merged) | e11bbe4 | 32000 | 10+0.1 | **+1.79 +/- 2.82** | inconclusive @ 32000 |
@@ -100,6 +101,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-21 -- d9ca256, capture history, divisor 16 (#871) (26640 games)
+
+**Fails the ship rule; PR #873 closes unmerged.** Same rule, budget and reference as the divisor-8 row (design record `871 - capture-history`, Validation v2), the second and last arm it allowed. [Run `39607266189`](https://github.com/theEscape2207/StratChess/actions/runs/39607266189), about 4 h 20 min, 18 shards x 740 pairs, reference the merge base `a44e30e`, candidate the divisor-8 binary with `candidate_uci_options=CaptureHistoryDivisor=16` (validated against the binary's option table by the setup job; resolved options: the run's `strength-39607266189-comparison` artifact). Pooled Ptnml(0-2) [1041, 3142, 5054, 3047, 1036], score 49.80%, interval [-4.45, +1.71]; 6 of 18 shards favour the candidate by score, 12 the reference. Every shard logs PV-compliance warnings, which are reporting-only. Across the three weights (divisor 1, 8, 16: -1.66, +0.95, -1.37) no trend in weight is visible within the noise, which fits D7's alternative reading: the table learns too little to help at any weight. The next idea (D3's update rule or the aging) is a separate issue.
 
 ### 2026-10-21 -- d9ca256, capture history, divisor 8 (#871) (26640 games)
 

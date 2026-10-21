@@ -43,7 +43,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - Divisor 8: divisor 1 is node-identical to the full-weight build. Screen and wall clock flat; the
   division costs -0.22% nps, below bench resolution. Lab **+0.95 ±3.11** (26,640 games vs merge
   base), inconclusive; fails the ship rule, whose lower bound must clear 0.
-- Divisor 16: lab pending.
+- Divisor 16 (UCI option on the divisor-8 binary): lab **-1.37 ±3.08** (26,640 games vs merge
+  base), inconclusive; fails the ship rule. Neither arm met it, so the PR closed unmerged.
 
 ## 2026-10-20: Shared dependency sources, private dependency builds (#860)
 
