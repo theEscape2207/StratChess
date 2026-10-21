@@ -83,16 +83,14 @@ std::optional<std::string> FENParser::ParseFENImpl(const std::string& fen, FENGa
 
 	const std::string& pieceField = parts[0];
 
-	// Validate rank expansion to 8 files before deeper parse
+	// Validate rank expansion to 8 files before deeper parse. fenRx guarantees exactly 8 non-empty
+	// ranks, so ParsePiecePlacementField needs no file-count checks of its own.
 	{
 		std::istringstream rankss(pieceField);
 		std::string rankToken;
 		std::vector<std::string> ranks;
 		while (std::getline(rankss, rankToken, '/'))
 			ranks.emplace_back(rankToken);
-		if (ranks.size() != 8) {
-			return std::string("expected 8 ranks in piece placement");
-		}
 		for (size_t i = 0; i < ranks.size(); ++i) {
 			int files = 0;
 			for (const char c : ranks[i]) {
@@ -113,12 +111,8 @@ std::optional<std::string> FENParser::ParseFENImpl(const std::string& fen, FENGa
 		return err;
 	}
 
-	// Side to move
-	const std::string& side = parts[1];
-	if (side.size() != 1 || (side[0] != 'w' && side[0] != 'b')) {
-		return std::string("invalid side to move field");
-	}
-	outState.sideToMove = (side[0] == 'b') ? eColor::BLACK : eColor::WHITE;
+	// Side to move; fenRx admits only "w" or "b".
+	outState.sideToMove = (parts[1][0] == 'b') ? eColor::BLACK : eColor::WHITE;
 
 	// Castling rights
 	if (auto err = PopulateCastlingFlags(parts[2], outState.castlingRights)) {
@@ -144,7 +138,7 @@ std::optional<std::string> FENParser::ParseFENImpl(const std::string& fen, FENGa
 			if (half > MAX_FEN_HALFMOVE_CLOCK) {
 				return std::string("invalid halfmove clock");
 			}
-			outState.halfMoveClock = std::max(0, half);
+			outState.halfMoveClock = half;
 		} catch (...) {
 			return std::string("invalid halfmove clock");
 		}
@@ -183,16 +177,13 @@ std::optional<std::string> FENParser::PopulateCastlingFlags(const std::string& c
 	uint8_t rights = CastlingRights::NONE;
 
 	for (const char c : castling) {
-		uint8_t bit = CastlingRights::NONE;
+		uint8_t bit = CastlingRights::NONE; // fenRx admits only KQkq, so a match always exists
 		for (const auto& [ch, flag] : charToRight) {
 			if (c == ch) {
 				bit = flag;
 				break;
 			}
 		}
-
-		if (bit == CastlingRights::NONE)
-			return std::string("invalid castling character encountered");
 
 		if (rights & bit) // bit already set → duplicate
 			return std::string("duplicate castling character encountered");
@@ -218,10 +209,6 @@ std::optional<std::string> FENParser::ParsePiecePlacementField(const std::string
 			ranks.emplace_back(token);
 	}
 
-	if (ranks.size() != 8) {
-		return std::string("expected 8 ranks in placement field");
-	}
-
 	int whiteKingCount = 0;
 	int blackKingCount = 0;
 	int whitePawnCount = 0;
@@ -230,23 +217,12 @@ std::optional<std::string> FENParser::ParsePiecePlacementField(const std::string
 
 	for (std::size_t rank = 0; rank < 8; ++rank) {
 		const std::string& rstr = ranks[rank];
-		int fileIndex = 0; // 0..7
+		int fileIndex = 0;
 
 		for (const char c : rstr) {
 			if (std::isdigit(static_cast<unsigned char>(c))) {
-				const int n = c - '0';
-				if (n < 1 || n > 8) {
-					return std::string("invalid digit in rank expansion");
-				}
-				if (fileIndex + n > 8) {
-					return std::string("rank expands past 8 files");
-				}
-				fileIndex += n;
+				fileIndex += c - '0';
 			} else {
-				if (fileIndex >= 8) {
-					return std::string("too many files in rank");
-				}
-
 				ePiece piece = ePiece::NO_PIECE;
 				switch (c) {
 				case 'K':
@@ -289,8 +265,8 @@ std::optional<std::string> FENParser::ParsePiecePlacementField(const std::string
 					piece = ePiece::BLACK_PAWN;
 					++blackPawnCount;
 					break;
-				default:
-					return std::string("invalid piece character in placement");
+				default: // fenRx admits no other character
+					break;
 				}
 
 				// Pawns cannot appear on first or last rank
@@ -307,10 +283,6 @@ std::optional<std::string> FENParser::ParsePiecePlacementField(const std::string
 					return std::string("too many pieces (>32)");
 				}
 			}
-		}
-
-		if (fileIndex != 8) {
-			return std::string("rank expands to wrong number of files");
 		}
 	}
 

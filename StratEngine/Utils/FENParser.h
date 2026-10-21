@@ -56,6 +56,7 @@ class FENParser final {
 	// Parse only the piece placement field (the part before the first space).
 	// Fills outVec with (piece, square) tuples in the same square-indexing used in Board.
 	// On success returns std::nullopt. On failure returns an error message.
+	// Requires a field ParseFENImpl has already checked: fenRx's shape and 8 files per rank.
 	static std::optional<std::string> ParsePiecePlacementField(const std::string& placement,
 	                                                           std::vector<std::tuple<ePiece, eSquare>>& outVec);
 
