@@ -2,6 +2,11 @@
 
 **Issue:** #871 (child A4 of #636)
 
+**v2.** v1 (`871 - capture-history v1.md`) added the table at full weight, an entry at its bound
+worth about ten pawns of victim. Its lab was flat, -1.66 ±3.09 over 26,640 games (run
+`39508612158`), on a flat screen, so v2 adds D7: a divisor on the history term, default 8. D1–D6
+stand as built in `8908cbd`.
+
 ## Goal
 
 Captures are ordered with no learning at all. `MoveSorter::ScoreUnordered()` uses SEE to choose the
@@ -17,9 +22,10 @@ moving piece, target square and victim, can win back part of it.
 
 ## Review focus
 
-- **D2's weight.** A history entry at its bound is worth about ten pawns of victim value, so a
-  well-fed entry overturns MVV-LVA inside a tier. This value is a judgement, not a tuned constant,
-  and the lab measures only this one value.
+- **D7's divisor value.** 8 is chosen from the victim-class gaps, not tuned. The v1 lab measured
+  divisor 1; v2's lab measures 8 and nothing in between.
+- **D7's premise.** v1 being flat is read as "too much weight". The other reading, that the table
+  learns too little to help at any weight, predicts v2 flat too, and then the PR closes.
 - **D3's malus on quiet cuts.** Earlier captures are penalized when a quiet or killer cuts. The
   quiet-history rule does the opposite: captures do not penalize quiets. Check that the asymmetry
   is right.
@@ -32,7 +38,8 @@ moving piece, target square and victim, can win back part of it.
 
 - add a per-thread capture-history table, updated at `pvs()` cutoffs;
 - add it to the capture and promotion scores in `pvs()` ordering, inside the existing SEE tiers;
-- add a runtime kill switch, `CaptureHistory`, that is node-identical to the merge base when off.
+- add a runtime kill switch, `CaptureHistory`, that is node-identical to the merge base when off;
+- divide the history term by `CaptureHistoryDivisor`, default 8, before it joins the score (v2).
 
 **This change will not:**
 
@@ -82,7 +89,8 @@ Rejected:
 - Replacing MVV-LVA with `victim value × k + history`, as Stockfish does. That changes two things
   at once, the base order and the learning, and one lab run could not attribute the result.
   It is a later arm.
-- Dividing the history term by a tunable divisor: there is no evidence yet to tune against.
+- Dividing the history term by a tunable divisor: v1 had no evidence to tune against. v1's flat
+  lab is that evidence, and D7 now takes this option.
 
 ### D3: Updates at every `pvs()` cutoff, at the existing site after the abort guard
 
@@ -137,6 +145,59 @@ turn it off on one binary.
 The PR ships with the default `true`, because it is the lab vehicle. If the lab is negative, the PR
 closes. Per the standing rule, the end state is either a default-true switch or deletion.
 
+### D7 (v2): Divisor `capture_history_divisor`, default 8, UCI `CaptureHistoryDivisor`
+
+The capture score becomes `tier + HISTORY_MAX + 16 * mvv_lva + entry / divisor`. C++ division
+truncates toward zero, which is monotone in the entry, so the table's order is kept and only its
+weight against MVV-LVA changes. Learning is untouched: bonus, malus, gravity and aging still work on
+the full-range entry.
+
+**Why 8.** MVV-LVA is the victim's value minus the attacker's `value >> 4`: 6 for a pawn, 56 for a
+queen. At a scale of 16, captures of adjacent victim classes (pawn 100, knight and bishop 300, rook
+500, queen 900) sit 2,400 to 4,000 points apart once the attacker term is counted. QxN against PxP
+is the narrowest. Captures two classes apart, and rook against queen, sit at least 5,600 apart. Two
+entries at opposite bounds swing a pair of captures by `2 * 16,384 / divisor`:
+
+| Divisor | Max swing | In pawns of victim | Can invert |
+|---|---|---|---|
+| 1 (v1) | 32,768 | ~20 | anything in a tier, PxQ against PxP included |
+| 4 | 8,192 | ~5 | pawn against rook |
+| **8** | **4,096** | **~2.6** | **adjacent classes only (pawn against a minor, a minor against a rook)** |
+| 16 | 2,048 | ~1.3 | nothing across classes (2,048 < 2,400); reorders attackers and squares within a victim class |
+
+8 lets a well-fed entry reorder a capture against the next victim class up or down, but never two
+classes away. Step 0's late cuts were good captures cutting after a failed good capture. It did not
+split those by victim class, so it does not say which row of the table they need. 8 is the middle
+row that still crosses class boundaries. 16 is the fallback arm if 8 is flat and the owner wants
+one more run (Validation).
+
+**Shape.**
+- `SearchTuning.def`: `TUNING_FIELD(int, capture_history_divisor, 8, 1, 16384, true,
+  "CaptureHistoryDivisor", true)`, next to `capture_history_enabled`. The lower bound of 1 rules out
+  division by zero. At 16,384 the quotient is in [-1, 1], so the term is nearly off. It follows
+  the `LmrHistoryDivisor` precedent, a runtime division in the hot path.
+- `MoveScoringContext` gains `int capture_history_divisor = 1`, read only when `capture_history`
+  is non-null.
+- `ThreadData::scoring_context(ply, cont, use_capture_history)` keeps its bool and gains a fourth
+  parameter, `int capture_history_divisor`, with no default, for D5's reason. `pvs()` passes
+  `tuning_.capture_history_divisor`. In-check quiescence passes `1`, which nothing reads, because
+  its table pointer is null.
+- The tier-span `static_assert` is unchanged: a divisor of at least 1 only shrinks the term.
+
+Rejected:
+- **A shift instead of a divisor.** It saves the integer division on each scored capture. But it
+  departs from the `LmrHistoryDivisor` precedent and allows only powers of two. One 32-bit `idiv`
+  per scored capture is about 10 to 20 cycles, a few per node, so the cost is expected below bench
+  noise (#555: layout alone moved nps 3.9%). The bench pass catches only a gross cost. The lab,
+  run on the shipping binary, decides.
+- **Scaling MVV-LVA up instead.** A larger `kCaptureMvvLvaScale` gives the same order, but at 8 × 16
+  the tier span would pass the 100,000 gap to the next tier.
+- **Default 1, with the lab setting the option.** The default would then need a second change once
+  the lab passed. Shipping 8 as the default makes the lab measure the binary as it would merge, and
+  needs no proof that an option reached the engine.
+- **Sweeping several divisors in the lab.** Each arm costs about 4 hours. A screen cannot pick
+  between them: #664's flat screen gained +6.9 Elo in the lab.
+
 ## Assumptions I cannot verify from the code
 
 - **Stockfish weights a captured pawn at about 7 × 208 points against a capture-history bound of
@@ -152,6 +213,14 @@ closes. Per the standing rule, the end state is either a default-true switch or 
   not carried by a few: the reachable share per position has a mean of 10.0%, an SD of 6.6% and a
   maximum of 59.6%.
 
+- **(v2) v1 was flat because the term was too heavy.** Nothing in v1's measurements separates that
+  from a table that learns too little. The screen moved captures' share of late cuts only from
+  28.6% to 27.4%, which fits either reading. The practice D2 cites leans against the premise: the
+  Stockfish recollection above puts an entry at its bound near 7 pawns, close to v1's 10, so divisor
+  8 is about a sixth of that weight. "Learns too little" (D3's update rule, the bonus size, aging
+  every iteration) is at least as likely. search-reviewer's prior for v2 is 0 to +3 Elo, direction
+  uncertain. The v2 lab is the test (Validation, v2).
+
 ## Invariants
 
 - The tier order is unchanged. Every capture or promotion score lies in `[tier, tier + 100,000)`,
@@ -159,6 +228,7 @@ closes. Per the standing rule, the end state is either a default-true switch or 
   `assert` checks `mvv_lva >= 0` and `mvv_lva <= kMaxMvvLva` at scoring.
 - `|entry| <= HISTORY_MAX`, through `apply_history()`.
 - `CaptureHistory=false` is node-identical to the merge base at `Threads=1`.
+- (v2) `CaptureHistoryDivisor=1` is node-identical to v1, `8908cbd`, at `Threads=1`.
 - No capture-history write is reachable from an aborted child. The updates sit at the existing
   cutoff site, below the per-move `IsAborted()` guard.
 - Each thread owns its table. Nothing is shared under Lazy SMP, and `Threads=1` stays
@@ -193,6 +263,28 @@ call. Nothing before the lab gates it (#636 Method).
 - **Lab.** About 20k games at 10+0.1 against the merge base, 3 to 3.5 hours. For calibration, #664
   showed a flat screen gaining +6.9 Elo in the lab.
 
+### v2 (D7)
+
+- **Equivalence at divisor 1.** A throwaway build with the default set to 1, run through
+  `Compare-SearchEquivalence.ps1 -BaselineRef 8908cbd`, must give IDENTICAL. The off-switch check
+  above is re-run against the merge base: the divisor must not leak into the off path.
+- **`[search]` tests, each one falsified by a mutation:**
+  - with entries at opposite bounds, PxP outranks PxR in the same tier at divisor 1 and does not
+    at divisor 8 (the gap of at least 5,600 is wider than 8's 4,096 swing);
+  - with PxN's entry at the upper bound and NxR's at the lower, PxN outranks NxR at divisor 8, so 8
+    still crosses one class boundary;
+  - `Validate()` rejects a divisor of 0.
+- **Cost.** `Run-Bench.ps1` ×3 alternating against `8908cbd`, for the division per scored capture.
+- **Screen.** `Compare-SearchProfile.ps1 -Seeds 8 -Depth 12` against the merge base, as in v1. It is
+  informational and gates nothing.
+- **Lab.** About 26k games at 10+0.1 against the merge base, with no options. **Ship rule, declared
+  now:** the PR merges if Elo minus its error bar is above 0. Otherwise:
+  - if v2's point estimate beats v1's -1.66 by at least one standard error (about 1.6 Elo at 26k
+    games), the trend points at weight, and one more arm at divisor 16 is the owner's call. A second
+    arm roughly doubles the false-pass rate, from about 2.5% to about 5%; that is accepted.
+  - if not, the PR closes. Weight is then not the lever, and the next idea is D3's update rule or
+    the aging, as a separate issue.
+
 ## Cost
 
 - **Size:** 50–200 lines in the engine, plus tests. Files: `Sort.h`, `Sort.cpp`, `ThreadData.h`,
@@ -203,6 +295,9 @@ call. Nothing before the lab gates it (#636 Method).
 - **Review:** `search-reviewer` on this document and on the diff, plus the code review.
 - **Measurement:** the screen takes about 25 minutes, the wall clock about 15 minutes, and the lab
   3 to 3.5 hours. The lab is the owner's call.
+- **v2:** under 20 lines in `SearchTuning.def`, `Sort.h`, `Sort.cpp`, `ThreadData.h`,
+  `AIPerplex.cpp`, plus tests. Bench and screen take about 45 minutes, and the lab about 4 hours.
+  `search-reviewer` reviews D7 and the diff.
 - **Optional part, the probe re-split on the screen:** a local cherry-pick and one extra screen run
   of about 25 minutes. It covers the risk that the gain, or the loss, comes from somewhere other
   than the cuts step 0 targeted. Drop it if the screen and the lab are enough.
@@ -215,5 +310,6 @@ call. Nothing before the lab gates it (#636 Method).
 | D2 offset and scale, and why the offset protects the staged trigger | comment in `ScoreUnordered()`, next to the existing tier comment |
 | D3 malus on any cutoff, and its asymmetry with the quiet rule | comment at the cutoff site in `pvs()` |
 | D6 kill switch | comment on its `SearchTuning.def` entry |
+| D7 divisor, its value and the class-gap table's conclusion | comment on its `SearchTuning.def` entry; the "about ten pawns" line in `ScoreUnordered()` restated for the divisor, with the attacker-term gaps |
 | Score formula inside the tiers | `Docs/EngineContracts.md`, the `ScoreMoves` bullet |
 | Step 0, screen, wall clock and lab results | `Measurements/ci-per-change.md`, with a dated `Docs/Changelog.md` entry |
