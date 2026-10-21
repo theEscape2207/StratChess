@@ -23,6 +23,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-22: Sync-LabPgn copies every successful lab run (#791)
+
+### Added
+- `Scripts/Sync-LabPgn.ps1`: lists the successful `strength.yml` runs missing from `StrengthLabPgn`,
+  oldest first with days left before GitHub's 90-day expiry; `-Download` copies them and adds their
+  README rows. The rule is every successful run, not only those a ledger row names. `measure-strength`
+  runs it when a lab run completes.
+
 ## 2026-10-21: game_settings.json cleanup, last core coverage gaps (#878)
 
 ### Changed
