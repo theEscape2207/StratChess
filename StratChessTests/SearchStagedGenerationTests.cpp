@@ -118,3 +118,26 @@ TEST_CASE("Staged generation eligibility", "[search]")
 		CHECK_FALSE(fix.staged_generation_eligible(1, false, none));
 	}
 }
+
+TEST_CASE("Staged generation: a frame with only good captures ends after them", "[search]")
+{
+	// The king's three neighbours each hold an undefended knight, so all its moves are winning
+	// captures and not even a pseudo-legal quiet exists. The staged root frame searches the three,
+	// finds nothing to append and must stop rather than read past the list: a Debug build asserts
+	// on that read, and in Release it shows only as extra nodes.
+	const auto search_depth_one = [](bool staged) {
+		SearchTuning tuning;
+		tuning.staged_generation_enabled = staged;
+		AIPerplex ai(AIPerplexConfig{.default_depth = 1, .hash_mb = 1, .verbose_logging = false});
+		REQUIRE_FALSE(ai.SetTuning(tuning).has_value());
+		return ai.Search(Board("k7/8/8/8/8/8/6nn/6nK w - - 0 1"), SearchLimits::fixed_depth(1));
+	};
+	const SearchResult on = search_depth_one(true);
+	const SearchResult off = search_depth_one(false);
+
+	REQUIRE(on.depth_completed == 1);
+	CHECK(MoveHelper::IsCapture(on.best_move));
+	CHECK(on.best_move == off.best_move);
+	CHECK(on.best_score == off.best_score);
+	CHECK(on.nodes_searched == off.nodes_searched);
+}
