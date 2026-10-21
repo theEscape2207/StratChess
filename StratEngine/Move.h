@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <cstdint>
 #include <iosfwd>
 #include "PieceHelper.h"
@@ -111,8 +112,16 @@ class MoveList {
 	[[nodiscard]] const Move* begin() const noexcept { return moves_.data(); }
 	[[nodiscard]] const Move* end() const noexcept { return moves_.data() + size_; }
 
-	[[nodiscard]] Move& operator[](size_t idx) noexcept { return moves_[idx]; }
-	[[nodiscard]] const Move& operator[](size_t idx) const noexcept { return moves_[idx]; }
+	[[nodiscard]] Move& operator[](size_t idx) noexcept
+	{
+		assert(idx < size_);
+		return moves_[idx];
+	}
+	[[nodiscard]] const Move& operator[](size_t idx) const noexcept
+	{
+		assert(idx < size_);
+		return moves_[idx];
+	}
 
 	const Move& front() const noexcept { return moves_[0]; }
 	const Move& back() const noexcept { return moves_[size_ - 1]; }
