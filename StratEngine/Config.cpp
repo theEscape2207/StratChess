@@ -139,35 +139,16 @@ namespace {
 		return limits;
 	}
 
-	Config::PlayerConfig ParsePlayerConfig(const json& p, int defaultDepth, unsigned defaultType)
+	Config::PlayerConfig ParsePlayerConfig(const json& p, const char* side, int defaultDepth, unsigned defaultType)
 	{
 		Config::PlayerConfig cfg;
 		cfg.type = p.value("type", defaultType);
 
 		if (p.contains("search_limits")) {
 			cfg.search_limits = ParseSearchLimitsBlock(p["search_limits"]);
-		} else {
-			// Legacy fallback: "max_depth"/"time_limit" map onto depth/movetime.
-			// "time_limit" always resolves to a real movetime (defaulting to
-			// 15000ms), matching the old unconditional
-			// p.value("time_limit", 15000u) — otherwise a "max_depth"-only
-			// legacy config would fall through resolve_limits() into the
-			// UCI-style 1h "depth only" budget instead of a real time cap.
-			bool usedLegacyKeys = false;
-			if (p.contains("max_depth")) {
-				cfg.search_limits.depth = ReadDepth(p["max_depth"], "max_depth");
-				usedLegacyKeys = true;
-			} else if (p.contains("depth")) {
-				cfg.search_limits.depth = ReadDepth(p["depth"], "depth");
-			}
-			cfg.search_limits.movetime = std::chrono::milliseconds(p.value("time_limit", 15000u));
-			if (p.contains("time_limit"))
-				usedLegacyKeys = true;
-			if (usedLegacyKeys) {
-				spdlog::default_logger()->warn(
-				    "game_settings.json: player uses legacy \"max_depth\"/\"time_limit\" keys — "
-				    "migrate to the \"search_limits\" block");
-			}
+		} else if (cfg.type == Config::DEFAULT_PLAYER_TYPE) {
+			throw std::invalid_argument(std::string("game_settings.json: players.") + side +
+			                            ": a Search player needs a search_limits block");
 		}
 		cfg.depth = static_cast<unsigned>(cfg.search_limits.depth.value_or(defaultDepth));
 
@@ -194,8 +175,8 @@ void Config::SetupPlayerConfig(const json& config)
 	// with an absent key is UB, and every key on this path is absent in a
 	// settings file that is merely wrong rather than malformed.
 	const json& players = config.at("game").at("players");
-	white_ = ParsePlayerConfig(players.at("white"), DEFAULT_DEPTH, DEFAULT_PLAYER_TYPE);
-	black_ = ParsePlayerConfig(players.at("black"), DEFAULT_DEPTH, DEFAULT_PLAYER_TYPE);
+	white_ = ParsePlayerConfig(players.at("white"), "white", DEFAULT_DEPTH, DEFAULT_PLAYER_TYPE);
+	black_ = ParsePlayerConfig(players.at("black"), "black", DEFAULT_DEPTH, DEFAULT_PLAYER_TYPE);
 }
 
 Config::PlayerConfig Config::GetPlayerFromConfig(bool bWhite) const noexcept
