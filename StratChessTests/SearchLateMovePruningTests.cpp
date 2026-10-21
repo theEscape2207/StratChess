@@ -220,6 +220,20 @@ TEST_CASE("Late move pruning: skips late quiet moves from the thirteenth legal m
 	CHECK(fix.search_board_restored());
 }
 
+TEST_CASE("Late move pruning: the tuned move index moves the threshold", "[search][lmp]")
+{
+	auto fix = enabled_fixture(kMixedFen);
+	fix.set_late_move_pruning_min_index(8);
+
+	const Tally tally = fix.tally_late_moves(/*ply=*/1, 8);
+	REQUIRE(tally.candidates > late_moves(fix).candidates);
+
+	search_depth2(fix, kHighAlpha);
+
+	CHECK(fix.lmp_skips() == tally.candidates);
+	CHECK(fix.search_board_restored());
+}
+
 TEST_CASE("Late move pruning: late captures, promotions and killers are searched", "[search][lmp]")
 {
 	auto fix = enabled_fixture(kCrowdedFen);
