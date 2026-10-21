@@ -123,8 +123,8 @@ TEST_CASE("Staged generation: a frame with only good captures ends after them", 
 {
 	// The king's three neighbours each hold an undefended knight, so all its moves are winning
 	// captures and not even a pseudo-legal quiet exists. The staged root frame searches the three,
-	// finds nothing to append and must stop rather than read past the list: a Debug build asserts
-	// on that read, and in Release it shows only as extra nodes.
+	// finds nothing to append and must stop rather than read past the list. That read searches a
+	// stale entry again, which shows only as extra nodes.
 	const auto search_depth_one = [](bool staged) {
 		SearchTuning tuning;
 		tuning.staged_generation_enabled = staged;

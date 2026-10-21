@@ -32,7 +32,6 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - The `"setup"` key is gone: an optional `"FEN"` key alone sets the starting position, and absent
   or empty means the standard one. Only `"FEN"`-prefixed values were ever honoured; `"custom"`
   placement had no implementation.
-- `MoveList::operator[]` asserts its index is inside the list. Debug only; Release is unchanged.
 
 ### Removed
 - The legacy player keys `max_depth`, `time_limit` and a top-level `depth`, with their deprecation
