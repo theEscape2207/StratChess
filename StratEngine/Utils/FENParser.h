@@ -2,7 +2,6 @@
 
 #include "defines.h"
 #include "GameState.h"
-#include "Config.h"
 #include <cstdint>
 #include <expected>
 #include <string>
@@ -42,12 +41,6 @@ class FENParser final {
 	// message per repair -- the channel a caller reads when spdlog is off (UCI mode).
 	static bool ValidatePositionAgainstFENMetadata(const Board& board, FENGameState& state,
 	                                               std::vector<std::string>* outWarnings = nullptr) noexcept;
-
-	// Utility: Convert FENGameState to Config::GameConfig (for backward compatibility)
-	static void ToGameConfig(const FENGameState& state, Config::GameConfig& outConfig) noexcept;
-
-	// Utility: Convert Config::GameConfig to FENGameState
-	static FENGameState FromGameConfig(const Config::GameConfig& config) noexcept;
 
   private:
 	static std::optional<std::string> ParseFENImpl(const std::string& fen, FENGameState& outState,

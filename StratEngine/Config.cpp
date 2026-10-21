@@ -78,30 +78,6 @@ void Config::ReadFEN(const std::string& fen, Board& board) const
 	}
 }
 
-//***************************************
-// Method:      CheckBoardSetupData
-// Description:
-// FullName:    private Game::CheckBoardSetupData const
-// Returns:     bool -
-// Parameter:   const std::string& strPiece -
-// Parameter:   const std::string& regexStr -
-// Remark:
-//***************************************
-bool Config::CheckBoardSetupData(const std::string& /*strPiece*/, const std::string& /*regex*/) const
-{
-	//FIXME: Not yet ported away from Poco
-	/*const Poco::RegularExpression regPiece(regex);
-	if (!regPiece.match(strPiece))
-	{
-		std::stringstream str;
-
-		str << "Invalid board setup data found: Piece on square "
-			<< strPiece.c_str() << " with type: " << strPiece.c_str() << std::endl;
-		spdlog::default_logger()->warn(str.str());
-		return false;
-	}*/
-	return true;
-}
 void Config::ReadConfigFile(const std::string& filename, Board& board)
 {
 	spdlog::default_logger()->debug("Reading Config File");

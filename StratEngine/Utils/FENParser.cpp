@@ -419,24 +419,3 @@ bool FENParser::ValidatePositionAgainstFENMetadata(const Board& board, FENGameSt
 
 	return true;
 }
-
-// Conversion utilities
-void FENParser::ToGameConfig(const FENGameState& state, Config::GameConfig& outConfig) noexcept
-{
-	outConfig.sideToMove = state.sideToMove;
-	outConfig.epSquare = state.epSquare;
-	outConfig.castlingRights = state.castlingRights;
-	outConfig.num50moves = state.halfMoveClock;
-	outConfig.fullMoveCounter = state.fullMoveCounter;
-}
-
-FENParser::FENGameState FENParser::FromGameConfig(const Config::GameConfig& config) noexcept
-{
-	FENGameState state;
-	state.sideToMove = config.sideToMove;
-	state.epSquare = config.epSquare;
-	state.castlingRights = config.castlingRights;
-	state.halfMoveClock = config.num50moves;
-	state.fullMoveCounter = config.fullMoveCounter;
-	return state;
-}
