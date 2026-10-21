@@ -260,7 +260,7 @@ TEST_CASE("Config: a missing key is an error, not undefined behaviour", "[config
 	}
 	SECTION("no \"players\"")
 	{
-		TempConfig cfg(R"({ "game": { "setup": "default" } })");
+		TempConfig cfg(R"({ "game": { "FEN": "" } })");
 		Config reader = MakeReader();
 		REQUIRE_THROWS_AS(reader.ReadConfigFile(cfg.path(), board), nlohmann::json::out_of_range);
 	}
@@ -338,7 +338,6 @@ TEST_CASE("Config: a FEN setup is applied to the board", "[config]")
 	// which is what this asserts: the position, and the metadata that comes with it.
 	TempConfig cfg(R"({
         "game": {
-            "setup": "FEN",
             "FEN": "r3k2r/8/8/4pP2/8/8/8/R3K2R w KQkq e6 7 12",
             "players": {
                 "white": { "type": 1, "search_limits": {} },
@@ -363,7 +362,6 @@ TEST_CASE("Config: a malformed FEN falls back to the default board", "[config]")
 {
 	TempConfig cfg(R"({
         "game": {
-            "setup": "FEN",
             "FEN": "not-a-fen",
             "players": {
                 "white": { "type": 1, "search_limits": {} },
@@ -380,4 +378,16 @@ TEST_CASE("Config: a malformed FEN falls back to the default board", "[config]")
 	REQUIRE(board.GetPiece(e1) == ePiece::WHITE_KING);
 	REQUIRE(board.GetPiece(d8) == ePiece::BLACK_QUEEN);
 	REQUIRE(board.ep_square() == NO_SQUARE);
+}
+
+TEST_CASE("Config: no FEN key starts from the standard opening position", "[config]")
+{
+	TempConfig cfg(R"({ "game": { "players": { "white": { "type": 0 }, "black": { "type": 0 } } } })");
+
+	Board board("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+	Config reader = MakeReader();
+	REQUIRE_NOTHROW(reader.ReadConfigFile(cfg.path(), board));
+
+	REQUIRE(board.GetPiece(d1) == ePiece::WHITE_QUEEN);
+	REQUIRE(board.GetPiece(d8) == ePiece::BLACK_QUEEN);
 }

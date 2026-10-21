@@ -99,7 +99,7 @@ if ($SelfTest) {
            Content = '// "FEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"'
            Expect = $false }
         @{ Name = 'no FEN key at all fails'
-           Content = '{ "setup": "FEN" }'
+           Content = '{ "players": {} }'
            Expect = $false }
         @{ Name = 'a different key ending in FEN does not count'
            Content = '"startFEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"'

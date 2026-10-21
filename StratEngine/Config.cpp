@@ -4,36 +4,14 @@
 #include "StdAfx.h"
 #include "Config.h"
 #include "Board.h"
-#include "Game.h"
 #include "SearchTuningSchema.h"
-
-namespace {
-
-	// Case-insensitive comparison of the first n characters. Replaces MSVC's
-	// _strnicmp, which has no portable equivalent in the standard library.
-	bool iequals_n(std::string_view a, std::string_view b, std::size_t n)
-	{
-		if (a.size() < n || b.size() < n) {
-			return false;
-		}
-		for (std::size_t i = 0; i < n; ++i) {
-			const auto ca = static_cast<unsigned char>(a[i]);
-			const auto cb = static_cast<unsigned char>(b[i]);
-			if (std::tolower(ca) != std::tolower(cb)) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-} // namespace
 
 using json = nlohmann::json;
 
 //***************************************
 // Method:      ReadBoardSetup
 // Description:
-// FullName:    private Game::ReadBoardSetup const
+// FullName:    private Config::ReadBoardSetup const
 // Returns:     void -
 // Parameter:   const json& config -
 // Remark:
@@ -47,23 +25,15 @@ void Config::ReadBoardSetup(const json& config, Board& board) const
 	// naming the key, in both configurations.
 	const json& game = config.at("game");
 
-	// if nothing is found - use default setup
-	const std::string setupType = game.value("setup", "default");
-	const std::string FENKey = "FEN";
-	if (iequals_n(setupType, FENKey, 3)) {
-		spdlog::default_logger()->debug("FEN configuration");
-
-		const std::string FENstring = game.value(FENKey, "");
-		if (FENstring.empty()) {
+	// No "FEN" key means the standard opening position.
+	const std::string FENstring = game.value("FEN", "");
+	if (FENstring.empty()) {
+		if (game.contains("FEN"))
 			spdlog::default_logger()->warn("FEN key found, but no string - selecting default board");
-			board.SetDefaultBoard();
-			return;
-		}
-		ReadFEN(FENstring, board);
-	} else {
-		spdlog::default_logger()->debug("Default board selected");
 		board.SetDefaultBoard();
+		return;
 	}
+	ReadFEN(FENstring, board);
 }
 
 void Config::ReadFEN(const std::string& fen, Board& board) const
