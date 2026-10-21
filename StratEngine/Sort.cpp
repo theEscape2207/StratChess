@@ -138,10 +138,8 @@ void MoveSorter::ScoreUnordered(const MoveList& moveList, int first, int n, cons
 			//
 			// Inside a tier, capture history / divisor adds to the scaled MVV-LVA. The offset keeps every
 			// score at or above its tier's constant, which staged generation's kGoodCaptureTier trigger
-			// rests on. At divisor 1 an entry at its bound is worth about ten pawns of victim; at the
-			// default 8, two entries at opposite bounds swing a pair by 4,096, enough to cross one
-			// victim class (2,400-4,000 apart with the attacker term) but never two (5,600 or more).
-			// With no table the score is increasing in mvv_lva, so the order is unchanged.
+			// rests on. How many victim classes a fed entry can cross depends on the divisor; see
+			// capture_history_divisor in SearchTuning.def. With no table the score is increasing in mvv_lva, so the order is unchanged.
 			const int mvv_lva = MoveHelper::Value(mv, board.GetEffectiveMovPiece(mv), board.GetCapturedPiece(mv));
 			assert(mvv_lva >= 0 && mvv_lva <= kMaxMvvLva);
 			int in_tier = kCaptureHistoryOffset + kCaptureMvvLvaScale * mvv_lva;

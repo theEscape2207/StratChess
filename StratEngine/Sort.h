@@ -73,7 +73,7 @@ class MoveSorter final {
 	// sorted descending by score. Priority: hash move -> SEE >= 0 captures and all promotions
 	// -> killer0 -> killer1 -> SEE < 0 captures -> quiets, with generation order as the final
 	// tie-break. A quiet scores its history entry plus its entry in each continuation row present,
-	// and a capture or promotion adds its capture-history entry when the context has the table;
+	// and a capture or promotion adds its capture-history entry / divisor when the context has the table;
 	// quiescence passes neither.
 	static void ScoreMoves(const MoveList& moveList, int n, const MoveScoringContext& ctx, const Move& hash_move,
 	                       ScoredMoves& out_scored_idx);
