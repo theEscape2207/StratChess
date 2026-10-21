@@ -21,6 +21,10 @@ namespace {
 	// python-chess.
 	constexpr const char* kCaptures = "k7/8/4p3/3p3Q/2r1q3/3P4/1N6/K7 w - - 0 1";
 
+	// White to move, every capture good: fxe5 (PxP), bxc5 (PxR), gxh5 (PxN), Nxc5 (NxR) and Nxe5.
+	// Verified against python-chess.
+	constexpr const char* kVictimClasses = "7k/8/8/2r1p2n/1P3PP1/3N4/8/K7 w - - 0 1";
+
 	struct Ordered {
 		MoveList list;
 		ScoredMoves scored_idx{};
@@ -37,12 +41,14 @@ namespace {
 		}
 	};
 
-	Ordered order(const ThreadData& td, bool use_capture_history, const Move& hash_move = Move::EmptyMove())
+	Ordered order(const ThreadData& td, bool use_capture_history, const Move& hash_move = Move::EmptyMove(),
+	              int divisor = 1)
 	{
 		Ordered o;
 		MoveGenerator::ComputeLegalMoves(td.board, o.list);
 		o.n = static_cast<int>(o.list.size());
-		MoveSorter::ScoreMoves(o.list, o.n, td.scoring_context(0, {}, use_capture_history), hash_move, o.scored_idx);
+		MoveSorter::ScoreMoves(o.list, o.n, td.scoring_context(0, {}, use_capture_history, divisor), hash_move,
+		                       o.scored_idx);
 		return o;
 	}
 
@@ -185,4 +191,32 @@ TEST_CASE("Capture history - in-check quiescence ignores a fed table", "[search]
 
 	fix.capture_history_entry("e1e2") = kMax;
 	CHECK(fix.quiescence_order() == empty);
+}
+
+TEST_CASE("Capture history - the divisor bounds how many victim classes an entry crosses", "[search][history]")
+{
+	auto td = thread_data(kVictimClasses);
+	const auto ranks_above = [&](const Move& a, const Move& b, int divisor) {
+		const Ordered o = order(*td, true, Move::EmptyMove(), divisor);
+		return o.index_of(a) < o.index_of(b);
+	};
+
+	SECTION("two classes apart: crossed at full weight, not at 8")
+	{
+		const Move pxp = MoveFormatter::FromUCI("f4e5", td->board);
+		const Move pxr = MoveFormatter::FromUCI("b4c5", td->board);
+		td->capture_history_entry(pxp) = kMax;
+		td->capture_history_entry(pxr) = static_cast<int16_t>(-kMax);
+		CHECK(ranks_above(pxp, pxr, 1));
+		CHECK_FALSE(ranks_above(pxp, pxr, 8));
+	}
+	SECTION("one class apart: crossed at 8, not at 16")
+	{
+		const Move pxn = MoveFormatter::FromUCI("g4h5", td->board);
+		const Move nxr = MoveFormatter::FromUCI("d3c5", td->board);
+		td->capture_history_entry(pxn) = kMax;
+		td->capture_history_entry(nxr) = static_cast<int16_t>(-kMax);
+		CHECK(ranks_above(pxn, nxr, 8));
+		CHECK_FALSE(ranks_above(pxn, nxr, 16));
+	}
 }
