@@ -8,8 +8,8 @@
     its $SelfTestCoverers entry in Validate-PrePR.ps1.
 
     A ref is exported as a tar (git archive; a dirty worktree through a temporary index) and
-    built on WSL's ext4: FetchContent fails over /mnt/c, and a worktree's .git file holds a
-    Windows path WSL cannot follow. WSL is driven through a generated .sh with `wsl --exec`,
+    built on WSL's ext4: a build over /mnt/c is about 2x slower, and a worktree's .git file
+    holds a Windows path WSL cannot follow. WSL is driven through a generated .sh with `wsl --exec`,
     never shell text, whose quoting mangles backslashes.
 #>
 
