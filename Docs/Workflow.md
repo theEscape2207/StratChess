@@ -816,9 +816,9 @@ cmake --build build --target StratChessTests --parallel
 hit — useful when surveying, and useless as a gate, because a recovering build exits 0 with the
 findings only in the log. Pair it with `ASAN_OPTIONS=halt_on_error=0`. CI leaves it off.
 
-Building over `/mnt/c` does not work — `FetchContent` fails with `configure_file: Operation not
-permitted`, because DrvFs cannot perform the permission operations CMake asks for. Extract onto
-native ext4.
+Extract onto native ext4. Building over `/mnt/c` works since WSL 3.0.4, but a Release
+`StratChessTests` build there took 152 s against 71 s on ext4 (#773). Before 3.0.4 it failed in
+`FetchContent` with `configure_file: Operation not permitted`.
 
 ---
 
