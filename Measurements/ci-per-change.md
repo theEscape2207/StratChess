@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-21 | d9ca256, capture history with `CaptureHistoryDivisor=8`: the entry divided by 8 before it joins the capture score (#871; PR #873) | a44e30e | 26640 | 10+0.1 | **+0.95 +/- 3.11** | inconclusive @ 26640; fails the ship rule |
 | 2026-10-21 | 8908cbd, capture history: a per-thread `[piece, to][victim]` table read inside each SEE capture tier (#871; PR #873) | a44e30e | 26640 | 10+0.1 | **-1.66 +/- 3.09** | inconclusive @ 26640 |
 | 2026-10-20 | 58224b9, `LateMovePruningNotImprovingCut=4`: LMP index 12 - 4 at not-improving nodes (#851; PR #862, never merged) | e11bbe4 | 32000 | 10+0.1 | **+1.79 +/- 2.82** | inconclusive @ 32000 |
 | 2026-10-19 | e6cd42f, `ReverseFutilityImprovingRelief=50`: RFP slack `margin*depth - 50` at improving nodes, floored at 0 (#851; PR #854, never merged) | 03141cb | 19980 | 10+0.1 | **-2.75 +/- 3.54** | inconclusive @ 19980 |
@@ -99,6 +100,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-21 -- d9ca256, capture history, divisor 8 (#871) (26640 games)
+
+**Fails the ship rule declared before dispatch** (design record `871 - capture-history`, Validation v2: merge if Elo minus its error bar is above 0). [Run `39568512988`](https://github.com/theEscape2207/StratChess/actions/runs/39568512988), about 3 h 55 min, 20 shards x 666 pairs, reference the merge base `a44e30e`, no options. Pooled Ptnml(0-2) [1068, 3086, 4946, 3145, 1075], score 50.14%, interval [-2.16, +4.06]; 10 of 20 shards favour the candidate by score, 9 the reference. Every shard logs PV-compliance warnings, which are reporting-only. Its estimate beats the divisor-1 row's -1.66 by 2.61, past the rule's predeclared 1.6, so one more arm at divisor 16 was the owner's call; the owner ran it. A gap of 2.61 sits about 1.2 SE from zero. Informational and flat: screen late-cut work 0.0% +/- 2.6, nodes +0.3% +/- 1.8; wall clock d14 geomean 1.014 [0.968, 1.062]; the division costs -0.22% [-0.81, +0.38] nps, below bench resolution.
 
 ### 2026-10-21 -- 8908cbd, capture history (#871) (26640 games)
 

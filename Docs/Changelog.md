@@ -40,7 +40,10 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - Full weight (divisor 1, discarded): profile screen flat (late-cut work -0.3% ±2.6, nodes +0.6%
   ±1.8); bench nps -0.7%, within spread. Lab **-1.66 ±3.09** (26,640 games vs merge base),
   inconclusive.
-- Divisor 8: divisor 1 is node-identical to the full-weight build. Lab pending.
+- Divisor 8: divisor 1 is node-identical to the full-weight build. Screen and wall clock flat; the
+  division costs -0.22% nps, below bench resolution. Lab **+0.95 ±3.11** (26,640 games vs merge
+  base), inconclusive; fails the ship rule, whose lower bound must clear 0.
+- Divisor 16: lab pending.
 
 ## 2026-10-20: Shared dependency sources, private dependency builds (#860)
 
