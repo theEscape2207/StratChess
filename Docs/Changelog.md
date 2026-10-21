@@ -27,16 +27,20 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
 ### Added
 - A per-thread capture-history table, `[continuation_index(moving piece, to)][victim >> 1]`, read by
-  `pvs()` ordering inside each SEE capture tier: `tier + HISTORY_MAX + 16 * MVV-LVA + entry`. At its
-  bound an entry is worth about ten pawns of victim, so a well-fed one can overturn MVV-LVA within a
-  tier but never cross tiers. Every `pvs()` cutoff gives a cutting capture or promotion a bonus and
+  `pvs()` ordering inside each SEE capture tier: `tier + HISTORY_MAX + 16 * MVV-LVA + entry / 8`.
+  The divisor (UCI spin `CaptureHistoryDivisor`, 1-16,384) lets a well-fed entry reorder a capture
+  against the adjacent victim class (pawn/minor, minor/rook) but not rook/queen or two classes
+  apart; at 1 an entry at its bound is worth about ten pawns and can invert PxQ against PxP. The
+  table never crosses tiers. Every `pvs()` cutoff gives a cutting capture or promotion a bonus and
   every capture searched before the cut a malus, a quiet cut included, unlike the quiet rule.
   Cleared and aged like the butterfly table. Quiescence does not read it.
 - UCI check `CaptureHistory`, default on; off is node-identical to the previous search.
 
 ### Results
-- Profile screen flat (late-cut work -0.3% ±2.6, nodes +0.6% ±1.8); bench nps -0.7%, within
-  spread. Lab **-1.66 ±3.09** (26,640 games vs merge base), inconclusive.
+- Full weight (divisor 1, discarded): profile screen flat (late-cut work -0.3% ±2.6, nodes +0.6%
+  ±1.8); bench nps -0.7%, within spread. Lab **-1.66 ±3.09** (26,640 games vs merge base),
+  inconclusive.
+- Divisor 8: divisor 1 is node-identical to the full-weight build. Lab pending.
 
 ## 2026-10-20: Shared dependency sources, private dependency builds (#860)
 
