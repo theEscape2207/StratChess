@@ -9,7 +9,7 @@
     Failed and cancelled runs are not copied.
 
     With no flags it only lists, oldest first, with the days each run has left. Exit 0 when
-    nothing is missing, 1 when something is.
+    nothing is missing, 1 when a run is missing or a folder lacks its README row.
 
     With -Download it fetches each missing run into
     <StrengthLabPgn>\<run date>_strength-<run id>\, the layout `gh run download` writes and the
@@ -215,7 +215,7 @@ function Invoke-SelfTest {
 
     Write-Host '==> Self-test' -ForegroundColor Cyan
 
-    # Expiry: the issue's own pair -- a run on 2026-08-05 goes on 2026-11-03.
+    # A run on 2026-08-05 expires on 2026-11-03.
     $created = ConvertTo-Utc '2026-08-05T13:43:28Z'
     Assert-Equal 'folder name uses the UTC run date' (Get-RunFolderName $created '31011587737') '2026-08-05_strength-31011587737'
     Assert-Equal 'days left, same day as expiry' (Get-DaysLeft $created (ConvertTo-Utc '2026-11-03T00:00:00Z')) 0
@@ -375,7 +375,9 @@ function Add-ReadmeRow {
 if ($PgnRoot -eq '') {
     # --git-common-dir is the main repository's .git however deeply this worktree is nested.
     $repoRoot = Split-Path $PSScriptRoot -Parent
-    $mainRoot = (& git -C $repoRoot rev-parse --path-format=absolute --git-common-dir) -replace '[\\/]\.git[\\/]?$', ''
+    $commonDir = & git -C $repoRoot rev-parse --path-format=absolute --git-common-dir
+    if ($LASTEXITCODE -ne 0) { throw "git rev-parse --git-common-dir failed in $repoRoot" }
+    $mainRoot = $commonDir -replace '[\\/]\.git[\\/]?$', ''
     $PgnRoot = Join-Path (Split-Path $mainRoot -Parent) 'StratChessSupport\StrengthLabPgn'
 }
 if (-not (Test-Path $PgnRoot)) { throw "StrengthLabPgn folder not found: $PgnRoot" }
@@ -407,7 +409,8 @@ foreach ($run in $missing) {
 Write-Host ("{0} successful runs, {1} local, {2} missing" -f $runList.Count, $localIds.Count, $copyable.Count)
 foreach ($e in $copyable) {
     Write-Host ("  {0}  {1}  {2}  {3,2} shards  {4,3} days left" -f
-        $e.Run.Id, (Get-RunFolderName $e.Run.Created $e.Run.Id).Substring(0, 10), $e.Run.Sha.Substring(0, 9), $e.Shards, $e.DaysLeft) `
+        $e.Run.Id, $e.Run.Created.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture),
+        $e.Run.Sha.Substring(0, 9), $e.Shards, $e.DaysLeft) `
         -ForegroundColor ($e.DaysLeft -le 14 ? 'Yellow' : 'White')
 }
 if ($unavailable.Count -gt 0) {
