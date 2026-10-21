@@ -36,7 +36,7 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
 ### Results
 - Profile screen flat (late-cut work -0.3% ±2.6, nodes +0.6% ±1.8); bench nps -0.7%, within
-  spread. Lab pending.
+  spread. Lab **-1.66 ±3.09** (26,640 games vs merge base), inconclusive.
 
 ## 2026-10-20: Shared dependency sources, private dependency builds (#860)
 

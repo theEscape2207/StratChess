@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-21 | 8908cbd, capture history: a per-thread `[piece, to][victim]` table read inside each SEE capture tier (#871; PR #873) | a44e30e | 26640 | 10+0.1 | **-1.66 +/- 3.09** | inconclusive @ 26640 |
 | 2026-10-20 | 58224b9, `LateMovePruningNotImprovingCut=4`: LMP index 12 - 4 at not-improving nodes (#851; PR #862, never merged) | e11bbe4 | 32000 | 10+0.1 | **+1.79 +/- 2.82** | inconclusive @ 32000 |
 | 2026-10-19 | e6cd42f, `ReverseFutilityImprovingRelief=50`: RFP slack `margin*depth - 50` at improving nodes, floored at 0 (#851; PR #854, never merged) | 03141cb | 19980 | 10+0.1 | **-2.75 +/- 3.54** | inconclusive @ 19980 |
 | 2026-10-19 | 6b24787, `LmrImprovingRelief=1`: R - 1 at improving nodes, after the history clamp (#848; PR #849, never merged) | 719af11 | 19980 | 10+0.1 | **-13.71 +/- 3.56** | regression |
@@ -98,6 +99,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-21 -- 8908cbd, capture history (#871) (26640 games)
+
+**Lab vehicle for PR #873; no ship rule was declared before dispatch.** [Run `39508612158`](https://github.com/theEscape2207/StratChess/actions/runs/39508612158), about 4 h, 20 shards x 666 pairs, reference the merge base `a44e30e`, candidate at its default `CaptureHistory=true`. Pooled Ptnml(0-2) [1047, 3174, 4999, 3059, 1041], score 49.76%, interval [-4.74, +1.43]; 7 of 20 shards favour the candidate by score. Holding -1.66 would take about 92,500 games to exclude zero. An earlier 20k / 18-shard run (`39507198939`) was cancelled at the owner's request and replaced by this one. Beforehand, all flat: profile screen (`-Seeds 8 -Depth 12`, 200 positions) late-cut work -0.3% +/- 2.6, nodes +0.6% +/- 1.8, captures' share of late cuts 28.6% -> 27.4%; bench nps geomean -0.7%, within run spread; wall clock d14 per-position geomean 1.006 [0.958, 1.056]. At its bound an entry is worth about ten pawns of victim, so the next arm is a smaller weight (a divisor on the entry), not removal.
 
 ### 2026-10-20 -- 58224b9, `LateMovePruningNotImprovingCut=4` (#851) (32000 games)
 
