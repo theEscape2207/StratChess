@@ -116,6 +116,77 @@ TEST_CASE("FENParser::ParseFEN: fewer than 4 fields reports the field-count erro
 	CHECK(parsed.error() == "too few fields in FEN");
 }
 
+// External input: each malformed FEN must be rejected with the diagnostic of the check that
+// catches it, and each inconsistent-but-usable one repaired rather than loaded as written.
+TEST_CASE("FENParser: malformed FENs are rejected and inconsistent metadata is repaired", "[fen]")
+{
+	SECTION("rejections")
+	{
+		struct Case {
+			const char* fen;
+			const char* error;
+		};
+		const Case cases[] = {
+		    {"rnbqkbnr1/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "rank 0 expands to 9 files (expected 8)"},
+		    {"rnbqkbnr/ppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "rank 1 expands to 7 files (expected 8)"},
+		    // Seven slashes, side to move and castling characters are all enforced by the format
+		    // regex, so these never reach the field-specific checks behind it.
+		    {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP w KQkq - 0 1", "overall format invalid"},
+		    {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR x KQkq - 0 1", "overall format invalid"},
+		    {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkx - 0 1", "overall format invalid"},
+		    {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KKq - 0 1", "duplicate castling character encountered"},
+		    {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 99999999999 1", "invalid halfmove clock"},
+		    {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 99999999999", "invalid fullmove counter"},
+		    {"P3k3/8/8/8/8/8/8/4K3 w - - 0 1", "pawn on invalid rank"},
+		    {"4k3/8/8/8/8/8/8/p3K3 w - - 0 1", "pawn on invalid rank"},
+		    {"QQQQQQQQ/QQQQQQQQ/qqqqqqqq/qqqqqqqq/8/8/8/K6k w - - 0 1", "too many pieces (>32)"},
+		    {"4k3/8/8/8/8/P7/PPPPPPPP/4K3 w - - 0 1", "too many pawns"},
+		};
+		for (const Case& c : cases) {
+			INFO(c.fen);
+			const auto parsed = FENParser::ParseFEN(c.fen);
+			REQUIRE_FALSE(parsed.has_value());
+			CHECK(parsed.error() == c.error);
+		}
+	}
+
+	SECTION("repairs")
+	{
+		struct Case {
+			const char* fen;
+			const char* castling; // ExtractFEN field 3 after the repair
+			const char* ep;       // ExtractFEN field 4 after the repair
+			bool repaired;
+		};
+		// The two wrong-rank rows carry a pawn of each colour, so the pawn check behind the rank
+		// check would pass either square: only the rank check can clear them.
+		const Case cases[] = {
+		    {"r3k2r/8/8/8/8/8/8/4K2R w KQkq - 0 1", "Kkq", "-", true}, // no white queen-side rook
+		    {"r3k2r/8/8/8/8/8/8/R3K3 w KQkq - 0 1", "Qkq", "-", true}, // no white king-side rook
+		    {"r3k3/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "KQq", "-", true}, // no black king-side rook
+		    {"r3k2r/8/8/8/8/8/8/R2K3R w KQkq - 0 1", "kq", "-", true}, // white king off e1
+		    {"4k3/8/8/4p3/4P3/8/8/4K3 w - e3 0 1", "-", "-", true},    // ep rank wrong for white to move
+		    {"4k3/8/8/4p3/4P3/8/8/4K3 b - e6 0 1", "-", "-", true},    // ep rank wrong for black to move
+		    {"4k3/8/8/8/8/8/8/4K3 w - e6 0 1", "-", "-", true},        // no black pawn behind e6
+		    {"4k3/8/8/8/4P3/8/8/4K3 b - e3 0 1", "-", "e3", false},    // consistent: kept
+		};
+		Board board;
+		std::vector<std::string> repairs;
+		for (const Case& c : cases) {
+			INFO(c.fen);
+			REQUIRE(board.SetupFromFEN(c.fen, repairs));
+			std::istringstream fss(board.ExtractFEN());
+			const std::vector<std::string> fields{std::istream_iterator<std::string>(fss),
+			                                      std::istream_iterator<std::string>()};
+			REQUIRE(fields.size() == 6);
+			CHECK(fields[2] == c.castling);
+			CHECK(fields[3] == c.ep);
+			// A repair is reported, so a GUI user can see the position was not loaded as written.
+			CHECK(repairs.empty() == !c.repaired);
+		}
+	}
+}
+
 namespace {
 	// Throws on every log call to verify metadata correction does not depend on logging.
 	class ThrowingSink final : public spdlog::sinks::base_sink<std::mutex> {

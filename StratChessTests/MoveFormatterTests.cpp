@@ -417,6 +417,41 @@ TEST_CASE("MoveFormatter::FromUCI - basic moves", "[formatter]")
 	}
 }
 
+// A GUI sends underpromotions as plain UCI ("e7e8r"); each suffix maps to its own move type.
+TEST_CASE("MoveFormatter::FromUCI - underpromotion to rook and bishop", "[formatter]")
+{
+	struct Case {
+		const char* fen;
+		const char* uci;
+		eSquare from;
+		eSquare to;
+		MoveType expected;
+	};
+	// White pawn b7 under a black rook on a8; black pawn g2 under a white rook on h1.
+	constexpr const char* kWhiteFen = "r7/1P6/8/8/8/8/8/4K2k w - - 0 1";
+	constexpr const char* kBlackFen = "4k2K/8/8/8/8/8/6p1/7R b - - 0 1";
+	const Case cases[] = {
+	    {kWhiteFen, "b7b8r", b7, b8, MoveType::PROMOTION_ROOK},
+	    {kWhiteFen, "b7a8r", b7, a8, MoveType::PROMOTION_ROOK_CAPTURE},
+	    {kWhiteFen, "b7b8b", b7, b8, MoveType::PROMOTION_BISHOP},
+	    {kWhiteFen, "b7a8b", b7, a8, MoveType::PROMOTION_BISHOP_CAPTURE},
+	    {kBlackFen, "g2g1r", g2, g1, MoveType::PROMOTION_ROOK},
+	    {kBlackFen, "g2h1r", g2, h1, MoveType::PROMOTION_ROOK_CAPTURE},
+	    {kBlackFen, "g2g1b", g2, g1, MoveType::PROMOTION_BISHOP},
+	    {kBlackFen, "g2h1b", g2, h1, MoveType::PROMOTION_BISHOP_CAPTURE},
+	};
+
+	Board board;
+	for (const Case& c : cases) {
+		INFO(c.uci);
+		REQUIRE(board.SetupFromFEN(c.fen));
+		const Move m = MoveFormatter::FromUCI(c.uci, board);
+		CHECK(m.from() == c.from);
+		CHECK(m.to() == c.to);
+		CHECK(MoveHelper::AsType(m) == c.expected);
+	}
+}
+
 // ── Round-trip: ToUCI -> FromUCI ──────────────────────────────────────────────
 
 TEST_CASE("MoveFormatter - ToUCI/FromUCI round-trip for common move types", "[formatter]")
