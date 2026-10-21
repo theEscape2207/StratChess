@@ -103,6 +103,12 @@ TUNING_FIELD(int,     continuation_history_plies, 2, 0, 2, true, nullptr, true)
 // inside their SEE tier. Off reads and writes no table and leaves the search node-identical to one
 // without it; exposed so a match can turn it off on one binary.
 TUNING_FIELD(bool,    capture_history_enabled, true, false, true, true, "CaptureHistory", true)
+// The capture-history entry is divided by this, truncated toward zero, before it joins the score;
+// learning keeps the full-range entry. MVV-LVA puts adjacent victim classes 2,400-4,000 points apart
+// and classes two apart at least 5,600, so at 8 the largest swing, 2 * 16,384 / 8 = 4,096, reorders a
+// capture against the next class up or down but never two away. 1 is full weight; at 16,384 the
+// term is nearly off.
+TUNING_FIELD(int,     capture_history_divisor, 8, 1, 16'384, true, "CaptureHistoryDivisor", true)
 
 // Contempt: how many centipawns a draw is scored BELOW equality, for the side the engine is
 // playing. At 0 every drawn score is GameValues::Draw

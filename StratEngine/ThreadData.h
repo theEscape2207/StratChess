@@ -251,12 +251,19 @@ struct ThreadData {
 	}
 
 	// The ordering inputs for a node at ply, scoring quiets with cont, and captures with capture
-	// history when use_capture_history is set.
-	MoveScoringContext scoring_context(int ply, ContinuationRows cont, bool use_capture_history) const noexcept
+	// history divided by capture_history_divisor when use_capture_history is set.
+	MoveScoringContext scoring_context(int ply, ContinuationRows cont, bool use_capture_history,
+	                                   int capture_history_divisor) const noexcept
 	{
 		assert(ply >= 0 && ply < MAX_PLY);
-		return {
-		    board, killers[ply][0], killers[ply][1], history, cont, use_capture_history ? capture_history : nullptr};
+		assert(capture_history_divisor >= 1);
+		return {board,
+		        killers[ply][0],
+		        killers[ply][1],
+		        history,
+		        cont,
+		        use_capture_history ? capture_history : nullptr,
+		        capture_history_divisor};
 	}
 
 	static bool is_quiet(const Move& move) noexcept

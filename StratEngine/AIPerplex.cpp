@@ -883,7 +883,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const eColor side = td.board.GetCurrentColor();
 
 	const ContinuationRows cont_rows = td.continuation_rows(ply, tuning_.continuation_history_plies);
-	const MoveScoringContext scoring = td.scoring_context(ply, cont_rows, tuning_.capture_history_enabled);
+	const MoveScoringContext scoring =
+	    td.scoring_context(ply, cont_rows, tuning_.capture_history_enabled, tuning_.capture_history_divisor);
 	// Orders only [0]; the loop orders the rest on reaching si == 1, since most nodes never search a
 	// second move.
 	MoveSorter::ScoreMovesBestFirst(move_list, n, scoring, hash_move, scored_idx);
@@ -1382,7 +1383,8 @@ void AIPerplex::order_quiescence_moves(ThreadData& td, MoveList& move_list, bool
 
 	const int move_count = static_cast<int>(move_list.size());
 	ScoredMoves scored_idx;
-	MoveSorter::ScoreMoves(move_list, move_count, td.scoring_context(ply, {}, /*use_capture_history=*/false),
+	MoveSorter::ScoreMoves(move_list, move_count,
+	                       td.scoring_context(ply, {}, /*use_capture_history=*/false, /*capture_history_divisor=*/1),
 	                       Move::EmptyMove(), scored_idx);
 
 	MoveList ordered;

@@ -136,16 +136,18 @@ void MoveSorter::ScoreUnordered(const MoveList& moveList, int first, int n, cons
 			// when the pawn was promoting anyway. MoveHelper::Value() ranks promotions by
 			// promotion gain, so under-promotions stay below a queen promotion unaided.
 			//
-			// Inside a tier, capture history adds to the scaled MVV-LVA. The offset keeps every score at
-			// or above its tier's constant, which staged generation's kGoodCaptureTier trigger rests on.
-			// At the current scale an entry at its bound is worth about ten pawns of victim, so a well-fed entry
-			// may invert even PxQ against PxP inside a tier, by design; MVV-LVA still orders rare
-			// triples. With no table the score is increasing in mvv_lva, so the order is unchanged.
+			// Inside a tier, capture history / divisor adds to the scaled MVV-LVA. The offset keeps every
+			// score at or above its tier's constant, which staged generation's kGoodCaptureTier trigger
+			// rests on. At divisor 1 an entry at its bound is worth about ten pawns of victim; at the
+			// default 8, two entries at opposite bounds swing a pair by 4,096, enough to cross one
+			// victim class (2,400-4,000 apart with the attacker term) but never two (5,600 or more).
+			// With no table the score is increasing in mvv_lva, so the order is unchanged.
 			const int mvv_lva = MoveHelper::Value(mv, board.GetEffectiveMovPiece(mv), board.GetCapturedPiece(mv));
 			assert(mvv_lva >= 0 && mvv_lva <= kMaxMvvLva);
 			int in_tier = kCaptureHistoryOffset + kCaptureMvvLvaScale * mvv_lva;
 			if (ctx.capture_history != nullptr)
-				in_tier += ctx.capture_history[CaptureHistoryRow(board, mv)][CaptureHistoryColumn(board, mv)];
+				in_tier += ctx.capture_history[CaptureHistoryRow(board, mv)][CaptureHistoryColumn(board, mv)] /
+				           ctx.capture_history_divisor;
 
 			s = (!MoveHelper::IsCapture(mv) || See::see_ge(board, mv, 0)) ? kGoodCaptureTier + in_tier
 			                                                              : kLosingCaptureTier + in_tier;

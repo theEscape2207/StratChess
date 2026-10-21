@@ -31,6 +31,8 @@ struct MoveScoringContext {
 	ContinuationRows cont;
 	// ThreadData::capture_history, or nullptr for no history term in the capture scores.
 	const int16_t (*capture_history)[8] = nullptr;
+	// Divides the capture-history entry; read only with a table.
+	int capture_history_divisor = 1;
 };
 
 class MoveSorter final {
@@ -52,7 +54,7 @@ class MoveSorter final {
 	static_assert(kGoodCaptureTier > kKiller0Score && kKiller0Score > kKiller1Score &&
 	              kKiller1Score > kLosingCaptureTier);
 	// Inside a capture tier: tier + kCaptureHistoryOffset + kCaptureMvvLvaScale * mvv_lva + the
-	// capture-history entry. The offset is ThreadData::HISTORY_MAX, asserted there.
+	// capture-history entry / divisor. The offset is ThreadData::HISTORY_MAX, asserted there.
 	static constexpr int kCaptureHistoryOffset = 16'384;
 	static constexpr int kCaptureMvvLvaScale = 16;
 	// The largest MoveHelper::Value() of a legal capture or promotion: a queen promotion taking a queen.
