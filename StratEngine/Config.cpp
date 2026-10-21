@@ -8,15 +8,6 @@
 
 using json = nlohmann::json;
 
-//***************************************
-// Method:      ReadBoardSetup
-// Description:
-// FullName:    private Config::ReadBoardSetup const
-// Returns:     void -
-// Parameter:   const json& config -
-// Remark:
-//***************************************
-
 void Config::ReadBoardSetup(const json& config, Board& board) const
 {
 	// .at(), never operator[]: on a CONST json a missing key is undefined
@@ -109,18 +100,18 @@ namespace {
 		return limits;
 	}
 
-	Config::PlayerConfig ParsePlayerConfig(const json& p, const char* side, int defaultDepth, unsigned defaultType)
+	Config::PlayerConfig ParsePlayerConfig(const json& p, const char* side)
 	{
 		Config::PlayerConfig cfg;
-		cfg.type = p.value("type", defaultType);
+		cfg.type = p.value("type", Config::DEFAULT_PLAYER_TYPE);
 
 		if (p.contains("search_limits")) {
 			cfg.search_limits = ParseSearchLimitsBlock(p["search_limits"]);
-		} else if (cfg.type == Config::DEFAULT_PLAYER_TYPE) {
+		} else if (cfg.type == Config::SEARCH_PLAYER_TYPE) {
 			throw std::invalid_argument(std::string("game_settings.json: players.") + side +
 			                            ": a Search player needs a search_limits block");
 		}
-		cfg.depth = static_cast<unsigned>(cfg.search_limits.depth.value_or(defaultDepth));
+		cfg.depth = static_cast<unsigned>(cfg.search_limits.depth.value_or(Config::DEFAULT_DEPTH));
 
 		// Parse SearchTuning if present (only meaningful for PlayerType::Search)
 		if (p.contains("search_tuning")) {
@@ -145,8 +136,8 @@ void Config::SetupPlayerConfig(const json& config)
 	// with an absent key is UB, and every key on this path is absent in a
 	// settings file that is merely wrong rather than malformed.
 	const json& players = config.at("game").at("players");
-	white_ = ParsePlayerConfig(players.at("white"), "white", DEFAULT_DEPTH, DEFAULT_PLAYER_TYPE);
-	black_ = ParsePlayerConfig(players.at("black"), "black", DEFAULT_DEPTH, DEFAULT_PLAYER_TYPE);
+	white_ = ParsePlayerConfig(players.at("white"), "white");
+	black_ = ParsePlayerConfig(players.at("black"), "black");
 }
 
 Config::PlayerConfig Config::GetPlayerFromConfig(bool bWhite) const noexcept

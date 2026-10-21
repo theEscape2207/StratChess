@@ -7,10 +7,10 @@
 class Board;
 
 class Config final {
-	static const int DEFAULT_DEPTH = 4;
-
   public:
-	static constexpr unsigned DEFAULT_PLAYER_TYPE = 1; // PlayerType::Search, asserted in PlayerFactory.cpp
+	static constexpr int DEFAULT_DEPTH = 4;
+	static constexpr unsigned SEARCH_PLAYER_TYPE = 1; // PlayerType::Search, asserted in PlayerFactory.cpp
+	static constexpr unsigned DEFAULT_PLAYER_TYPE = SEARCH_PLAYER_TYPE;
 
 	struct PlayerConfig {
 		unsigned type{DEFAULT_PLAYER_TYPE};
@@ -20,7 +20,7 @@ class Config final {
 		std::optional<unsigned> threads;           // Lazy SMP thread count; CreatePlayer clamps AIPerplex to [1,32]
 	};
 
-	void ReadConfigFile(const std::string& /*filename*/, Board& board);
+	void ReadConfigFile(const std::string& filename, Board& board);
 
 	PlayerConfig GetPlayerFromConfig(bool bWhite) const noexcept;
 

@@ -827,7 +827,7 @@ try {
     $moveCount = ([regex]::Matches($logOutput, 'GetMove complete:')).Count
 
     # Require at least 2 completed moves (one per side) — confirms the search engine
-    # is functioning. With time_limit:15000ms per move, a 60s timeout window yields
+    # is functioning. With movetime 15000 ms per move, a 60s timeout window yields
     # ~3-4 moves; the game will not complete naturally in that window, so we do not
     # require game-termination (checkmate/stalemate/draw).
     if ($moveCount -ge 2) {

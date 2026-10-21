@@ -123,8 +123,16 @@ class MoveList {
 		return moves_[idx];
 	}
 
-	const Move& front() const noexcept { return moves_[0]; }
-	const Move& back() const noexcept { return moves_[size_ - 1]; }
+	const Move& front() const noexcept
+	{
+		assert(size_ > 0);
+		return moves_[0];
+	}
+	const Move& back() const noexcept
+	{
+		assert(size_ > 0);
+		return moves_[size_ - 1];
+	}
 
   private:
 	std::array<Move, MAX_MOVES> moves_;
