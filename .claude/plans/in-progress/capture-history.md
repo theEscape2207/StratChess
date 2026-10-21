@@ -108,8 +108,9 @@ capture ranks against other captures. A capture that failed has failed, whatever
 
 Rejected:
 - Malus only on capture cuts, mirroring the quiet rule. It would drop the evidence from every node
-  where all captures failed and a quiet cut. Those are the nodes where demoting a capture that
-  keeps failing still changes the move number of what follows.
+  where all captures failed and a quiet cut. Demoting those captures cannot help that node, since
+  both capture tiers sit above the quiets. It ranks them lower against other captures at later
+  nodes, where one of those captures can cut.
 - No malus at all. A1 measured +13.2 Elo from adding malus to quiet history (#651).
 
 ### D4: Lifecycle like the butterfly table
@@ -152,7 +153,7 @@ truncates toward zero, which is monotone in the entry, so the table's order is k
 weight against MVV-LVA changes. Learning is untouched: bonus, malus, gravity and aging still work on
 the full-range entry.
 
-**Why 8.** MVV-LVA is the victim's value minus the attacker's `value >> 4`: 6 for a pawn, 56 for a
+**Why 8.** For a capture without promotion, MVV-LVA is the victim's value minus the attacker's `value >> 4`: 6 for a pawn, 56 for a
 queen. At a scale of 16, captures of adjacent victim classes (pawn 100, knight and bishop 300, rook
 500, queen 900) sit 2,400 to 4,000 points apart once the attacker term is counted. QxN against PxP
 is the narrowest. Captures two classes apart, and rook against queen, sit at least 5,600 apart. Two
@@ -166,7 +167,9 @@ entries at opposite bounds swing a pair of captures by `2 * 16,384 / divisor`:
 | 16 | 2,048 | ~1.3 | nothing across classes (2,048 < 2,400); reorders attackers and squares within a victim class |
 
 8 lets a well-fed entry reorder a capture against the next victim class up or down, but never two
-classes away. Step 0's late cuts were good captures cutting after a failed good capture. It did not
+classes away. This holds for captures without promotion. A promotion adds its promotion gain to
+the victim's value, so its gaps follow from that gain instead: a queen promotion taking a minor
+(1,094) sits 3,200 above PxQ (894), within 8's swing. Step 0's late cuts were good captures cutting after a failed good capture. It did not
 split those by victim class, so it does not say which row of the table they need. 8 is the middle
 row that still crosses class boundaries. 16 is the fallback arm if 8 is flat and the owner wants
 one more run (Validation).
@@ -187,9 +190,9 @@ one more run (Validation).
 Rejected:
 - **A shift instead of a divisor.** It saves the integer division on each scored capture. But it
   departs from the `LmrHistoryDivisor` precedent and allows only powers of two. One 32-bit `idiv`
-  per scored capture is about 10 to 20 cycles, a few per node, so the cost is expected below bench
-  noise (#555: layout alone moved nps 3.9%). The bench pass catches only a gross cost. The lab,
-  run on the shipping binary, decides.
+  per scored capture is forecast at 10 to 20 cycles, a few per node. That is unmeasured on this
+  workload. Validation isolates it with a node-identical bench at divisor 1; the lab, run on the
+  shipping binary, measures the total effect.
 - **Scaling MVV-LVA up instead.** A larger `kCaptureMvvLvaScale` gives the same order, but at 8 × 16
   the tier span would pass the 100,000 gap to the next tier.
 - **Default 1, with the lab setting the option.** The default would then need a second change once
@@ -274,16 +277,25 @@ call. Nothing before the lab gates it (#636 Method).
   - with PxN's entry at the upper bound and NxR's at the lower, PxN outranks NxR at divisor 8, so 8
     still crosses one class boundary;
   - `Validate()` rejects a divisor of 0.
-- **Cost.** `Run-Bench.ps1` ×3 alternating against `8908cbd`, for the division per scored capture.
+- **Cost of the division.** `Run-Bench.ps1` ×3 alternating, the divisor-1 build from the
+  equivalence check against `8908cbd`. The trees are identical, so the nps difference is the
+  division and nothing else. The default-8 build changes the tree, so its bench is descriptive data
+  only. No timing gate.
+- **Wall clock.** `Compare-WallClock.ps1` at depth 14 over the 200 positions, the default-8 build
+  against the merge base, as in v1.
 - **Screen.** `Compare-SearchProfile.ps1 -Seeds 8 -Depth 12` against the merge base, as in v1. It is
   informational and gates nothing.
 - **Lab.** About 26k games at 10+0.1 against the merge base, with no options. **Ship rule, declared
   now:** the PR merges if Elo minus its error bar is above 0. Otherwise:
-  - if v2's point estimate beats v1's -1.66 by at least one standard error (about 1.6 Elo at 26k
-    games), the trend points at weight, and one more arm at divisor 16 is the owner's call. A second
-    arm roughly doubles the false-pass rate, from about 2.5% to about 5%; that is accepted.
-  - if not, the PR closes. Weight is then not the lever, and the next idea is D3's update rule or
-    the aging, as a separate issue.
+  - if v2's point estimate beats v1's -1.66 by at least 1.6 Elo, one more arm at divisor 16 is the
+    owner's call. This threshold is a predeclared budget rule, not a diagnosis: the SE of a
+    difference between two such runs is about 2.2 Elo, so a result near the threshold fits both
+    readings. The divisor-16 arm, if run, uses the same budget (26,640 games, 10+0.1, the lab's
+    default openings, against the merge base) and the same ship rule. Two arms allow a false pass
+    of up to roughly 5% (a union bound), against about 2.5% for one.
+  - if not, the PR closes. Neither tested weight met the ship rule; the experiment's budget is spent
+    and the mechanism stays unresolved. The next idea, D3's update rule or the aging, is a separate
+    issue.
 
 ## Cost
 
