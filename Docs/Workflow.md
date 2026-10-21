@@ -817,7 +817,8 @@ hit — useful when surveying, and useless as a gate, because a recovering build
 findings only in the log. Pair it with `ASAN_OPTIONS=halt_on_error=0`. CI leaves it off.
 
 Extract onto native ext4. Building over `/mnt/c` works since WSL 3.0.4, but a Release
-`StratChessTests` build there took 152 s against 71 s on ext4 (#773). Before 3.0.4 it failed in
+`StratChessTests` build there took 152 s against 71 s on ext4, and 243–277 s with `virtiofs=true`
+(#773). Before 3.0.4 it failed in
 `FetchContent` with `configure_file: Operation not permitted`.
 
 ---
