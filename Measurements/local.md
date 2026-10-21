@@ -51,6 +51,7 @@ comparable with a Linux CI row**: different compiler, different machine, differe
 | 2026-10-19 | 719af11 (Threads=4, #850) | 719af11 (Threads=2) | 500 | 10+0.1 | 65.38 +/- 22.09 | gain |
 | 2026-10-19 | 719af11 (Threads=8, #850) | 719af11 (Threads=4) | 500 | 10+0.1 | 71.89 +/- 21.51 | gain |
 | 2026-10-19 | 719af11 (Threads=2, #850, re-run) | 719af11 (Threads=1) | 500 | 10+0.1 | 76.98 +/- 21.98 | gain |
+| 2026-10-21 | f7fde424 GCC/WSL, `kernelCommandLine=quiet loglevel=0 audit=0 mitigations=off vsyscall=none` (nps, #773) | same binary, default WSL kernel command line | n/a (bench) | depth 13 | n/a (ON vs OFF -0.15% / +0.05% on the clean runs) | calibration |
 
 ## Row detail
 
@@ -258,3 +259,16 @@ depth 13, built-in 8 positions, 19:07-19:39 on a quiet machine. Output dir:
 
 The cost lands in the endgames, as #848's triage probe found (-1.90% [-2.01, -1.78], placement not
 controlled). This is about the same size as that probe.
+
+### 2026-10-21 -- WSL guest kernel command line vs nps, f7fde424 (#773)
+
+One GCC 15.2 Release build of f7fde424, benched by `Compare-BenchLinux.ps1 -Baseline f7fde424 -Candidate f7fde424 -Rounds 6`. Four boots in ON, OFF, ON, OFF order. ON is `kernelCommandLine=quiet loglevel=0 audit=0 mitigations=off vsyscall=none` in `.wslconfig`, and OFF is WSL 3.0.4's default. Each boot was checked in `/proc/cmdline` before its run. `/mnt/c` was 9p, the machine was unpinned, and the run took 20:53-21:14 Copenhagen time. Nodes and best moves were identical in every run.
+
+| Run | Config | Arm medians (baseline / candidate / control) | Mean | A/A (control vs baseline) |
+|---|---|---|---|---|
+| 1 | ON | 3,305,149 / 3,300,241 / 3,302,383 | 3,302,591 | -0.36% [-1.47, +0.75] |
+| 2 | OFF | 3,291,692 / 3,317,934 / 3,312,687 | 3,307,438 | +0.73% [+0.24, +1.22] |
+| 3 | ON | 3,309,910 / 3,307,449 / 3,310,373 | 3,309,244 | -1.43% [-5.01, +2.29] |
+| 4 | OFF | 3,169,169 / 3,292,758 / 3,273,523 | 3,245,150 | +2.33% [-0.30, +5.02] |
+
+**No measurable effect.** The two ON runs (3,302,591 and 3,309,244) bracket the clean OFF run (3,307,438). Run 4 was disturbed: its baseline arm sits 3.7% below its own two other arms, which are copies of the same binary. Do not read its mean, which would make ON look +0.9% faster. The search makes almost no syscalls, so the syscall-heavy cost reported for the default mitigations (+47% on a Go build in microsoft/WSL issue 14526) does not show up in nps. Any effect is well inside the ~1% A/A spread.
