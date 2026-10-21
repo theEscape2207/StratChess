@@ -78,9 +78,11 @@ request can allocate less than its nominal size. Read the engine's `info string 
 for the actual entry memory and bucket count.
 
 **Game mode:** edit [game_settings.json](../StratChessEvolved/game_settings.json). Under
-`game.players.white` and `.black`, `search_limits` supplies per-move constraints, `search_tuning`
-supplies search parameters, and `threads` selects worker count. The file supports C-style comments
-through nlohmann/json; PowerShell 7's `ConvertFrom-Json` also accepts those comments.
+`game.players.white` and `.black`, `search_limits` supplies per-move constraints (required for a
+Search player), `search_tuning` supplies search parameters, and `threads` selects worker count.
+`game.FEN` sets the starting position; absent, the game starts from the standard one. The file
+supports C-style comments through nlohmann/json; PowerShell 7's `ConvertFrom-Json` also accepts
+those comments.
 
 [SearchTuning.def](../StratEngine/SearchTuning.def) is the catalogue of fields, defaults, ranges
 and JSON/UCI names. JSON and UCI expose different subsets. See

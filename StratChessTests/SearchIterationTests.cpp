@@ -1,6 +1,7 @@
 // SearchIterationTests.cpp — Catch2 tests for search iteration integration and private helpers:
 //   fixed-depth repetition PV search
-//   handle_empty_move_emergency() — 3 cases (mate path, emergency path, stale PV row)
+//   handle_empty_move_emergency() — 5 cases (mate path, emergency path, stale PV row,
+//                                   illegal first move skipped, no legal move)
 //   should_try_null_move()        — 10 cases, one per guard branch (disabled, PV, in-check,
 //                                   depth, mate-score, zugzwang, single-piece zugzwang,
 //                                   two-piece eligible, consecutive-null, otherwise-eligible)
@@ -92,6 +93,39 @@ TEST_CASE("Search - handle_empty_move_emergency: a stale row 1 is not spliced on
 	REQUIRE(fix.pv_length(0) == 1); // exactly the emergency move, nothing spliced on
 	REQUIRE(fix.pv_move(0) == s.best_move);
 	REQUIRE(pv_replays_legally(fix.board_, fix.pv_line(0)));
+}
+
+TEST_CASE("Search - handle_empty_move_emergency: an illegal pseudo-legal move is skipped", "[search]")
+{
+	// In check from the a1 rook, the only legal reply is Nd1. Every other generated move leaves
+	// the king in check, so DoMove() refuses them and the loop has to move on.
+	AIPerlexTestFixture fix("4k3/8/8/8/8/4N3/3PPP2/r3K3 w - - 0 1");
+	MoveList generated;
+	MoveGenerator::ComputeLegalMoves(fix.board_, generated);
+	REQUIRE(generated.size() > 1);
+	Board probe = fix.board_;
+	REQUIRE_FALSE(probe.DoMove(generated[0])); // the first move is the one skipped
+
+	AIPerlexTestFixture::State s{};
+	s.best_move = Move{};
+	s.best_score = 0;
+
+	REQUIRE(fix.emergency(s));
+	REQUIRE(MoveFormatter::ToUCI(s.best_move) == "e3d1");
+}
+
+TEST_CASE("Search - handle_empty_move_emergency: no legal move returns false", "[search]")
+{
+	// Checkmated, but the root game state still says the game is on, so the emergency loop runs
+	// and finds nothing to play.
+	AIPerlexTestFixture fix("4k3/8/8/8/8/8/PPPPPPPP/r3K3 w - - 0 1");
+
+	AIPerlexTestFixture::State s{};
+	s.best_move = Move{};
+	s.best_score = 0;
+
+	REQUIRE_FALSE(fix.emergency(s));
+	REQUIRE(s.best_move.is_null());
 }
 
 // ============================================================================

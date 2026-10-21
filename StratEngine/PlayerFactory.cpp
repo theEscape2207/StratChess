@@ -9,7 +9,7 @@
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 
-static_assert(Config::DEFAULT_PLAYER_TYPE == static_cast<unsigned>(PlayerType::Search));
+static_assert(Config::SEARCH_PLAYER_TYPE == static_cast<unsigned>(PlayerType::Search));
 
 namespace {
 

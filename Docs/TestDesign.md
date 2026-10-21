@@ -646,7 +646,7 @@ outcome, and the message says so.
 Two guards against the suite passing for the wrong reason: a well-formed document must parse and
 yield the expected depths, and a commented document must parse — `game_settings.json` ships heavily
 commented, so a regression in `ignore_comments` would break the shipped file rather than a test.
-`Config(nullptr)` is safe for all of these because `pGame_` is dereferenced only on the FEN path.
+A Search player without a `search_limits` block is rejected naming the player; a Human player is not.
 
 **`cmd_eval` (issue #129 phase 1 — static-eval introspection)**:
 - Works before any `position` command (default-constructed, empty `board_`) without crashing.

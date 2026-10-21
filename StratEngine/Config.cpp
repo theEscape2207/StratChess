@@ -4,40 +4,9 @@
 #include "StdAfx.h"
 #include "Config.h"
 #include "Board.h"
-#include "Game.h"
 #include "SearchTuningSchema.h"
 
-namespace {
-
-	// Case-insensitive comparison of the first n characters. Replaces MSVC's
-	// _strnicmp, which has no portable equivalent in the standard library.
-	bool iequals_n(std::string_view a, std::string_view b, std::size_t n)
-	{
-		if (a.size() < n || b.size() < n) {
-			return false;
-		}
-		for (std::size_t i = 0; i < n; ++i) {
-			const auto ca = static_cast<unsigned char>(a[i]);
-			const auto cb = static_cast<unsigned char>(b[i]);
-			if (std::tolower(ca) != std::tolower(cb)) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-} // namespace
-
 using json = nlohmann::json;
-
-//***************************************
-// Method:      ReadBoardSetup
-// Description:
-// FullName:    private Game::ReadBoardSetup const
-// Returns:     void -
-// Parameter:   const json& config -
-// Remark:
-//***************************************
 
 void Config::ReadBoardSetup(const json& config, Board& board) const
 {
@@ -47,23 +16,15 @@ void Config::ReadBoardSetup(const json& config, Board& board) const
 	// naming the key, in both configurations.
 	const json& game = config.at("game");
 
-	// if nothing is found - use default setup
-	const std::string setupType = game.value("setup", "default");
-	const std::string FENKey = "FEN";
-	if (iequals_n(setupType, FENKey, 3)) {
-		spdlog::default_logger()->debug("FEN configuration");
-
-		const std::string FENstring = game.value(FENKey, "");
-		if (FENstring.empty()) {
+	// No "FEN" key means the standard opening position.
+	const std::string FENstring = game.value("FEN", "");
+	if (FENstring.empty()) {
+		if (game.contains("FEN"))
 			spdlog::default_logger()->warn("FEN key found, but no string - selecting default board");
-			board.SetDefaultBoard();
-			return;
-		}
-		ReadFEN(FENstring, board);
-	} else {
-		spdlog::default_logger()->debug("Default board selected");
 		board.SetDefaultBoard();
+		return;
 	}
+	ReadFEN(FENstring, board);
 }
 
 void Config::ReadFEN(const std::string& fen, Board& board) const
@@ -78,30 +39,6 @@ void Config::ReadFEN(const std::string& fen, Board& board) const
 	}
 }
 
-//***************************************
-// Method:      CheckBoardSetupData
-// Description:
-// FullName:    private Game::CheckBoardSetupData const
-// Returns:     bool -
-// Parameter:   const std::string& strPiece -
-// Parameter:   const std::string& regexStr -
-// Remark:
-//***************************************
-bool Config::CheckBoardSetupData(const std::string& /*strPiece*/, const std::string& /*regex*/) const
-{
-	//FIXME: Not yet ported away from Poco
-	/*const Poco::RegularExpression regPiece(regex);
-	if (!regPiece.match(strPiece))
-	{
-		std::stringstream str;
-
-		str << "Invalid board setup data found: Piece on square "
-			<< strPiece.c_str() << " with type: " << strPiece.c_str() << std::endl;
-		spdlog::default_logger()->warn(str.str());
-		return false;
-	}*/
-	return true;
-}
 void Config::ReadConfigFile(const std::string& filename, Board& board)
 {
 	spdlog::default_logger()->debug("Reading Config File");
@@ -163,37 +100,18 @@ namespace {
 		return limits;
 	}
 
-	Config::PlayerConfig ParsePlayerConfig(const json& p, int defaultDepth, unsigned defaultType)
+	Config::PlayerConfig ParsePlayerConfig(const json& p, const char* side)
 	{
 		Config::PlayerConfig cfg;
-		cfg.type = p.value("type", defaultType);
+		cfg.type = p.value("type", Config::DEFAULT_PLAYER_TYPE);
 
 		if (p.contains("search_limits")) {
 			cfg.search_limits = ParseSearchLimitsBlock(p["search_limits"]);
-		} else {
-			// Legacy fallback: "max_depth"/"time_limit" map onto depth/movetime.
-			// "time_limit" always resolves to a real movetime (defaulting to
-			// 15000ms), matching the old unconditional
-			// p.value("time_limit", 15000u) — otherwise a "max_depth"-only
-			// legacy config would fall through resolve_limits() into the
-			// UCI-style 1h "depth only" budget instead of a real time cap.
-			bool usedLegacyKeys = false;
-			if (p.contains("max_depth")) {
-				cfg.search_limits.depth = ReadDepth(p["max_depth"], "max_depth");
-				usedLegacyKeys = true;
-			} else if (p.contains("depth")) {
-				cfg.search_limits.depth = ReadDepth(p["depth"], "depth");
-			}
-			cfg.search_limits.movetime = std::chrono::milliseconds(p.value("time_limit", 15000u));
-			if (p.contains("time_limit"))
-				usedLegacyKeys = true;
-			if (usedLegacyKeys) {
-				spdlog::default_logger()->warn(
-				    "game_settings.json: player uses legacy \"max_depth\"/\"time_limit\" keys — "
-				    "migrate to the \"search_limits\" block");
-			}
+		} else if (cfg.type == Config::SEARCH_PLAYER_TYPE) {
+			throw std::invalid_argument(std::string("game_settings.json: players.") + side +
+			                            ": a Search player needs a search_limits block");
 		}
-		cfg.depth = static_cast<unsigned>(cfg.search_limits.depth.value_or(defaultDepth));
+		cfg.depth = static_cast<unsigned>(cfg.search_limits.depth.value_or(Config::DEFAULT_DEPTH));
 
 		// Parse SearchTuning if present (only meaningful for PlayerType::Search)
 		if (p.contains("search_tuning")) {
@@ -218,8 +136,8 @@ void Config::SetupPlayerConfig(const json& config)
 	// with an absent key is UB, and every key on this path is absent in a
 	// settings file that is merely wrong rather than malformed.
 	const json& players = config.at("game").at("players");
-	white_ = ParsePlayerConfig(players.at("white"), DEFAULT_DEPTH, DEFAULT_PLAYER_TYPE);
-	black_ = ParsePlayerConfig(players.at("black"), DEFAULT_DEPTH, DEFAULT_PLAYER_TYPE);
+	white_ = ParsePlayerConfig(players.at("white"), "white");
+	black_ = ParsePlayerConfig(players.at("black"), "black");
 }
 
 Config::PlayerConfig Config::GetPlayerFromConfig(bool bWhite) const noexcept

@@ -86,11 +86,71 @@ TEST_CASE("Config: a well-formed document parses", "[config]")
 	REQUIRE(reader.GetPlayerFromConfig(false).search_limits.depth == 3);
 }
 
+TEST_CASE("Config: every search_limits key and threads reach PlayerConfig", "[config]")
+{
+	TempConfig cfg(R"({
+        "game": { "players": {
+            "white": { "type": 1, "search_limits": { "movetime": 2500, "infinite": true }, "threads": 3 },
+            "black": { "type": 1, "search_limits": {
+                "clock": { "remaining": 60000, "increment": 500, "moves_to_go": 20 } } }
+        } }
+    })");
+
+	Board board;
+	Config reader = MakeReader();
+	REQUIRE_NOTHROW(reader.ReadConfigFile(cfg.path(), board));
+
+	const auto white = reader.GetPlayerFromConfig(true);
+	CHECK(white.search_limits.movetime == std::chrono::milliseconds(2500));
+	CHECK(white.search_limits.infinite);
+	CHECK_FALSE(white.search_limits.clock.has_value());
+	CHECK(white.threads == 3u);
+
+	const auto black = reader.GetPlayerFromConfig(false);
+	REQUIRE(black.search_limits.clock.has_value());
+	CHECK(black.search_limits.clock->remaining == std::chrono::milliseconds(60000));
+	CHECK(black.search_limits.clock->increment == std::chrono::milliseconds(500));
+	CHECK(black.search_limits.clock->moves_to_go == 20);
+	CHECK_FALSE(black.search_limits.movetime.has_value());
+	CHECK_FALSE(black.search_limits.infinite);
+	CHECK_FALSE(black.threads.has_value());
+}
+
+TEST_CASE("Config: a Search player needs a search_limits block, a Human player does not", "[config]")
+{
+	Board board;
+
+	SECTION("Search player without the block is rejected naming the player and the key")
+	{
+		TempConfig cfg(R"({ "game": { "players": {
+            "white": { "type": 0 },
+            "black": { "type": 1, "threads": 2 } } } })");
+		Config reader = MakeReader();
+		REQUIRE_THROWS_WITH(reader.ReadConfigFile(cfg.path(), board),
+		                    Catch::Matchers::ContainsSubstring("players.black") &&
+		                        Catch::Matchers::ContainsSubstring("search_limits"));
+	}
+	SECTION("an absent type is a Search player")
+	{
+		TempConfig cfg(R"({ "game": { "players": { "white": {}, "black": { "type": 0 } } } })");
+		Config reader = MakeReader();
+		REQUIRE_THROWS_WITH(reader.ReadConfigFile(cfg.path(), board),
+		                    Catch::Matchers::ContainsSubstring("players.white"));
+	}
+	SECTION("Human players without the block are accepted")
+	{
+		TempConfig cfg(R"({ "game": { "players": { "white": { "type": 0 }, "black": { "type": 0 } } } })");
+		Config reader = MakeReader();
+		REQUIRE_NOTHROW(reader.ReadConfigFile(cfg.path(), board));
+		CHECK(reader.GetPlayerFromConfig(true).type == 0u);
+	}
+}
+
 TEST_CASE("Config: every search_tuning key reaches SearchTuning", "[config]")
 {
 	TempConfig cfg(R"({
         "game": { "players": {
-            "white": { "type": 1, "search_tuning": {
+            "white": { "type": 1, "search_limits": {}, "search_tuning": {
                 "min_nodes_threshold": 17,
                 "min_completion_ratio": 0.21,
                 "min_pv_ratio": 0.45,
@@ -114,7 +174,7 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuning", "[config]")
                 "late_move_pruning_enabled": false,
                 "contempt": 25
             } },
-            "black": { "type": 1 }
+            "black": { "type": 1, "search_limits": {} }
         } }
     })");
 
@@ -154,7 +214,7 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuning", "[config]")
 TEST_CASE("Config: an empty search_tuning block yields the defaults", "[config]")
 {
 	TempConfig cfg(
-	    R"({ "game": { "players": { "white": { "type": 1, "search_tuning": {} }, "black": { "type": 1 } } } })");
+	    R"({ "game": { "players": { "white": { "type": 1, "search_limits": {}, "search_tuning": {} }, "black": { "type": 1, "search_limits": {} } } } })");
 
 	Board board;
 	Config reader = MakeReader();
@@ -166,8 +226,8 @@ TEST_CASE("Config: an empty search_tuning block yields the defaults", "[config]"
 TEST_CASE("Config: an invalid search_tuning value is rejected naming the field", "[config]")
 {
 	TempConfig cfg(R"({ "game": { "players": {
-        "white": { "type": 1, "search_tuning": { "lmr_enabled": false, "reverse_futility_margin": 1001 } },
-        "black": { "type": 1 } } } })");
+        "white": { "type": 1, "search_limits": {}, "search_tuning": { "lmr_enabled": false, "reverse_futility_margin": 1001 } },
+        "black": { "type": 1, "search_limits": {} } } } })");
 
 	Board board;
 	Config reader = MakeReader();
@@ -200,13 +260,13 @@ TEST_CASE("Config: a missing key is an error, not undefined behaviour", "[config
 	}
 	SECTION("no \"players\"")
 	{
-		TempConfig cfg(R"({ "game": { "setup": "default" } })");
+		TempConfig cfg(R"({ "game": { "FEN": "" } })");
 		Config reader = MakeReader();
 		REQUIRE_THROWS_AS(reader.ReadConfigFile(cfg.path(), board), nlohmann::json::out_of_range);
 	}
 	SECTION("no \"black\"")
 	{
-		TempConfig cfg(R"({ "game": { "players": { "white": { "type": 1 } } } })");
+		TempConfig cfg(R"({ "game": { "players": { "white": { "type": 1, "search_limits": {} } } } })");
 		Config reader = MakeReader();
 		REQUIRE_THROWS_AS(reader.ReadConfigFile(cfg.path(), board), nlohmann::json::out_of_range);
 	}
@@ -219,7 +279,7 @@ TEST_CASE("Config: a key of the wrong type is reported", "[config]")
 	TempConfig cfg(R"({
         "game": { "players": {
             "white": { "type": 1, "search_limits": { "depth": "five" } },
-            "black": { "type": 1 }
+            "black": { "type": 1, "search_limits": {} }
         } }
     })");
 
@@ -234,7 +294,7 @@ TEST_CASE("Config: a non-positive search depth is rejected naming the key", "[co
 	for (const char* depth : {"0", "-1"}) {
 		TempConfig cfg(std::string(R"({ "game": { "players": {
             "white": { "type": 1, "search_limits": { "depth": )") +
-		               depth + R"( } }, "black": { "type": 1 } } } })");
+		               depth + R"( } }, "black": { "type": 1, "search_limits": {} } } } })");
 		Config reader = MakeReader();
 		REQUIRE_THROWS_WITH(reader.ReadConfigFile(cfg.path(), board),
 		                    Catch::Matchers::ContainsSubstring("search_limits.depth must be positive"));
@@ -249,7 +309,7 @@ TEST_CASE("Config: comments are accepted", "[config]")
         /* block comment */
         "game": { "players": {
             "white": { "type": 1, "search_limits": { "depth": 5 } },
-            "black": { "type": 1 }
+            "black": { "type": 1, "search_limits": {} }
         } }
     })");
 
@@ -278,11 +338,10 @@ TEST_CASE("Config: a FEN setup is applied to the board", "[config]")
 	// which is what this asserts: the position, and the metadata that comes with it.
 	TempConfig cfg(R"({
         "game": {
-            "setup": "FEN",
             "FEN": "r3k2r/8/8/4pP2/8/8/8/R3K2R w KQkq e6 7 12",
             "players": {
-                "white": { "type": 1 },
-                "black": { "type": 1 }
+                "white": { "type": 1, "search_limits": {} },
+                "black": { "type": 1, "search_limits": {} }
             }
         }
     })");
@@ -303,11 +362,10 @@ TEST_CASE("Config: a malformed FEN falls back to the default board", "[config]")
 {
 	TempConfig cfg(R"({
         "game": {
-            "setup": "FEN",
             "FEN": "not-a-fen",
             "players": {
-                "white": { "type": 1 },
-                "black": { "type": 1 }
+                "white": { "type": 1, "search_limits": {} },
+                "black": { "type": 1, "search_limits": {} }
             }
         }
     })");
@@ -320,4 +378,16 @@ TEST_CASE("Config: a malformed FEN falls back to the default board", "[config]")
 	REQUIRE(board.GetPiece(e1) == ePiece::WHITE_KING);
 	REQUIRE(board.GetPiece(d8) == ePiece::BLACK_QUEEN);
 	REQUIRE(board.ep_square() == NO_SQUARE);
+}
+
+TEST_CASE("Config: no FEN key starts from the standard opening position", "[config]")
+{
+	TempConfig cfg(R"({ "game": { "players": { "white": { "type": 0 }, "black": { "type": 0 } } } })");
+
+	Board board("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+	Config reader = MakeReader();
+	REQUIRE_NOTHROW(reader.ReadConfigFile(cfg.path(), board));
+
+	REQUIRE(board.GetPiece(d1) == ePiece::WHITE_QUEEN);
+	REQUIRE(board.GetPiece(d8) == ePiece::BLACK_QUEEN);
 }

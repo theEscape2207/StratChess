@@ -23,6 +23,24 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-21: game_settings.json cleanup, last core coverage gaps (#878)
+
+### Changed
+- **Compatibility:** a Search player in `game_settings.json` must have a `search_limits` block; a
+  missing one stops the game with a message naming the player. This replaces a hidden 15000 ms
+  default. A Human player needs none.
+- The `"setup"` key is gone: an optional `"FEN"` key alone sets the starting position, and absent
+  or empty means the standard one. Only `"FEN"`-prefixed values were ever honoured; `"custom"`
+  placement had no implementation.
+
+### Removed
+- The legacy player keys `max_depth`, `time_limit` and a top-level `depth`, with their deprecation
+  warning.
+- `FENParser::ToGameConfig`/`FromGameConfig`, `Config::GameConfig` and `Config::CheckBoardSetupData`,
+  none of which had a caller.
+- From the shipped `game_settings.json`: the custom-placement description and example, the FEN
+  character table, and both players' `search_tuning` blocks, which only repeated the defaults.
+
 ## 2026-10-20: Shared dependency sources, private dependency builds (#860)
 
 ### Changed
