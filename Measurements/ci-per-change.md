@@ -11,6 +11,9 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-21 | d9ca256, capture history with `CaptureHistoryDivisor=16` set over UCI: the entry divided by 16, too little to reorder captures across victim classes (#871; PR #873, never merged) | a44e30e | 26640 | 10+0.1 | **-1.37 +/- 3.08** | inconclusive @ 26640; fails the ship rule |
+| 2026-10-21 | d9ca256, capture history with `CaptureHistoryDivisor=8`: the entry divided by 8 before it joins the capture score (#871; PR #873, never merged) | a44e30e | 26640 | 10+0.1 | **+0.95 +/- 3.11** | inconclusive @ 26640; fails the ship rule |
+| 2026-10-21 | 8908cbd, capture history: a per-thread `[piece, to][victim]` table read inside each SEE capture tier (#871; PR #873, never merged) | a44e30e | 26640 | 10+0.1 | **-1.66 +/- 3.09** | inconclusive @ 26640 |
 | 2026-10-20 | 58224b9, `LateMovePruningNotImprovingCut=4`: LMP index 12 - 4 at not-improving nodes (#851; PR #862, never merged) | e11bbe4 | 32000 | 10+0.1 | **+1.79 +/- 2.82** | inconclusive @ 32000 |
 | 2026-10-19 | e6cd42f, `ReverseFutilityImprovingRelief=50`: RFP slack `margin*depth - 50` at improving nodes, floored at 0 (#851; PR #854, never merged) | 03141cb | 19980 | 10+0.1 | **-2.75 +/- 3.54** | inconclusive @ 19980 |
 | 2026-10-19 | 6b24787, `LmrImprovingRelief=1`: R - 1 at improving nodes, after the history clamp (#848; PR #849, never merged) | 719af11 | 19980 | 10+0.1 | **-13.71 +/- 3.56** | regression |
@@ -98,6 +101,18 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-21 -- d9ca256, capture history, divisor 16 (#871) (26640 games)
+
+**Fails the ship rule; PR #873 closed unmerged** (head `ffc6d79` at `refs/pull/873/head`). Same rule, budget and reference as the divisor-8 row (design record `871 - capture-history`, Validation v2), the second and last arm it allowed. [Run `39607266189`](https://github.com/theEscape2207/StratChess/actions/runs/39607266189), about 4 h 20 min, 18 shards x 740 pairs, reference the merge base `a44e30e`, candidate the divisor-8 binary with `candidate_uci_options=CaptureHistoryDivisor=16` (validated against the binary's option table by the setup job; resolved options: the run's `strength-39607266189-comparison` artifact). Pooled Ptnml(0-2) [1041, 3142, 5054, 3047, 1036], score 49.80%, interval [-4.45, +1.71]; 6 of 18 shards favour the candidate by score, 12 the reference. Every shard logs PV-compliance warnings, which are reporting-only. Across the three weights (divisor 1, 8, 16: -1.66, +0.95, -1.37) no trend in weight is visible within the noise, which fits D7's alternative reading: the table learns too little to help at any weight. The next idea (D3's update rule or the aging) is a separate issue.
+
+### 2026-10-21 -- d9ca256, capture history, divisor 8 (#871) (26640 games)
+
+**Fails the ship rule declared before dispatch** (design record `871 - capture-history`, Validation v2: merge if Elo minus its error bar is above 0). [Run `39568512988`](https://github.com/theEscape2207/StratChess/actions/runs/39568512988), about 3 h 55 min, 20 shards x 666 pairs, reference the merge base `a44e30e`, no options. Pooled Ptnml(0-2) [1068, 3086, 4946, 3145, 1075], score 50.14%, interval [-2.16, +4.06]; 10 of 20 shards favour the candidate by score, 9 the reference. Every shard logs PV-compliance warnings, which are reporting-only. Its estimate beats the divisor-1 row's -1.66 by 2.61, past the rule's predeclared 1.6, so one more arm at divisor 16 was the owner's call; the owner ran it. A gap of 2.61 sits about 1.2 SE from zero. Informational and flat: screen late-cut work 0.0% +/- 2.6, nodes +0.3% +/- 1.8; wall clock d14 geomean 1.014 [0.968, 1.062]; the division costs -0.22% [-0.81, +0.38] nps, below bench resolution.
+
+### 2026-10-21 -- 8908cbd, capture history (#871) (26640 games)
+
+**Lab vehicle for PR #873; no ship rule was declared before dispatch.** [Run `39508612158`](https://github.com/theEscape2207/StratChess/actions/runs/39508612158), about 4 h, 20 shards x 666 pairs, reference the merge base `a44e30e`, candidate at its default `CaptureHistory=true`. Pooled Ptnml(0-2) [1047, 3174, 4999, 3059, 1041], score 49.76%, interval [-4.74, +1.43]; 7 of 20 shards favour the candidate by score. Holding -1.66 would take about 92,500 games to exclude zero. An earlier 20k / 18-shard run (`39507198939`) was cancelled at the owner's request and replaced by this one. Beforehand, all flat: profile screen (`-Seeds 8 -Depth 12`, 200 positions) late-cut work -0.3% +/- 2.6, nodes +0.6% +/- 1.8, captures' share of late cuts 28.6% -> 27.4%; bench nps geomean -0.7%, within run spread; wall clock d14 per-position geomean 1.006 [0.958, 1.056]. At its bound an entry is worth about ten pawns of victim, so the next arm is a smaller weight (a divisor on the entry), not removal.
 
 ### 2026-10-20 -- 58224b9, `LateMovePruningNotImprovingCut=4` (#851) (32000 games)
 
