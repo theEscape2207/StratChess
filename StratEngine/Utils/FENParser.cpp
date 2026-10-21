@@ -217,7 +217,7 @@ std::optional<std::string> FENParser::ParsePiecePlacementField(const std::string
 
 	for (std::size_t rank = 0; rank < 8; ++rank) {
 		const std::string& rstr = ranks[rank];
-		int fileIndex = 0; // 0..7
+		int fileIndex = 0;
 
 		for (const char c : rstr) {
 			if (std::isdigit(static_cast<unsigned char>(c))) {
