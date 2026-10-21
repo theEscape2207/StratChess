@@ -584,7 +584,7 @@ is backed up.
 | `Equivalence\` | Cached baseline builds | `Compare-SearchEquivalence.ps1 -BaselineRef` |
 | `EngineTesting\` | fastchess, Stockfish, perftcheck, opening books, cached reference builds | `Run-EloMatch.ps1`, `Run-PerftCheck.ps1`, `analyze_external_quality.py` |
 | `DesignRecords\` | Design docs, their cross-agent reviews and `.progress.md` ledgers, kept after the plan is deleted | Design records, below |
-| `StrengthLabPgn\` | Annotated PGNs of strength-lab runs, one folder per run | kept by hand |
+| `StrengthLabPgn\` | Annotated PGNs of strength-lab runs, one folder per run | `Sync-LabPgn.ps1` |
 | `EvalDatasets\` | Position datasets from `measure_eval_error.py` and their analyses | kept by hand |
 | `CpuProfiles\` | CPU-profile traces worth keeping, each with its matching binaries, one `<date>-<issue>\` folder per study | kept by hand from `Measure-CpuProfile.ps1` output |
 

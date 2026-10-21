@@ -184,6 +184,9 @@ floor: `Docs/Workflow.md` → Speed and nps.
 
 ## Recording
 
+When a lab run completes, run `Scripts/Sync-LabPgn.ps1 -Download` before writing its ledger row: it
+copies every successful run's PGNs past the 90-day expiry.
+
 **`Measurements/README.md` is the recording convention** — the verdict vocabulary, the discard rules
 and what belongs in a row's detail section. Read it before writing a row; a row is easy to write in
 a way that cannot later be un-misread.

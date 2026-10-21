@@ -2,7 +2,8 @@
 
 ## Corpora
 
-Every strength-lab run uploads 18 shards of annotated PGN (~20,000 games, ~70 MB), kept 90 days.
+Every strength-lab run uploads 18 shards of annotated PGN (~20,000 games, ~70 MB), kept 90 days;
+`Scripts/Sync-LabPgn.ps1` copies every successful run to `StrengthLabPgn` (rule in its `README.md`).
 fastchess writes each side's own report into the move comment, `{score/depth time}`, from the
 mover's perspective. Download command: `Docs/MoveQuality.md` → Regenerating.
 
