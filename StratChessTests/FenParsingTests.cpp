@@ -164,10 +164,13 @@ TEST_CASE("FENParser: malformed FENs are rejected and inconsistent metadata is r
 		    {"r3k2r/8/8/8/8/8/8/4K2R w KQkq - 0 1", "Kkq", "-", true}, // no white queen-side rook
 		    {"r3k2r/8/8/8/8/8/8/R3K3 w KQkq - 0 1", "Qkq", "-", true}, // no white king-side rook
 		    {"r3k3/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "KQq", "-", true}, // no black king-side rook
+		    {"4k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "KQk", "-", true}, // no black queen-side rook
+		    {"r2k3r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "KQ", "-", true}, // black king off e8
 		    {"r3k2r/8/8/8/8/8/8/R2K3R w KQkq - 0 1", "kq", "-", true}, // white king off e1
 		    {"4k3/8/8/4p3/4P3/8/8/4K3 w - e3 0 1", "-", "-", true},    // ep rank wrong for white to move
 		    {"4k3/8/8/4p3/4P3/8/8/4K3 b - e6 0 1", "-", "-", true},    // ep rank wrong for black to move
 		    {"4k3/8/8/8/8/8/8/4K3 w - e6 0 1", "-", "-", true},        // no black pawn behind e6
+		    {"4k3/8/8/8/8/8/8/4K3 b - e3 0 1", "-", "-", true},        // no white pawn behind e3
 		    {"4k3/8/8/8/4P3/8/8/4K3 b - e3 0 1", "-", "e3", false},    // consistent: kept
 		};
 		Board board;
