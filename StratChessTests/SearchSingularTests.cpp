@@ -403,6 +403,33 @@ TEST_CASE("Singular: the exclusion slot is restored when the search aborts", "[s
 	CHECK(fix.excluded_move(kPly) == Move::EmptyMove());
 }
 
+TEST_CASE("Singular: an abort during the verification search keeps no result", "[search][singular]")
+{
+	AIPerlexTestFixture fix(kBaselineFen);
+	arm_baseline(fix);
+	// The node's own poll is the first; the rest land inside the verification tree.
+	fix.arm_abort_after_polls(8);
+
+	fix.search_node(kDepth, /*ply=*/1);
+
+	REQUIRE(fix.search_is_aborted());
+	REQUIRE(fix.singular_verifications() == 1);
+	REQUIRE(fix.singular_verification_nodes() > 0);
+	// The truncated verification returns the abort sentinel, which sits far below singular_beta:
+	// acted on, it would read as "singular" and grant an extension the search never earned.
+	CHECK(fix.singular_extensions() == 0);
+	CHECK(fix.singular_multicuts() == 0);
+	// Nor may anything persistent outlive the aborted frame.
+	const auto entry = fix.probe_tt(/*ply=*/1);
+	REQUIRE(entry.has_value());
+	CHECK(entry->depth == kTtDepth);
+	CHECK(entry->value == kTtValue);
+	CHECK_FALSE(fix.has_killer(1));
+	CHECK_FALSE(fix.has_killer(2));
+	CHECK(fix.history_is_clear());
+	CHECK(fix.search_board_restored());
+}
+
 TEST_CASE("Singular: a low min-depth still runs a real verification search", "[search][singular]")
 {
 	// singular_min_depth is a mutable tuning field that may be set low, so the

@@ -352,6 +352,14 @@ class AIPerlexTestFixture {
 	// fire would never abort anything.
 	void request_stop() const { ai->Stop(); }
 
+	// Latches an abort mid-tree, on the `polls`-th node from now: a node budget already spent, and
+	// the poll counter wound forward so the 1024-node poll fires on that node.
+	void arm_abort_after_polls(int polls) const
+	{
+		ai->control_.ApplyLimits(SearchLimits::fixed_nodes(1));
+		ai->td_.nodes_since_check = 1024 - polls;
+	}
+
 	// Runs one pvs() node as a verification search would see it: the exclusion slot set for
 	// the duration of the call, through the same guard the search uses.
 	//
