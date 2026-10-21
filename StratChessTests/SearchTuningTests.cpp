@@ -387,6 +387,15 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(tuning == expected);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("LateMovePruningMinIndex", "8", tuning));
+	expected.late_move_pruning_min_index = 8;
+	CHECK(tuning == expected);
+
+	// 0 would let a skip leave the node without a searched move.
+	CHECK(uci_rejection("LateMovePruningMinIndex", "0") == Code::OutOfRange);
+	CHECK(uci_rejection("LateMovePruningMinIndex", "65") == Code::OutOfRange);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("Contempt", "20", tuning));
 	expected.contempt = 20;
 	CHECK(tuning == expected);
@@ -492,8 +501,6 @@ TEST_CASE("SearchTuning UCI depth band spans the engine's ply capacity", "[tunin
 	}
 	CHECK(uci_rejection("ReverseFutilityMaxDepth", "0") == Code::OutOfRange);
 	CHECK(uci_rejection("ReverseFutilityMaxDepth", std::to_string(MAX_PLY + 1)) == Code::OutOfRange);
-	CHECK(uci_rejection("LateMovePruningMinIndex", "0") == Code::OutOfRange);
-	CHECK(uci_rejection("LateMovePruningMinIndex", "65") == Code::OutOfRange);
 }
 
 TEST_CASE("SearchTuning UCI ignores names it does not expose", "[tuning][uci]")

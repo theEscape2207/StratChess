@@ -70,7 +70,11 @@ namespace {
 		return fix.search_node(/*depth=*/2, /*ply=*/1, alpha, alpha + 1, /*is_pv_node=*/false);
 	}
 
-	Tally late_moves(const AIPerlexTestFixture& fix) { return fix.tally_late_moves(/*ply=*/1, 12); }
+	// At the shipped move index, which SearchTuningTests pins at 12.
+	Tally late_moves(const AIPerlexTestFixture& fix)
+	{
+		return fix.tally_late_moves(/*ply=*/1, SearchTuning{}.late_move_pruning_min_index);
+	}
 
 	AIPerlexTestFixture enabled_fixture(const char* fen)
 	{

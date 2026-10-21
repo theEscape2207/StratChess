@@ -23,6 +23,13 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-22: LMP move index as a tuning option (#869)
+
+### Added
+- `LateMovePruningMinIndex` (UCI spin 1-64, JSON `late_move_pruning_min_index`) replaces the
+  constant `kLateMovePruningMinLegalIndex`. The default stays 12, so the search is node-identical;
+  the option exists so the lab can measure an earlier index without the eval stack #851 needed.
+
 ## 2026-10-21: game_settings.json cleanup, last core coverage gaps (#878)
 
 ### Changed
