@@ -92,7 +92,7 @@ Nightly's `coverage` job publishes the same report for `main` (`Docs/CI.md` → 
 | Move generation (deep perft d5+) | — | `StratChessEvolved.exe perft test` |
 | Move generation (142,953-position corpus, d1–d4) | — | `Scripts\Run-PerftCheck.ps1` |
 | **MoveFormatter** | `[formatter]` | `MoveFormatterTests.cpp` |
-| **TranspositionTable** | `[tt]` | `TTTests.cpp` |
+| **TranspositionTable** | `[tt]` | `TTPackedMetadataTests.cpp`, `TTStoreProbeTests.cpp`, `TTTornPairTests.cpp`, `TTAllocationTests.cpp`, `TTReplacementTests.cpp` |
 | **Evaluation (Evaluator)** | `[eval]` | `EvalBasicTests.cpp`, `EvalSymmetryTests.cpp`, `EvalTermTests.cpp`, `EvalPawnAndTaperTests.cpp`, `EvalEndgameTests.cpp`, `EvalKingSafetyTests.cpp` |
 | **Pawn-structure cache** | `[pawncache]` | `EvalPawnCacheTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
@@ -103,7 +103,7 @@ Nightly's `coverage` job publishes the same report for `main` (`Docs/CI.md` → 
 | Search telemetry (thread clamp, terminal verdicts, node counters, aspiration windows, `info string` payload wording, search profile invariants and verification node-type guard — each falsified by mutation; `Compare-SearchProfile.ps1 -SelfTest` pins the profile lines' parsed schema) | `[search]` | `SearchTelemetryTests.cpp` |
 | Search/TT contract (terminal stores, probed-bound cutoffs, mate scores refused as cutoffs) | `[search][tt]` | `SearchTTContractTests.cpp` |
 | Quiescence (delta pruning, SEE pruning margin, in-check evasions, terminal states, ordering) | `[search][qsearch]` | `QuiescenceTests.cpp` |
-| Late move pruning (eligibility, legal index, exemptions, fail-low return and TT suppression, abort unwind) — every non-redundant guard falsified by mutation; the UCI `lmp skips` line is `[uci][lmp]` in `UCIReportingTests.cpp` | `[search][lmp]` | `SearchLateMovePruningTests.cpp` |
+| Late move pruning (eligibility, legal index, exemptions, fail-low return and TT suppression, abort unwind) — every non-redundant guard falsified by mutation; the UCI `lmp skips` line is `[uci][lmp]` in `UCIGoReportingTests.cpp` | `[search][lmp]` | `SearchLateMovePruningTests.cpp` |
 | Late move reduction (sqrt and log base formulas, `[1, depth - 2]` bounds, history shift applied after the cap, truncation, displaced-killer score, near sign switch at small divisors, divisor reaching `pvs()`) | `[search][lmr]` | `SearchLmrTests.cpp` |
 | Move ordering (Sort) | `[sort]` | `SortTests.cpp` |
 | Static exchange evaluation | `[see]` | `SeeTests.cpp` |
@@ -115,7 +115,7 @@ Nightly's `coverage` job publishes the same report for `main` (`Docs/CI.md` → 
 | Time management (TimeManager + compute_budget) | `[time_mgr]` | `TimeManagerTests.cpp` |
 | Sliding-piece attack generation (PEXT) | `[magic]` | `MagicBitboardTests.cpp` |
 | Bitboard helpers (set_bits/clear_bits/print_bitboard) | `[bitboard]` | `BitBoardHelperTests.cpp` |
-| UCI command loop | `[uci]` | `UCITests.cpp`, `UCIReportingTests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
+| UCI command loop | `[uci]` | `UCITests.cpp`, `UCIEvalTests.cpp`, `UCIPerftTests.cpp`, `UCIGoReportingTests.cpp`, `UCIGoStopTests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
 | FEN parsing (FenBatch, FENParser, Board::SetupFromFEN/Board(fen)) | `[fen]` | `FenParsingTests.cpp` |
 | PV legality (`pv_replays_legally`) | `[pv]` | `PVIntegrityTests.cpp` |
 | Full tactical suite (WAC/mate-in-N) | — | `StratChessEvolved.exe tactical test` |
@@ -133,7 +133,14 @@ Nightly's `coverage` job publishes the same report for `main` (`Docs/CI.md` → 
 
 ### TranspositionTable Tests (`[tt]`)
 
-**File**: `StratChessTests/TTTests.cpp`
+**Files**, by subject, over the `TranspositionTableTestFixture` friend, store helpers and keys
+shared in `TTTestFixture.h`:
+- `TTPackedMetadataTests.cpp` — packed entry metadata, age wrap, `hashfull`, store outcome
+- `TTStoreProbeTests.cpp` — store/probe round-trips, static eval, key matching, mate-score ply adjustment, `clear()`
+- `TTTornPairTests.cpp` — the lock-free slot encoding: torn pairs and concurrent probes (`[tt_torn]`, `[smp]`)
+- `TTAllocationTests.cpp` — `memory_mb`, bucket geometry, huge-page alignment, prefetch target
+- `TTReplacementTests.cpp` — quiescence vs main ranking and same-key store rules (`replacementScore`)
+
 **Rationale**: The TT is fully self-contained (no Board dependency). Its correctness affects every depth of search — a silent TT bug could mask wins or produce ghost moves. Tests added now provide a safety net before the TT is stressed by LMR and parallel search.
 
 **Test cases**:
@@ -552,10 +559,12 @@ attack bitboard is correct in isolation.
 
 **Files**: `StratChessTests/UCITests.cpp` (session/administrative commands: `parse_go`,
 `cmd_position`, `cmd_setoption`, `cmd_ucinewgame`, `dispatch`, the command log) and
-`StratChessTests/UCIReportingTests.cpp` (commands that run search and report on it: `cmd_go`,
-`cmd_eval`, `cmd_perft`). Shared infrastructure (`UciHandlerTestFixture`, its injected-writer
-output capture, the perft divide-line parser) lives in `StratChessTests/UCITestFixture.h`,
-included by both.
+the commands that run search and report on it, by subject: `UCIEvalTests.cpp` (`cmd_eval`),
+`UCIPerftTests.cpp` (`cmd_perft`, `run()` dispatch of `go perft`), `UCIGoReportingTests.cpp`
+(`cmd_go` info lines, pv, score, node limits, timing, the measurement-contract lines) and
+`UCIGoStopTests.cpp` (`cmd_go` stop and output integrity, `UciWriter` injection). Shared
+infrastructure (`UciHandlerTestFixture`, its injected-writer output capture, the perft divide-line
+parser, the `info`/`bestmove` line parsers) lives in `StratChessTests/UCITestFixture.h`, included by all.
 **Access**: `UciHandlerTestFixture` (`STRAT_ENABLE_TEST_ACCESS`) drives private command
 handlers (`cmd_position`, `cmd_setoption`, `cmd_ucinewgame`, `cmd_eval`) directly, without a
 running `run()` loop or piped stdin.
@@ -566,7 +575,7 @@ search service. Tuning changes use `SetTuning()`; the UCI fixture has no separat
 A test reads UCI output through the fixture's `output()`/`capture()`, backed by a `UciWriter`
 injected at construction, never by redirecting `std::cout`: a search runs on its own thread, and
 swapping `std::cout`'s buffer while that thread is still writing to it is a data race. `CinRedirect`
-(stdin) is unaffected and stays local to `UCIReportingTests.cpp`.
+(stdin) is unaffected and stays local to `UCIPerftTests.cpp`.
 
 Covers `parse_go()` parameter parsing, `cmd_position` move replay (including the MAX_PLY
 overflow regression), `cmd_setoption`'s Threads persistence across `ucinewgame`, Hash option
