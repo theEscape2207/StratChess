@@ -31,6 +31,13 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   stores that depth. It is the one-line IIR, not the recursive IID pre-search. Off is
   node-identical to before. The knob ships off until the lab decides between 5 and 4.
 
+## 2026-10-22: LMP move index 12 → 8, as a tuning option (#869)
+
+### Changed
+- Late move pruning starts at the ninth legal move instead of the thirteenth: lab +3.98 +/- 2.95
+  over 12 (28,800 games). `LateMovePruningMinIndex` (UCI spin 1-64, JSON
+  `late_move_pruning_min_index`, default 8) replaces the constant `kLateMovePruningMinLegalIndex`.
+
 ## 2026-10-22: Sync-LabPgn copies every successful lab run (#791)
 
 ### Added

@@ -54,6 +54,7 @@ namespace {
 		bool frontier_futility_enabled;
 		int frontier_futility_margin;
 		bool late_move_pruning_enabled;
+		int late_move_pruning_min_index;
 		bool iir_enabled;
 		int iir_min_depth;
 		bool staged_generation_enabled;
@@ -93,6 +94,7 @@ namespace {
 	SAME_MEMBER(frontier_futility_enabled)
 	SAME_MEMBER(frontier_futility_margin)
 	SAME_MEMBER(late_move_pruning_enabled)
+	SAME_MEMBER(late_move_pruning_min_index)
 	SAME_MEMBER(iir_enabled)
 	SAME_MEMBER(iir_min_depth)
 	SAME_MEMBER(staged_generation_enabled)
@@ -153,6 +155,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.frontier_futility_enabled);
 	CHECK(tuning.frontier_futility_margin == 200);
 	CHECK(tuning.late_move_pruning_enabled);
+	CHECK(tuning.late_move_pruning_min_index == 8);
 	CHECK_FALSE(tuning.iir_enabled);
 	CHECK(tuning.iir_min_depth == 5);
 	CHECK(tuning.staged_generation_enabled);
@@ -396,6 +399,15 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(tuning == expected);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("LateMovePruningMinIndex", "8", tuning));
+	expected.late_move_pruning_min_index = 8;
+	CHECK(tuning == expected);
+
+	// 0 would let a skip leave the node without a searched move.
+	CHECK(uci_rejection("LateMovePruningMinIndex", "0") == Code::OutOfRange);
+	CHECK(uci_rejection("LateMovePruningMinIndex", "65") == Code::OutOfRange);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("InternalIterativeReduction", "true", tuning));
 	expected.iir_enabled = true;
 	CHECK(tuning == expected);
@@ -541,6 +553,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name FrontierFutility type check default true",
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
 	    "option name LateMovePruning type check default true",
+	    "option name LateMovePruningMinIndex type spin default 8 min 1 max 64",
 	    "option name InternalIterativeReduction type check default false",
 	    "option name IirMinDepth type spin default 5 min 2 max 256",
 	    // No negative half: SearchTuningSchema's read_uci() accepts unsigned decimal digits only,

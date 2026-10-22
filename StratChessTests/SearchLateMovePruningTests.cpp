@@ -70,12 +70,17 @@ namespace {
 		return fix.search_node(/*depth=*/2, /*ply=*/1, alpha, alpha + 1, /*is_pv_node=*/false);
 	}
 
-	Tally late_moves(const AIPerlexTestFixture& fix) { return fix.tally_late_moves(/*ply=*/1, 12); }
+	// The positions below were built around index 12, the earlier default, so the fixtures pin it
+	// rather than follow the shipped default.
+	constexpr int kFixtureIndex = 12;
+
+	Tally late_moves(const AIPerlexTestFixture& fix) { return fix.tally_late_moves(/*ply=*/1, kFixtureIndex); }
 
 	AIPerlexTestFixture enabled_fixture(const char* fen)
 	{
 		AIPerlexTestFixture fix(fen);
 		fix.set_late_move_pruning(true);
+		fix.set_late_move_pruning_min_index(kFixtureIndex);
 		fix.arm_clock();
 		return fix;
 	}
@@ -220,6 +225,20 @@ TEST_CASE("Late move pruning: skips late quiet moves from the thirteenth legal m
 	CHECK(fix.search_board_restored());
 }
 
+TEST_CASE("Late move pruning: the tuned move index moves the threshold", "[search][lmp]")
+{
+	auto fix = enabled_fixture(kMixedFen);
+	fix.set_late_move_pruning_min_index(8);
+
+	const Tally tally = fix.tally_late_moves(/*ply=*/1, 8);
+	REQUIRE(tally.candidates > late_moves(fix).candidates);
+
+	search_depth2(fix, kHighAlpha);
+
+	CHECK(fix.lmp_skips() == tally.candidates);
+	CHECK(fix.search_board_restored());
+}
+
 TEST_CASE("Late move pruning: late captures, promotions and killers are searched", "[search][lmp]")
 {
 	auto fix = enabled_fixture(kCrowdedFen);
@@ -255,11 +274,12 @@ TEST_CASE("Late move pruning: a move that repeats the position is never skipped"
 {
 	AIPerlexTestFixture fix("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	fix.set_late_move_pruning(true);
+	fix.set_late_move_pruning_min_index(kFixtureIndex);
 	fix.arm_clock();
 	const std::initializer_list<const char*> line = {"g1f3", "g8f6", "f3g1"};
 
 	// Black's Ng8 returns to the root position, a repetition inside the search.
-	const Tally tally = fix.tally_late_moves(fix.board_after(line), /*ply=*/3, 12);
+	const Tally tally = fix.tally_late_moves(fix.board_after(line), /*ply=*/3, kFixtureIndex);
 	REQUIRE(tally.candidates > 0);
 	REQUIRE(tally.late_draws == 1);
 
