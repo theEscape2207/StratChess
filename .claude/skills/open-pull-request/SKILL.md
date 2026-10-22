@@ -25,9 +25,12 @@ to the risk:
 
 Hard triggers, at any size:
 
-- Engine or Build tier.
+- Engine or Build tier, unless every file outside the Docs tier is a `*.cpp` or `*.h` directly in
+  `StratChessTests/`. Those build only the test binary, so tier alone does not force full review;
+  the other hard triggers still apply.
 - A new executable file.
-- A change to which paths get deleted, or the removal of a guard, safety check or recovery path.
+- A change to which paths get deleted, or the removal of a guard, safety check or recovery path —
+  including a test case or assertion dropped or loosened rather than moved.
 - A change to what a measurement means: binary or option selection, pooling, statistics, validity.
 
 One exception: a follow-up commit that only moves a default to the value a lab confirmation passed,
