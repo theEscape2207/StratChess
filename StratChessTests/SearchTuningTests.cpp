@@ -151,7 +151,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.frontier_futility_enabled);
 	CHECK(tuning.frontier_futility_margin == 200);
 	CHECK(tuning.late_move_pruning_enabled);
-	CHECK(tuning.late_move_pruning_min_index == 12);
+	CHECK(tuning.late_move_pruning_min_index == 8);
 	CHECK(tuning.staged_generation_enabled);
 	CHECK(tuning.continuation_history_plies == 2);
 	CHECK(tuning.contempt == 0);
@@ -530,7 +530,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name FrontierFutility type check default true",
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
 	    "option name LateMovePruning type check default true",
-	    "option name LateMovePruningMinIndex type spin default 12 min 1 max 64",
+	    "option name LateMovePruningMinIndex type spin default 8 min 1 max 64",
 	    // No negative half: SearchTuningSchema's read_uci() accepts unsigned decimal digits only,
 	    // so an advertised negative minimum would be a value the engine then refuses to apply.
 	    "option name Contempt type spin default 0 min 0 max 100",

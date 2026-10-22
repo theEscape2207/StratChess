@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-22 | cd78e8d, `LateMovePruningMinIndex=8`: LMP from the ninth legal move instead of the thirteenth, at every node (#869; PR #883, run `39689240396`, 12 of 18 shards favour it, zero forfeits) | 1a36927 | 28800 | 10+0.1 | **+3.98 +/- 2.95** | gain; passes the ship rule, default changed to 8 |
 | 2026-10-21 | d9ca256, capture history with `CaptureHistoryDivisor=16` set over UCI: the entry divided by 16, too little to reorder captures across victim classes (#871; PR #873, never merged) | a44e30e | 26640 | 10+0.1 | **-1.37 +/- 3.08** | inconclusive @ 26640; fails the ship rule |
 | 2026-10-21 | d9ca256, capture history with `CaptureHistoryDivisor=8`: the entry divided by 8 before it joins the capture score (#871; PR #873, never merged) | a44e30e | 26640 | 10+0.1 | **+0.95 +/- 3.11** | inconclusive @ 26640; fails the ship rule |
 | 2026-10-21 | 8908cbd, capture history: a per-thread `[piece, to][victim]` table read inside each SEE capture tier (#871; PR #873, never merged) | a44e30e | 26640 | 10+0.1 | **-1.66 +/- 3.09** | inconclusive @ 26640 |

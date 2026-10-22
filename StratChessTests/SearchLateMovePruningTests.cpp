@@ -70,16 +70,17 @@ namespace {
 		return fix.search_node(/*depth=*/2, /*ply=*/1, alpha, alpha + 1, /*is_pv_node=*/false);
 	}
 
-	// At the shipped move index, which SearchTuningTests pins at 12.
-	Tally late_moves(const AIPerlexTestFixture& fix)
-	{
-		return fix.tally_late_moves(/*ply=*/1, SearchTuning{}.late_move_pruning_min_index);
-	}
+	// The positions below were built around index 12, the default before #869, so the fixtures pin
+	// it rather than follow the shipped default.
+	constexpr int kFixtureIndex = 12;
+
+	Tally late_moves(const AIPerlexTestFixture& fix) { return fix.tally_late_moves(/*ply=*/1, kFixtureIndex); }
 
 	AIPerlexTestFixture enabled_fixture(const char* fen)
 	{
 		AIPerlexTestFixture fix(fen);
 		fix.set_late_move_pruning(true);
+		fix.set_late_move_pruning_min_index(kFixtureIndex);
 		fix.arm_clock();
 		return fix;
 	}
@@ -273,11 +274,12 @@ TEST_CASE("Late move pruning: a move that repeats the position is never skipped"
 {
 	AIPerlexTestFixture fix("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	fix.set_late_move_pruning(true);
+	fix.set_late_move_pruning_min_index(kFixtureIndex);
 	fix.arm_clock();
 	const std::initializer_list<const char*> line = {"g1f3", "g8f6", "f3g1"};
 
 	// Black's Ng8 returns to the root position, a repetition inside the search.
-	const Tally tally = fix.tally_late_moves(fix.board_after(line), /*ply=*/3, 12);
+	const Tally tally = fix.tally_late_moves(fix.board_after(line), /*ply=*/3, kFixtureIndex);
 	REQUIRE(tally.candidates > 0);
 	REQUIRE(tally.late_draws == 1);
 
