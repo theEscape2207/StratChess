@@ -27,9 +27,9 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
 ### Added
 - `InternalIterativeReduction` (default `false`) and `IirMinDepth` (default 5, 2-256): a non-PV,
-  out-of-check node with no hash move, at `IirMinDepth` or deeper, searches one ply shallower and stores that depth. It is
-  the one-line IIR, not the recursive IID pre-search. Off is node-identical to before. The knob
-  ships off until the lab decides between 5 and 4.
+  out-of-check node with no hash move, at `IirMinDepth` or deeper, searches one ply shallower and
+  stores that depth. It is the one-line IIR, not the recursive IID pre-search. Off is
+  node-identical to before. The knob ships off until the lab decides between 5 and 4.
 
 ## 2026-10-22: Sync-LabPgn copies every successful lab run (#791)
 
