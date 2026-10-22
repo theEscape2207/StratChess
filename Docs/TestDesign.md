@@ -92,7 +92,7 @@ Nightly's `coverage` job publishes the same report for `main` (`Docs/CI.md` → 
 | Move generation (deep perft d5+) | — | `StratChessEvolved.exe perft test` |
 | Move generation (142,953-position corpus, d1–d4) | — | `Scripts\Run-PerftCheck.ps1` |
 | **MoveFormatter** | `[formatter]` | `MoveFormatterTests.cpp` |
-| **TranspositionTable** | `[tt]` | `TTTests.cpp` |
+| **TranspositionTable** | `[tt]` | `TTPackedMetadataTests.cpp`, `TTStoreProbeTests.cpp`, `TTTornPairTests.cpp`, `TTAllocationTests.cpp`, `TTReplacementTests.cpp` |
 | **Evaluation (Evaluator)** | `[eval]` | `EvalBasicTests.cpp`, `EvalSymmetryTests.cpp`, `EvalTermTests.cpp`, `EvalPawnAndTaperTests.cpp`, `EvalEndgameTests.cpp`, `EvalKingSafetyTests.cpp` |
 | **Pawn-structure cache** | `[pawncache]` | `EvalPawnCacheTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
@@ -133,7 +133,14 @@ Nightly's `coverage` job publishes the same report for `main` (`Docs/CI.md` → 
 
 ### TranspositionTable Tests (`[tt]`)
 
-**File**: `StratChessTests/TTTests.cpp`
+**Files**, by subject, over the `TranspositionTableTestFixture` friend, store helpers and keys
+shared in `TTTestFixture.h`:
+- `TTPackedMetadataTests.cpp` — packed entry metadata, age wrap, `hashfull`, store outcome
+- `TTStoreProbeTests.cpp` — store/probe round-trips, static eval, key matching, mate-score ply adjustment, `clear()`
+- `TTTornPairTests.cpp` — the lock-free slot encoding: torn pairs and concurrent probes (`[tt_torn]`, `[smp]`)
+- `TTAllocationTests.cpp` — `memory_mb`, bucket geometry, huge-page alignment, prefetch target
+- `TTReplacementTests.cpp` — quiescence vs main ranking and same-key store rules (`replacementScore`)
+
 **Rationale**: The TT is fully self-contained (no Board dependency). Its correctness affects every depth of search — a silent TT bug could mask wins or produce ghost moves. Tests added now provide a safety net before the TT is stressed by LMR and parallel search.
 
 **Test cases**:
