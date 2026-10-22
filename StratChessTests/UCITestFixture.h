@@ -1,7 +1,6 @@
-// UCITestFixture.h — shared test infrastructure for the UCI test files (UCITests.cpp,
-// UCIReportingTests.cpp): the STRAT_ENABLE_TEST_ACCESS fixture, its injected-writer output
-// capture, and the perft divide-line parser used as a board-state oracle by tests outside
-// cmd_perft itself.
+// UCITestFixture.h — shared test infrastructure for the UCI test files (UCI*Tests.cpp):
+// the STRAT_ENABLE_TEST_ACCESS fixture, its injected-writer output capture, the perft divide-line parser used as a board-state oracle by tests outside
+// cmd_perft itself, and the output-line parsers the reporting files share.
 
 #pragma once
 
@@ -306,4 +305,78 @@ inline uint64_t divide_total(const std::string& output)
 	for (const auto& entry : parse_divide(output))
 		sum += entry.second;
 	return sum;
+}
+
+// Output parsing shared by the UCI reporting test files.
+
+inline std::vector<std::string> split_lines(const std::string& text)
+{
+	std::vector<std::string> lines;
+	std::istringstream stream(text);
+	std::string line;
+	while (std::getline(stream, line))
+		lines.push_back(line);
+	return lines;
+}
+
+// One parsed "info depth ..." line. `score` keeps the two-token form
+// ("cp 34" / "mate 3") verbatim so tests can check the kind without
+// re-deriving GameValues::Mate_Threshold.
+struct ParsedInfoLine {
+	int depth = 0;
+	std::string score;
+	int64_t nodes = 0;
+	int hashfull = -1;
+	int time_ms = 0;
+	std::vector<std::string> pv;
+};
+
+// Every "info depth ..." line in `output`, in emission order. Deliberately
+// tolerant of any other 'info' line shape (e.g. 'info string ...') by only
+// matching the "info depth" prefix — those are unrelated protocol output,
+// not a parse failure.
+inline std::vector<ParsedInfoLine> parse_info_depth_lines(const std::string& output)
+{
+	std::vector<ParsedInfoLine> result;
+	for (const std::string& line : split_lines(output)) {
+		if (!line.starts_with("info depth "))
+			continue;
+
+		std::istringstream iss(line);
+		std::string tok;
+		ParsedInfoLine info;
+		while (iss >> tok) {
+			if (tok == "depth") {
+				iss >> info.depth;
+			} else if (tok == "score") {
+				std::string kind;
+				std::string value;
+				iss >> kind >> value;
+				info.score = kind + " " + value;
+			} else if (tok == "nodes") {
+				iss >> info.nodes;
+			} else if (tok == "hashfull") {
+				iss >> info.hashfull;
+			} else if (tok == "time") {
+				iss >> info.time_ms;
+			} else if (tok == "pv") {
+				std::string move;
+				while (iss >> move)
+					info.pv.push_back(move);
+			}
+		}
+		result.push_back(std::move(info));
+	}
+	return result;
+}
+
+// The move token on a "bestmove <move>" line, or empty if none is present.
+inline std::string extract_bestmove(const std::string& output)
+{
+	for (const std::string& line : split_lines(output)) {
+		if (line.starts_with("bestmove ")) {
+			return line.substr(std::string("bestmove ").size());
+		}
+	}
+	return {};
 }

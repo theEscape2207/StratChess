@@ -1,7 +1,7 @@
 // UCITests.cpp — Catch2 [uci] tests for the session/administrative commands:
 // parse_go() parameter parsing, search-limit translation, cmd_position, cmd_setoption, cmd_ucinewgame,
 // dispatch() and the received-command log. cmd_go/cmd_eval/cmd_perft (the
-// commands that run search and report on it) are in UCIReportingTests.cpp.
+// commands that run search and report on it) are in the UCIEval, UCIPerft and UCIGo*Tests.cpp files.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
