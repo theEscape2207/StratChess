@@ -70,8 +70,8 @@ namespace {
 		return fix.search_node(/*depth=*/2, /*ply=*/1, alpha, alpha + 1, /*is_pv_node=*/false);
 	}
 
-	// The positions below were built around index 12, the default before #869, so the fixtures pin
-	// it rather than follow the shipped default.
+	// The positions below were built around index 12, the earlier default, so the fixtures pin it
+	// rather than follow the shipped default.
 	constexpr int kFixtureIndex = 12;
 
 	Tally late_moves(const AIPerlexTestFixture& fix) { return fix.tally_late_moves(/*ply=*/1, kFixtureIndex); }
