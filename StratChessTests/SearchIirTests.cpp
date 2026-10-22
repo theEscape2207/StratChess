@@ -34,7 +34,7 @@ namespace {
 TEST_CASE("IIR eligibility", "[search][iir]")
 {
 	AIPerlexTestFixture fix(kFen);
-	fix.set_iir(true);
+	fix.set_iir(true, kDepth);
 	REQUIRE(eligible(fix));
 
 	CHECK_FALSE(eligible(fix, kDepth - 1));

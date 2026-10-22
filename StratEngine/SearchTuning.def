@@ -96,9 +96,11 @@ TUNING_FIELD(int,     late_move_pruning_min_index, 8,    1,     64,   true, "Lat
 
 // Internal iterative reduction: a non-PV node with no hash move searches one ply shallower, and the
 // entry it stores orders the next visit. The floor of 2 keeps the reduced node above the quiescence
-// hand-off pvs() has already passed.
-TUNING_FIELD(bool,    iir_enabled,   false, false, true,    true, "InternalIterativeReduction", true)
-TUNING_FIELD(int,     iir_min_depth, 5,     2,     MAX_PLY, true, "IirMinDepth",                true)
+// hand-off pvs() has already passed. A reduced depth-4 node lands at 3, inside reverse futility's
+// band, so the lab-measured gain of 4 over 5 is partly that overlap: re-measure both on a change
+// to ReverseFutilityMaxDepth.
+TUNING_FIELD(bool,    iir_enabled,   true,  false, true,    true, "InternalIterativeReduction", true)
+TUNING_FIELD(int,     iir_min_depth, 4,     2,     MAX_PLY, true, "IirMinDepth",                true)
 
 // Staged generation in pvs(): captures first, quiets only when the loop reaches them. Either value
 // searches the same tree; off is the on/off equivalence test's reference path.
