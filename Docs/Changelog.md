@@ -23,6 +23,15 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-22: Internal iterative reduction (#96)
+
+### Added
+- `InternalIterativeReduction` (default `true`) and `IirMinDepth` (default 4, 2-256): a non-PV,
+  out-of-check node with no hash move, at `IirMinDepth` or deeper, searches one ply shallower and
+  stores that depth. It is the one-line IIR, not the recursive IID pre-search. Lab +9.18 +/- 3.10
+  over the merge base (26,640 games), confirming a screen where 4 beat 5 (+9.11 against +1.43).
+  Off is node-identical to before.
+
 ## 2026-10-22: Split TTTests.cpp and UCIReportingTests.cpp (#890)
 
 ### Changed

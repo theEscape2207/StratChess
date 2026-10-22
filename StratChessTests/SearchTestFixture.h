@@ -276,6 +276,25 @@ class AIPerlexTestFixture {
 		return ai->late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
 	}
 
+	// --- Internal iterative reduction pokes ---
+	void set_iir(bool enabled, int min_depth = SearchTuning{}.iir_min_depth) const
+	{
+		ai->tuning_.iir_enabled = enabled;
+		ai->tuning_.iir_min_depth = min_depth;
+	}
+	bool iir_eligible(int depth, bool is_pv_node, bool in_check, bool is_exclusion_frame, const Move& hash_move) const
+	{
+		return ai->iir_eligible(depth, is_pv_node, in_check, is_exclusion_frame, hash_move);
+	}
+	// Plants a MAIN entry for the fixture's board carrying a hash move, too shallow to cut anything off.
+	void store_hash_move(std::string_view uci, int ply) const
+	{
+		const Move move = MoveFormatter::FromUCI(uci, board_);
+		REQUIRE_FALSE(move.is_null());
+		ai->tt_->store(board_.get_zobrist_hash(), 0, 1, static_cast<int16_t>(ply), move, BoundType::LOWER,
+		               NodeType::CUT_NODE, SearchPhase::MAIN, kNoStaticEval);
+	}
+
 	// --- Staged generation pokes ---
 	void set_staged_generation(bool enabled) const { ai->tuning_.staged_generation_enabled = enabled; }
 	bool staged_generation_eligible(int depth, bool in_check, const Move& hash_move) const

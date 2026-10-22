@@ -11,6 +11,9 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-22 | d865270, CONFIRM arm B: `InternalIterativeReduction=true IirMinDepth=4` (#96; PR #885; confirms the screen's arm B on openings 9,991-23,310, 16 of 18 shards favour it) | a9b4e60 | 26640 | 10+0.1 | **+9.18 +/- 3.10** | gain; passes the ship rule, default changed to on at 4 |
+| 2026-10-22 | adb3267, SCREEN arm B: `InternalIterativeReduction=true IirMinDepth=4` (#96; PR #885; best of two by 3.0 sigma, confirmed by the CONFIRM row) | 34a4ab8 | 9990 | 10+0.1 | **+9.11 +/- 5.04** | gain |
+| 2026-10-22 | adb3267, SCREEN arm A: `InternalIterativeReduction=true IirMinDepth=5` (#96; PR #885) | 34a4ab8 | 9990 | 10+0.1 | **+1.43 +/- 4.96** | inconclusive @ 9990 |
 | 2026-10-22 | cd78e8d, `LateMovePruningMinIndex=8`: LMP from the ninth legal move instead of the thirteenth, at every node (#869; PR #883, run `39689240396`, 12 of 18 shards favour it, zero forfeits) | 1a36927 | 28800 | 10+0.1 | **+3.98 +/- 2.95** | gain; passes the ship rule, default changed to 8 |
 | 2026-10-21 | d9ca256, capture history with `CaptureHistoryDivisor=16` set over UCI: the entry divided by 16, too little to reorder captures across victim classes (#871; PR #873, never merged) | a44e30e | 26640 | 10+0.1 | **-1.37 +/- 3.08** | inconclusive @ 26640; fails the ship rule |
 | 2026-10-21 | d9ca256, capture history with `CaptureHistoryDivisor=8`: the entry divided by 8 before it joins the capture score (#871; PR #873, never merged) | a44e30e | 26640 | 10+0.1 | **+0.95 +/- 3.11** | inconclusive @ 26640; fails the ship rule |
@@ -102,6 +105,14 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-22 -- internal iterative reduction confirmation (#96) (26640 games)
+
+**Confirmation for PR #885 of the screen below, declared in the PR body before dispatch; passes the ship rule (interval [+6.09, +12.28], above 0), so the default flips to `InternalIterativeReduction=true`, `IirMinDepth=4`.** [Run `39737797949`](https://github.com/theEscape2207/StratChess/actions/runs/39737797949), about 4 h 20 min, 18 shards x 740 pairs, openings 9,991-23,310 (offset 9,990, past the screen's), reference the merge base `a9b4e60`, candidate `d865270` with the options set over UCI. All 21 jobs are green, so no shard hit a time loss, illegal move or disconnect; every shard logs PV-compliance warnings (#310), which are reporting-only. Resolved options: the run's `strength-39737797949-comparison` artifact. Pooled Ptnml(0-2) [965, 2929, 5042, 3205, 1179], score 51.32%. **The options reached the engine:** over the first 40 plies of shards 0 and 1, the candidate's reported depth exceeds the reference's by +0.29 / +0.30 plies. The estimate matches the screen's +9.11, so the screen-winner shrink did not show. The design-doc check for 4: none needed. #96 reserved one for a default below 4; 4 against 5 is settled by measurement, with the reverse-futility overlap inside what was measured, and `SearchTuning.def` says to re-measure both on a change to `ReverseFutilityMaxDepth`.
+
+### 2026-10-22 -- internal iterative reduction screen (#96) (9990 games per arm)
+
+**Screen for PR #885, declared in the PR body before dispatch: the winning arm gets a confirmation run on its own openings; on a pass the default flips, otherwise the knob goes.** [Run `39694191888`](https://github.com/theEscape2207/StratChess/actions/runs/39694191888), about 3 h 13 min, 18 shards x 555 pairs, openings 1-9,990, arm A on the even shards, arm B on the odd, reference the merge base `34a4ab8`, which advertises neither option. All 21 jobs are green, so no shard hit a time loss, illegal move or disconnect; every shard logs PV-compliance warnings (#310), which are reporting-only. Resolved options: the run's `strength-39694191888-comparison` artifact. Ptnml(0-2): A (5) [358, 1170, 1918, 1171, 378], 4 of 9 shards favour it; B (4) [356, 1111, 1865, 1241, 422], 7 of 9. **The options reached the engine:** over the first 40 plies of shards 0 and 2 (A) and 1 and 3 (B), the candidate's reported depth exceeds the reference's by +0.15 / +0.17 plies under A and +0.24 / +0.24 under B. B's lead over A is partly reverse futility, not IIR alone: a reduced depth-4 node lands at depth 3, inside `ReverseFutilityMaxDepth`, whereas 5 lands above every pruning band. #96 settled that overlap by defaulting to 5, so shipping 4 needs its design-doc check.
 
 ### 2026-10-21 -- d9ca256, capture history, divisor 16 (#871) (26640 games)
 
