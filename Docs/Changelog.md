@@ -32,6 +32,13 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   over the merge base (26,640 games), confirming a screen where 4 beat 5 (+9.11 against +1.43).
   Off is node-identical to before.
 
+## 2026-10-22: Split TTTests.cpp and UCIReportingTests.cpp (#890)
+
+### Changed
+- `TTTests.cpp` (1374 lines) is five subject files over a shared `TTTestFixture.h`;
+  `UCIReportingTests.cpp` (1103) is four, with the `info`/`bestmove` line parsers moved into
+  `UCITestFixture.h`. No test was rewritten, renamed or retagged; every file is under 500 lines.
+
 ## 2026-10-22: LMP move index 12 → 8, as a tuning option (#869)
 
 ### Changed

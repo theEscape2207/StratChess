@@ -1,6 +1,6 @@
 // SearchTTContractTests.cpp — Catch2 tests for the contract between the search and the
 // transposition table: how a terminal node is stored, and what a probed bound may and may not
-// do to the caller's window. The table itself is covered by TTTests.cpp.
+// do to the caller's window. The table itself is covered by the TT*Tests.cpp files.
 
 #include "SearchTestFixture.h"
 #include <catch2/catch_test_macros.hpp>
