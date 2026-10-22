@@ -1033,7 +1033,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// if DoMove() accepts it: every legal move counts, exempt and skipped ones included, and a
 		// rejected pseudo-legal move does not. The hash move sorts first, so its exemption is defence
 		// in depth.
-		const bool lmp_candidate = lmp_node && legal_moves_searched >= kLateMovePruningMinLegalIndex &&
+		const bool lmp_candidate = lmp_node && legal_moves_searched >= tuning_.late_move_pruning_min_index &&
 		                           !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) &&
 		                           move != td.killers[ply][0] && move != td.killers[ply][1] && move != hash_move;
 

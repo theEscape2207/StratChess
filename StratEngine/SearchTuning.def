@@ -87,8 +87,12 @@ TUNING_FIELD(int,     reverse_futility_margin,    100,  0,     1000,    true, "R
 TUNING_FIELD(bool,    frontier_futility_enabled, true, false, true, true, "FrontierFutility",       true)
 TUNING_FIELD(int,     frontier_futility_margin,  200,  0,     1000, true, "FrontierFutilityMargin", true)
 
-// Late move pruning at depth 2; its depth and move index are constants in AIPerplex.h.
-TUNING_FIELD(bool,    late_move_pruning_enabled, true, false, true, true, "LateMovePruning", true)
+// Late move pruning at depth 2 (a constant in AIPerplex.h). The index is zero-based over legal moves:
+// 8 makes the ninth skippable (lab-measured gain over 12). At least 1, so the first legal
+// move is always searched; 64 is past the move count of almost any position, so the cap only bounds
+// a lab sweep.
+TUNING_FIELD(bool,    late_move_pruning_enabled,   true, false, true, true, "LateMovePruning",         true)
+TUNING_FIELD(int,     late_move_pruning_min_index, 8,    1,     64,   true, "LateMovePruningMinIndex", true)
 
 // Staged generation in pvs(): captures first, quiets only when the loop reaches them. Either value
 // searches the same tree; off is the on/off equivalence test's reference path.

@@ -134,7 +134,7 @@ the implementation and [search contracts](EngineContracts.md#search-internals).
 | Singular extension | `pvs` verification search | `singular_*`; TT evidence and excluded move |
 | Singular multi-cut | `singular_multicut_eligible`, `pvs` after the verification | `singular_multicut_enabled`; fail-hard `beta`, no TT store |
 | Frontier futility | `frontier_futility_eligible`, `pvs` | `frontier_futility_*` |
-| Late move pruning | `late_move_pruning_eligible`, `pvs` | `late_move_pruning_enabled`; thresholds in [AIPerplex.h](../StratEngine/AIPerplex.h) |
+| Late move pruning | `late_move_pruning_eligible`, `pvs` | `late_move_pruning_enabled`, `late_move_pruning_min_index`; depth in [AIPerplex.h](../StratEngine/AIPerplex.h) |
 | Late move reduction | `pvs` reduced search and re-search; `lmr_reduction` in [AIPerplex.h](../StratEngine/AIPerplex.h) | `lmr_*`, including history adjustment through `lmr_history_divisor`; move classification and ordering |
 | Quiescence delta / SEE pruning | `quiescence` | `delta_pruning_margin`, `see_pruning_enabled`, `see_pruning_margin`; material and check guards |
 | Move ordering and history | [MoveSorter](../StratEngine/Sort.h): `ScoreMovesBestFirst` / `OrderRemaining` in `pvs`; `ScoreMoves` for in-check quiescence; `order_quiescence_moves` | Lazy main-search ordering; hash move, SEE tiers, killers, history and `continuation_history_plies`. [Ordering contract](EngineContracts.md#search-internals). |
