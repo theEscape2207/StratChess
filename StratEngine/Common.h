@@ -28,9 +28,9 @@
 #include <cstdlib>
 #include <format>
 #include <fstream>
-#include <immintrin.h> // _pext_u64 for Magic.h — requires /arch:AVX2 (BMI2), see Magic.h
 #include <functional>
-#include <iostream> // cout
+#include <immintrin.h> // _pext_u64 for Magic.h — requires /arch:AVX2 (BMI2), see Magic.h
+#include <iostream>    // cout
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -48,5 +48,4 @@
 #	pragma warning(pop)
 #endif
 
-//Allow using spdlog all over
 #include <spdlog/spdlog.h>
