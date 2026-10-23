@@ -31,6 +31,14 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   under ThreadSanitizer alongside the `movetime` abort. It had been dropped because the GCC 13.3 /
   Ubuntu 24.04 TSan build never answered `stop`; the spike on `ubuntu-26.04` shows it does.
 
+## 2026-10-23: Keep the StdAfx.h umbrella (#281)
+
+### Changed
+- Decided to keep the `StdAfx.h` umbrella rather than migrate to include-what-you-use: ccache
+  makes untouched TUs hits regardless of include width, and the remaining fan-out comes from
+  `defines.h` and `Compat.h`, which IWYU would not remove. `misc-include-cleaner` stays off, now
+  recorded in both clang-tidy profiles. Comments only; no behaviour change.
+
 ## 2026-10-23: Search tuning layout
 
 ### Fixed
