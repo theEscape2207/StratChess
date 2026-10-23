@@ -25,14 +25,17 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
 ## 2026-10-23: `StdAfx.h` renamed to `Common.h`, umbrella applied everywhere (#901)
 
-- **Changed:** the umbrella header is now `StratEngine/Common.h`; "StdAfx" named an MSVC
-  precompiled header, and nothing here precompiles (#281). It now also carries `<chrono>`,
-  `<cstddef>`, `<limits>`, `<mutex>` and `<stdexcept>`, which several files used without
-  including. `Logger.cpp`, `Perft.cpp` and `TranspositionTable.cpp` now include it first, and
-  direct includes it already provides were dropped from seven `.cpp` files.
-- **Removed:** the unused `BitSpan` alias.
-- **Not changed:** headers keep their own includes and must compile standalone; tests do not
-  adopt the umbrella. The rename commit is in `.git-blame-ignore-revs`.
+### Changed
+- The umbrella header is now `StratEngine/Common.h`; "StdAfx" named an MSVC precompiled header,
+  and nothing here precompiles (#281). It now also carries `<chrono>`, `<cstddef>`, `<limits>`,
+  `<mutex>` and `<stdexcept>`, which several files used without including. `Logger.cpp`,
+  `Perft.cpp` and `TranspositionTable.cpp` now include it first, and direct includes it already
+  provides were dropped from nine `.cpp` files.
+- Headers keep their own includes and must compile standalone; tests do not adopt the umbrella.
+  The rename commit is in `.git-blame-ignore-revs`.
+
+### Removed
+- The unused `BitSpan` alias.
 
 ## 2026-10-23: TSan `stop` scenario restored (#243)
 
