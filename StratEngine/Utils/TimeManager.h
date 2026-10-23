@@ -58,12 +58,13 @@ namespace chess {
 
 		/// Soft limit check — stop after the current depth completes.
 		/// Only meaningful when start(soft, hard) was called with soft < hard.
-		[[nodiscard]] bool should_stop_iteration() const noexcept
+		/// `soft_percent` (1-100) scales the soft limit down; at 100 the comparison is exact.
+		[[nodiscard]] bool should_stop_iteration(int soft_percent = 100) const noexcept
 		{
 			if (should_stop_.load(std::memory_order_relaxed))
 				return true;
 			const auto el = std::chrono::steady_clock::now() - start_time_;
-			return el >= soft_limit_;
+			return el >= soft_limit_ * soft_percent / 100;
 		}
 
 		[[nodiscard]] auto elapsed() const noexcept

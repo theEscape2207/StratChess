@@ -39,8 +39,10 @@ namespace Engine {
 		next.depth_completed = sample.depth;
 		next.nodes_at_completed_depth = sample.nodes_searched;
 		next.search_was_stable = !metrics.move_changed;
-		if (!sample.interrupted)
+		if (!sample.interrupted) {
+			next.move_run = metrics.move_changed ? 1 : previous.move_run + 1;
 			next.last_iteration_move = sample.current_move;
+		}
 		return {sample.interrupted ? IterationDisposition::ACCEPTED_INTERRUPTED : IterationDisposition::COMPLETED,
 		        RejectionReason::NONE, metrics, next};
 	}
@@ -57,6 +59,14 @@ namespace Engine {
 		if (std::abs(next.best_score) >= GameValues::Mate_Threshold)
 			return {IterationStopReason::MATE, next};
 		return {IterationStopReason::NONE, next};
+	}
+
+	int soft_limit_percent(int move_run, int floor_percent) noexcept
+	{
+		assert(floor_percent >= 0 && floor_percent <= 100);
+		if (move_run <= 2)
+			return 100;
+		return 100 - (100 - floor_percent) * (std::min(move_run, 6) - 2) / 4;
 	}
 
 } // namespace Engine

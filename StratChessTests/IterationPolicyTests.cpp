@@ -3,6 +3,7 @@
 #include "defines.h"
 #include <catch2/catch_test_macros.hpp>
 #include <initializer_list>
+#include <vector>
 
 namespace {
 	using namespace Engine;
@@ -38,6 +39,7 @@ namespace {
 		CHECK(actual.depth_completed == expected.depth_completed);
 		CHECK(actual.nodes_at_completed_depth == expected.nodes_at_completed_depth);
 		CHECK(actual.last_iteration_move == expected.last_iteration_move);
+		CHECK(actual.move_run == expected.move_run);
 		CHECK(actual.search_was_stable == expected.search_was_stable);
 		CHECK(actual.extra_depth_used == expected.extra_depth_used);
 	}
@@ -229,5 +231,51 @@ TEST_CASE("Iteration continuation applies soft-limit precedence and mate boundar
 	     {GameValues::Mate_Threshold - 1, -(GameValues::Mate_Threshold - 1), static_cast<int>(GameValues::Draw)}) {
 		const auto near = assess(sample(2, kOtherMove, score, 400, 2), first.next_state);
 		CHECK(continue_iteration(near, false).stop_reason == IterationStopReason::NONE);
+	}
+}
+
+TEST_CASE("Iteration policy counts the move run on completed depths only", "[search][iteration_policy]")
+{
+	const auto first = assess(sample(1, kMove, 10, 400, 1));
+	CHECK(first.next_state.move_run == 1);
+	const auto second = assess(sample(2, kMove, 10, 400, 2), first.next_state);
+	CHECK(second.next_state.move_run == 2);
+	const auto third = assess(sample(3, kMove, 10, 400, 3), second.next_state);
+	CHECK(third.next_state.move_run == 3);
+
+	const auto interrupted = assess(sample(4, kMove, 10, 400, 4, true), third.next_state);
+	CHECK(interrupted.decision == IterationDisposition::ACCEPTED_INTERRUPTED);
+	CHECK(interrupted.next_state.move_run == 3);
+	const auto rejected = assess(sample(4, kOtherMove, 10, 400, 4, true), third.next_state);
+	CHECK(rejected.reason == RejectionReason::MOVE_CHANGED);
+	CHECK(rejected.next_state.move_run == 3);
+
+	const auto changed = assess(sample(4, kOtherMove, 10, 400, 4), third.next_state);
+	CHECK(changed.next_state.move_run == 1);
+	CHECK(continue_iteration(changed, false).next_state.move_run == 1);
+}
+
+TEST_CASE("Soft-limit percent keeps runs 1-2 whole and falls linearly to the floor at run 6",
+          "[search][iteration_policy]")
+{
+	const auto schedule = [](int floor) {
+		std::vector<int> percents;
+		for (int run = 1; run <= 6; ++run)
+			percents.push_back(soft_limit_percent(run, floor));
+		return percents;
+	};
+	CHECK(schedule(50) == std::vector<int>{100, 100, 88, 75, 63, 50});
+	CHECK(schedule(10) == std::vector<int>{100, 100, 78, 55, 33, 10});
+	CHECK(schedule(100) == std::vector<int>{100, 100, 100, 100, 100, 100});
+	CHECK(soft_limit_percent(0, 50) == 100);
+
+	for (const int floor : {10, 50, 100}) {
+		int previous = 100;
+		for (int run = 0; run <= 20; ++run) {
+			const int percent = soft_limit_percent(run, floor);
+			CHECK(percent <= previous);
+			CHECK(percent >= floor);
+			previous = percent;
+		}
 	}
 }

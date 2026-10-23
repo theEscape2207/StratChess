@@ -23,6 +23,30 @@ TEST_CASE("resolve_limits: clock set — compute_budget budgets, configured dept
 	REQUIRE(r.effective_depth == 15u);
 }
 
+TEST_CASE("resolve_limits: only a clock budget without infinite is soft-scalable", "[limits]")
+{
+	const auto clock = SearchLimits::from_clock(60'000ms, 1'000ms, 0);
+	CHECK(Engine::resolve_limits(clock, 15'000ms, 15).soft_scalable);
+
+	auto clock_depth = clock;
+	clock_depth.depth = 9;
+	CHECK(Engine::resolve_limits(clock_depth, 15'000ms, 15).soft_scalable);
+
+	auto clock_infinite = clock;
+	clock_infinite.infinite = true;
+	CHECK_FALSE(Engine::resolve_limits(clock_infinite, 15'000ms, 15).soft_scalable);
+
+	auto clock_movetime = clock;
+	clock_movetime.movetime = 5'000ms;
+	CHECK_FALSE(Engine::resolve_limits(clock_movetime, 15'000ms, 15).soft_scalable);
+
+	CHECK_FALSE(Engine::resolve_limits(SearchLimits::fixed_time(5'000ms), 15'000ms, 15).soft_scalable);
+	CHECK_FALSE(Engine::resolve_limits(SearchLimits::fixed_depth(9), 15'000ms, 15).soft_scalable);
+	CHECK_FALSE(Engine::resolve_limits(SearchLimits::fixed_nodes(1000), 15'000ms, 15).soft_scalable);
+	CHECK_FALSE(Engine::resolve_limits(SearchLimits::infinite_search(), 15'000ms, 15).soft_scalable);
+	CHECK_FALSE(Engine::resolve_limits(SearchLimits{}, 15'000ms, 15).soft_scalable);
+}
+
 TEST_CASE("resolve_limits: movetime set — soft == hard == movetime", "[limits]")
 {
 	const auto r = Engine::resolve_limits(SearchLimits::fixed_time(5'000ms), 15'000ms, 15);

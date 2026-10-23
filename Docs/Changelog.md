@@ -23,6 +23,16 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-23: Stability-scaled soft limit (#103)
+
+### Added
+- `StabilityTimeFloor` (default 100 = off, 10-100): under a clock, the soft limit shrinks as the
+  root move holds across completed depths: 100% through two, then linearly to the floor at six.
+  #886 found the move changes at the next depth ~30% of the time after a change but 5-7% after six
+  holds; the saved time returns to later moves through `compute_budget`. Movetime, depth, node and
+  `infinite` searches (including `go infinite` with a clock) are never scaled, and the
+  changed-move extension is unchanged. At 100 the search is identical to before.
+
 ## 2026-10-22: Internal iterative reduction (#96)
 
 ### Added

@@ -147,6 +147,21 @@ TEST_CASE("TimeManager: two-arg start — soft fires before hard", "[time_mgr]")
 	REQUIRE(tm.should_stop_search());
 }
 
+TEST_CASE("TimeManager: soft percent scales only the soft limit", "[time_mgr]")
+{
+	chess::TimeManager tm;
+	// Half of 400 ms fires at 200 ms; the full limit is 200 ms later, ample for scheduling jitter.
+	tm.start(400ms, 10'000ms);
+	const auto deadline = std::chrono::steady_clock::now() + 3s;
+	while (!tm.should_stop_iteration(50) && std::chrono::steady_clock::now() < deadline)
+		std::this_thread::yield();
+	REQUIRE(tm.should_stop_iteration(50));
+	CHECK(tm.elapsed() >= 200ms);
+	CHECK_FALSE(tm.should_stop_iteration(100));
+	CHECK_FALSE(tm.should_stop_iteration());
+	CHECK_FALSE(tm.should_stop_search());
+}
+
 TEST_CASE("TimeManager: one-arg start — soft == hard (backward compat)", "[time_mgr]")
 {
 	chess::TimeManager tm;

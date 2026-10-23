@@ -45,6 +45,11 @@ namespace Engine {
 		TimeBudget budget; // soft/hard, see Utils/TimeUtils.h
 		unsigned effective_depth;
 		std::optional<int64_t> node_limit; // nullopt = unlimited
+		// True only for a budget derived from the clock, without `infinite`: the only budget that
+		// StabilityTimeFloor may shorten. Movetime means "use this time"; depth, node and infinite
+		// searches carry the one-hour sentinel, which scaling would turn into a timed stop; and
+		// `go infinite wtime ...` takes the clock branch, but an analysis must never stop sooner.
+		bool soft_scalable = false;
 	};
 
 	/// Pure resolution of SearchLimits against configured defaults — no clock
