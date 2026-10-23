@@ -29,3 +29,6 @@ f3965c0789de596effb8440a013bad6ffcf3b7d9
 #
 # The merge commit is deliberately absent -- git cannot ignore a merge, and the
 # lines it touched were rewritten again by the commits above in any case.
+
+# Rename StdAfx.h to Common.h (#901)
+f458be33670fd157afaceae75c33a67cfdcaff19
