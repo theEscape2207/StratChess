@@ -33,6 +33,13 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   `infinite` searches (including `go infinite` with a clock) are never scaled, and the
   changed-move extension is unchanged. At 100 the search is identical to before.
 
+## 2026-10-23: Search tuning layout
+
+### Fixed
+- Emit `SearchTuning` numeric members before Boolean flags to remove excess padding that failed
+  Nightly Deep lint on Linux and Windows. The catalogue remains grouped by feature; defaults,
+  bindings, UCI advertisement order and validation order are unchanged.
+
 ## 2026-10-22: Internal iterative reduction (#96)
 
 ### Added
