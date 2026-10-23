@@ -11,13 +11,17 @@ void SearchControl::ApplyLimits(const SearchLimits& limits)
 	time_manager_.start(resolved.budget.soft, resolved.budget.hard);
 	effective_depth_ = resolved.effective_depth;
 	node_limit_ = resolved.node_limit;
+	soft_scalable_ = resolved.soft_scalable;
 }
 
 void SearchControl::Stop() noexcept { time_manager_.stop(); }
 
 bool SearchControl::StopRequested() const noexcept { return time_manager_.should_stop_search(); }
 
-bool SearchControl::ShouldStopIteration() const noexcept { return time_manager_.should_stop_iteration(); }
+bool SearchControl::ShouldStopIteration(int soft_percent) const noexcept
+{
+	return time_manager_.should_stop_iteration(soft_scalable_ ? soft_percent : 100);
+}
 
 bool SearchControl::NodeLimitReached(int64_t searched_nodes) noexcept
 {

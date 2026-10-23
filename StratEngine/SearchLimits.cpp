@@ -57,6 +57,7 @@ namespace Engine {
 			r.budget = {*limits.movetime, *limits.movetime};
 		} else if (limits.clock) {
 			r.budget = compute_budget(limits.clock->remaining, limits.clock->increment, limits.clock->moves_to_go);
+			r.soft_scalable = !limits.infinite;
 		} else if (limits.infinite || limits.depth || limits.nodes) {
 			// A depth cap, a node limit or UCI 'stop' is the stopping criterion;
 			// hours(1) avoids potential overflow from milliseconds::max() in

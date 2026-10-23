@@ -55,6 +55,25 @@ TEST_CASE("SearchControl exposes the clock soft stop before latching the hard st
 	CHECK(control.IsAborted());
 }
 
+TEST_CASE("SearchControl scales the soft limit for clock budgets only", "[search_control]")
+{
+	SearchControl control(6, 15000ms);
+	// Clock: soft = 1 s (as above), so 10% fires at 100 ms, 900 ms before the full limit.
+	control.ApplyLimits(SearchLimits::from_clock(60050ms, 0ms, 60));
+	const auto deadline = std::chrono::steady_clock::now() + 3s;
+	while (!control.ShouldStopIteration(10) && std::chrono::steady_clock::now() < deadline)
+		std::this_thread::yield();
+	REQUIRE(control.ShouldStopIteration(10));
+	CHECK_FALSE(control.ShouldStopIteration());
+
+	// Movetime: soft == hard == 1 s, and 10% must not shorten it.
+	control.ApplyLimits(SearchLimits::fixed_time(1000ms));
+	while (control.Elapsed() < 150ms && std::chrono::steady_clock::now() < deadline)
+		std::this_thread::yield();
+	REQUIRE(control.Elapsed() >= 150ms);
+	CHECK_FALSE(control.ShouldStopIteration(10));
+}
+
 TEST_CASE("SearchControl resets a latched stop when new limits are applied", "[search_control]")
 {
 	SearchControl control(6, 15000ms);

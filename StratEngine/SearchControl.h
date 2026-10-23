@@ -11,7 +11,8 @@ class SearchControl final {
 	void ApplyLimits(const SearchLimits& limits);
 	void Stop() noexcept;
 	bool StopRequested() const noexcept;
-	bool ShouldStopIteration() const noexcept;
+	// soft_percent scales a clock-derived soft limit only; any other budget always uses 100.
+	bool ShouldStopIteration(int soft_percent = 100) const noexcept;
 	bool NodeLimitReached(int64_t searched_nodes) noexcept;
 	bool IsAborted() const noexcept;
 	unsigned EffectiveDepth() const noexcept;
@@ -23,4 +24,5 @@ class SearchControl final {
 	const std::chrono::milliseconds default_time_;
 	unsigned effective_depth_{0};
 	std::optional<int64_t> node_limit_;
+	bool soft_scalable_{false};
 };
