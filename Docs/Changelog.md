@@ -26,9 +26,9 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 ## 2026-10-23: Search tuning layout
 
 ### Fixed
-- Group `SearchTuning` Boolean flags after numeric fields to remove excess padding that failed
-  Nightly Deep lint on Linux and Windows. Defaults and bindings are unchanged; UCI advertises
-  numeric tuning options before Boolean tuning options.
+- Emit `SearchTuning` numeric members before Boolean flags to remove excess padding that failed
+  Nightly Deep lint on Linux and Windows. The catalogue remains grouped by feature; defaults,
+  bindings, UCI advertisement order and validation order are unchanged.
 
 ## 2026-10-22: Internal iterative reduction (#96)
 
