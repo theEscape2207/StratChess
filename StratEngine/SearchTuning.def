@@ -129,9 +129,10 @@ TUNING_FIELD(int,     continuation_history_plies, 2, 0, 2, true, nullptr, true)
 TUNING_FIELD(int,     contempt, 0, 0, 100, true, "Contempt", true)
 
 // Floor, in percent, of the clock soft limit once the root move has held long enough (schedule:
-// Engine::soft_limit_percent). 100 is off and search-identical to no scaling. Below 10
+// Engine::soft_limit_percent). 50 is lab-measured against 100, which is off and search-identical
+// to no scaling; 70 is untested, so this is not known to be the best floor. Below 10
 // nearly every settled search would stop at its next completed depth, a value no lab would test.
-TUNING_FIELD(int,     stability_time_floor, 100, 10, 100, true, "StabilityTimeFloor", true)
+TUNING_FIELD(int,     stability_time_floor, 50, 10, 100, true, "StabilityTimeFloor", true)
 
 // clang-format on
 
