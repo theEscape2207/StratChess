@@ -190,13 +190,13 @@ TEST_CASE("Player factory maps AIPerplex evaluator tuning threads and logging be
 	                                    .delta_pruning_margin = 211,
 	                                    .aspiration_initial_delta = 61,
 	                                    .aspiration_max_retries = 7,
-	                                    .aspiration_enabled = false,
 	                                    .lmr_min_depth = 5,
 	                                    .lmr_min_move_index = 6,
-	                                    .lmr_enabled = false,
-	                                    .null_move_enabled = false,
 	                                    .null_move_reduction = 4,
 	                                    .null_move_min_depth = 7,
+	                                    .aspiration_enabled = false,
+	                                    .lmr_enabled = false,
+	                                    .null_move_enabled = false,
 	                                    .see_pruning_enabled = false};
 
 	auto player = CreatePlayer(config, board, {.verbose_search_logging = true, .hash_mb = 1});
