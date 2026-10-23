@@ -11,7 +11,6 @@
 #include "Eval.h"
 #include "defines.h"
 #include "Utils/Logger.h"
-#include <spdlog/spdlog.h>
 #ifdef _WIN32
 #	include <process.h>
 #else

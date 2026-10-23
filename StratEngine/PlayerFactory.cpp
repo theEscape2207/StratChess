@@ -5,9 +5,6 @@
 #include "HumanPlayer.h"
 #include "SearchPlayer.h"
 
-#include <spdlog/spdlog.h>
-#include <stdexcept>
-
 static_assert(Config::SEARCH_PLAYER_TYPE == static_cast<unsigned>(PlayerType::Search));
 
 namespace {
