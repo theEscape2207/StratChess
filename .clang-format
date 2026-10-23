@@ -23,7 +23,7 @@ AllowShortFunctionsOnASingleLine: All
 # together. It also removes the one-pass non-idempotency, since reflow was what
 # produced continuation lines needing a second pass.
 ReflowComments: Never
-# Include order carries meaning here: StdAfx.h must precede the headers that rely
+# Include order carries meaning here: Common.h must precede the headers that rely
 # on it. Reordering includes is a semantic change, not formatting.
 SortIncludes:  Never
 IncludeBlocks: Preserve
@@ -33,7 +33,7 @@ IncludeBlocks: Preserve
 # reason anyone searches for them.
 BreakStringLiterals: false
 # LLVM's default (None) would flatten the nested _MSC_VER branches in Compat.h,
-# StdAfx.h, SquareHelper.h and PieceHelper.h to column zero.
+# Common.h, SquareHelper.h and PieceHelper.h to column zero.
 IndentPPDirectives: AfterHash
 # LineEnding is deliberately left at its default (derive from the file). Git stores
 # LF and checks out CRLF on Windows via `* text=auto`; pinning LF here would make

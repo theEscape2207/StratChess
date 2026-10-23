@@ -407,7 +407,7 @@ jobs:
     needs: classify
     # The only job that builds what actually ships: the clang-cl branch of
     # strat_configure_target, the eight _MSC_VER/_WIN32 sites across Compat.h,
-    # PieceHelper.h, SquareHelper.h and StdAfx.h, the MSVC standard library, and
+    # PieceHelper.h, SquareHelper.h and Common.h, the MSVC standard library, and
     # lld-link/ThinLTO. Two of the three clang-cl flag spellings fail SILENTLY
     # when wrong (#84), so no Linux leg can stand in for it.
     #

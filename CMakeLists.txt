@@ -279,7 +279,7 @@ function(strat_configure_target tgt)
     # compiler's default budget, so each one has to be raised explicitly.
     #
     # Force-including Compat.h is how STRAT_FORCEINLINE and STRAT_LOCALTIME
-    # reach the headers that never include StdAfx.h themselves, without editing
+    # reach the headers that never include Common.h themselves, without editing
     # any of them. Deliberately not target_precompile_headers: CMake's generated
     # PCH makes GCC process defines.h twice per TU (it does not carry #pragma once
     # state across the PCH boundary), which is ~60 redefinition errors.

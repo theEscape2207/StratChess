@@ -1,4 +1,4 @@
-#include "StdAfx.h"
+#include "Common.h"
 #include "PlayerFactory.h"
 
 #include "Eval.h"

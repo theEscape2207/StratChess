@@ -1,4 +1,4 @@
-#include "../StdAfx.h"
+#include "../Common.h"
 #include "TacticalTestRunner.h"
 #include "../Board.h"
 #include "../AIPerplex.h"
