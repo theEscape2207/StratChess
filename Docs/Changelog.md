@@ -23,6 +23,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-23: TSan `stop` scenario restored (#243)
+
+### Changed
+- `tsan-linux` drives `threads8-stop-midsearch` again (two `stop` rounds at Threads=8, via the
+  driver's `@nowait`/`@sleep`/`@await` directives), so the externally requested abort is exercised
+  under ThreadSanitizer alongside the `movetime` abort. It had been dropped because the GCC 13.3 /
+  Ubuntu 24.04 TSan build never answered `stop`; the spike on `ubuntu-26.04` shows it does.
+
 ## 2026-10-23: Keep the StdAfx.h umbrella (#281)
 
 ### Changed
