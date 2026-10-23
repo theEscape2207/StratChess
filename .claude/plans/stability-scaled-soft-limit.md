@@ -127,9 +127,14 @@ is +3 to +12, so a true +3–4 sits right at the gate. The rules:
 - **Pass:** the 95% interval's lower bound is above 0. The same PR then sets the default to 50
   before merge. The merged binary differs from the tested one only in that default.
 - **Positive but inconclusive:** the point estimate is above 0 but the interval includes 0. One
-  confirmation run with the same arguments, pooled with the first; the pooled interval then
-  decides as above. That second run is the owner's budget call; without it, the result counts as
-  a fail.
+  confirmation run, pooled with the first; the pooled interval then decides as above. That second
+  run is the owner's budget call; without it, the result counts as a fail. It keeps the first
+  run's candidate and reference SHAs, options, time control and toolchain. Its one deliberate
+  change is fresh openings: `opening_offset=9990` (run one consumed openings 1–9,990 as 9,990
+  pairs; use the actual consumed range if the game count differs). Only complete, valid batches
+  of that exact comparison are pooled; a source change makes a new experiment. The two looks'
+  nominal 95% intervals are not simultaneous coverage; the rule is fixed here so it is not
+  chosen after the first result.
 - **Fail:** the point estimate is ≤ 0, or the pooled result does not pass. The PR does not merge.
   The result goes to the ledger, and the code is deleted, not shipped dark (the end state of a
   search feature is on by default or deleted). A failed F = 50 does not rule out F = 70. Testing
@@ -145,8 +150,11 @@ That attribution is optional and priced below. Shipping does not depend on it.
 **Predicted time use (A3).** The scaled limit only gates whether the next depth starts, and the
 branching factor is about 2. So a scaled move saves between 0 and 50% of its time, and part of
 that saving is depths that today run into the hard limit and are wasted. Prediction: over moves
-9–40, the candidate's mean time per move is 0.75–0.95× the reference's. A ratio of 0.97 or more
-means the option barely acted, and the run does not measure this design.
+9–40, the candidate's mean time per move is 0.75–0.95× the reference's. This is a diagnostic
+forecast, not a validity test: the PGN mean also mixes in clock balances that differ between the
+sides, depth granularity and which games reach move 40. A ratio outside the range is
+investigated, not grounds to discard the result. Whether the option acted is settled before the
+lab by the wiring check (Validation).
 
 ## Assumptions I cannot verify from the code
 
@@ -169,10 +177,9 @@ means the option barely acted, and the run does not measure this design.
   shortened searches is exactly what the lab measures. Not verified.
 - **A3: the lab plays the clock path.** At 10+0.1, fastchess sends `wtime`/`btime`, so the
   budget comes from `limits.clock` and D4 lets the scale apply. The lab fails fast if the option
-  is not advertised. That proves the option exists, not that it acted. Verified after the run: the
-  per-move times fastchess records in the PGN comments must show a lower mean time on the
-  candidate side, inside D6's predicted 0.75–0.95× ratio. A ~0 Elo result with a ratio of 0.97 or
-  more means the option barely acted.
+  is not advertised. That proves the option exists, not that it acted. That it acts on the clock
+  path is checked before the lab by the wiring check (Validation). The PGN time ratio after the run
+  is a diagnostic only (D6).
 - **A4: `Threads=1` only.** With helpers, the main thread completes depths faster through the
   shared TT. Runs then grow faster and the scale bites harder. `Threads=4` is untested and
   stays so in this change.
@@ -205,16 +212,29 @@ means the option barely acted, and the run does not measure this design.
   - `SearchLimitsTests`: `soft_scalable` is true only for clock limits without `infinite`.
   - `SearchControlTests`: with `movetime` limits, `ShouldStopIteration(10)` does not fire at a
     tenth of the budget; with clock limits it does.
-- **Default identity:** `Compare-SearchEquivalence.ps1 -After <worktree build>` passes (identical
+- **Wiring check (before the lab, local, scratch script):** the clock path really reaches the stop
+  decision. 40 positions from `Tests/profile-screen.fen`, one fresh process each,
+  `go wtime 10000 btime 10000 winc 100 binc 100`, at `StabilityTimeFloor=100` and `=50`, under
+  `measure-strength`'s quiet-window rule (a few minutes of engine time). Only the floor differs, so
+  the F = 50 searches must use less time on aggregate and stop at a shallower completed depth on
+  at least a quarter of the positions. Report the counts and denominators. A failure blocks the
+  lab: it means the multiplier does not reach the stop.
+- **Default identity:** `Compare-SearchEquivalence.ps1 -After <worktree build> -BaselineRef 0c434b0d` passes (identical
   nodes and best moves). That covers the fixed-depth paths. The clock path's identity at 100
   follows from exact integer arithmetic and is pinned by the `TimeManagerTests` case.
 - **No bench pass:** the change adds one integer update and one multiply per completed iteration,
   and nothing per node, so there is no nps question to answer.
 - **Elo:** one lab run under D6's predeclared rule. **Needed:** this change exists to gain
   strength, and only the lab can show it.
-- **Option acted (A3):** after the lab, compare the mean recorded time per move between candidate
-  and reference from the run's PGNs, over moves 9–40 and by game phase, against D6's predicted
-  0.75–0.95×.
+- **Time use (diagnostic):** after the lab, compare the mean recorded time per move between
+  candidate and reference from the run's PGNs, over moves 9–40 and by game phase, against D6's
+  predicted 0.75–0.95×.
+- **Allocation (retained candidate only, #103's acceptance):** run the Tier 1 move-quality scan
+  (`Scripts/analyze_move_quality.py`) on the lab PGNs: pre-move clock and phase distributions,
+  blunder rates in contested positions only, split by side. Recorded in
+  `Measurements/move-quality-tier1.md`. It shows whether the candidate left the low-clock band
+  that motivated #103. It explains allocation and is not a ship threshold. Existing PGNs only, no
+  new match.
 
 ## Cost
 
@@ -234,8 +254,10 @@ means the option barely acted, and the run does not measure this design.
     against the same reference: about 10 lines and about 3 h. It answers whether the stability
     signal beats a plain cut of the same size. It does not gate shipping. The option is deleted
     afterwards.
-  - **`Threads=4` confirmation (A4):** one lab run at `Threads=4` before the default flips,
-    about 3 h, tagged "(idle-lab candidate)".
+  - **`Threads=4` confirmation (A4):** one lab run before the default flips, tagged
+    "(idle-lab candidate)": `threads=4`, `concurrency=1` (the workflow requires it), `games=6660`,
+    18 shards. About 3 h, with a wider interval of roughly ±7 Elo. The full 20k-game sample would
+    take three such batches, about 9 h of lab.
   - **Second arm, F = 70:** via `candidate_arms` it halves each arm's precision. As a separate
     run it costs another ~3 h. It covers D2 being wrong in the too-aggressive direction. Screen
     winners shrink on confirmation, so a split-arm winner would need a confirming run anyway.
@@ -249,4 +271,5 @@ means the option barely acted, and the run does not measure this design.
 | D4 clock-only scaling, and why `infinite` must not scale | source comment on `ResolvedLimits::soft_scalable` |
 | D5 option, range and default | `SearchTuning.def` entry comment; `Docs/Changelog.md` |
 | D6 lab result, time-per-move comparison | `Measurements/ci-per-change.md` row; Changelog headline |
+| Allocation diagnostic (retained candidate) | `Measurements/move-quality-tier1.md` profile |
 | Signal comparison (score, node growth, depth uninformative) | already on #103; cited from the source comment |
