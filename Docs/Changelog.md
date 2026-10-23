@@ -26,12 +26,14 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 ## 2026-10-23: Stability-scaled soft limit (#103)
 
 ### Added
-- `StabilityTimeFloor` (default 100 = off, 10-100): under a clock, the soft limit shrinks as the
-  root move holds across completed depths: 100% through two, then linearly to the floor at six.
+- `StabilityTimeFloor` (default 50, 10-100; 100 = off): under a clock, the soft limit shrinks as
+  the root move holds across completed depths: 100% through two, then linearly to the floor at six.
   #886 found the move changes at the next depth ~30% of the time after a change but 5-7% after six
   holds; the saved time returns to later moves through `compute_budget`. Movetime, depth, node and
   `infinite` searches (including `go infinite` with a clock) are never scaled, and the
   changed-move extension is unchanged. At 100 the search is identical to before.
+  Lab +12.37 +/- 3.04 over the merge base (26,640 games, ci-per-change); time per move 0.91x, and
+  moves under 2 s fall from 49% to 21%. Threads=1 only; F = 70 and a uniform-cut control untested.
 
 ## 2026-10-23: Search tuning layout
 
