@@ -22,8 +22,8 @@ using json = nlohmann::json;
 
 namespace {
 
-	// The hand-written SearchTuning the catalogue replaced. Search reads members directly, so the
-	// generated struct must keep their types, order and layout.
+	// Independent layout oracle: wide fields first, then integers, then Boolean flags so only
+	// tail padding remains. Keep the generated members' types and offsets pinned to this layout.
 	struct BaselineTuning {
 		int64_t min_nodes_threshold;
 		double min_completion_ratio;
@@ -31,35 +31,35 @@ namespace {
 		int delta_pruning_margin;
 		int aspiration_initial_delta;
 		int aspiration_max_retries;
-		bool aspiration_enabled;
 		int lmr_min_depth;
 		int lmr_min_move_index;
-		bool lmr_enabled;
 		int lmr_history_divisor;
 		int lmr_log_base;
 		int lmr_log_divisor;
-		bool null_move_enabled;
 		int null_move_reduction;
 		int null_move_min_depth;
-		bool see_pruning_enabled;
 		int see_pruning_margin;
-		bool singular_extensions_enabled;
 		int singular_min_depth;
 		int singular_tt_depth_margin;
 		int singular_margin_factor;
-		bool singular_multicut_enabled;
-		bool reverse_futility_enabled;
 		int reverse_futility_max_depth;
 		int reverse_futility_margin;
-		bool frontier_futility_enabled;
 		int frontier_futility_margin;
-		bool late_move_pruning_enabled;
 		int late_move_pruning_min_index;
-		bool iir_enabled;
 		int iir_min_depth;
-		bool staged_generation_enabled;
 		int continuation_history_plies;
 		int contempt;
+		bool aspiration_enabled;
+		bool lmr_enabled;
+		bool null_move_enabled;
+		bool see_pruning_enabled;
+		bool singular_extensions_enabled;
+		bool singular_multicut_enabled;
+		bool reverse_futility_enabled;
+		bool frontier_futility_enabled;
+		bool late_move_pruning_enabled;
+		bool iir_enabled;
+		bool staged_generation_enabled;
 	};
 
 #define SAME_MEMBER(member)                                                                                            \
