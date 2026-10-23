@@ -121,8 +121,10 @@ settled search at its next completed depth: values no lab arm would test.
 
 The run: `strength.yml` on the PR branch, `reference_ref=merge-base`,
 `candidate_uci_options="StabilityTimeFloor=50"`, at the lab's standard 10+0.1 and `Threads=1`.
-Each run is about 20k games, giving a 95% interval of roughly ±4 Elo. The domain reviewer's prior
-is +3 to +12, so a true +3–4 sits right at the gate. The rules:
+Each run is `games=26640` on 18 shards (about 4 h), giving a 95% interval of roughly ±3.5 Elo.
+The domain reviewer's prior is +3 to +12, so a true +3–4 sits right at the gate; the owner chose
+the larger run over the standard 20k to cut the chance of needing a confirmation. The merge-base
+reference measures what ships against `main`, code layout included. The rules:
 
 - **Pass:** the 95% interval's lower bound is above 0. The same PR then sets the default to 50
   before merge. The merged binary differs from the tested one only in that default.
@@ -130,8 +132,8 @@ is +3 to +12, so a true +3–4 sits right at the gate. The rules:
   confirmation run, pooled with the first; the pooled interval then decides as above. That second
   run is the owner's budget call; without it, the result counts as a fail. It keeps the first
   run's candidate and reference SHAs, options, time control and toolchain. Its one deliberate
-  change is fresh openings: `opening_offset=9990` (run one consumed openings 1–9,990 as 9,990
-  pairs; use the actual consumed range if the game count differs). Only complete, valid batches
+  change is fresh openings: `opening_offset=13320` (run one consumes openings 1–13,320 as
+  13,320 pairs; use the actual consumed range if the game count differs). Only complete, valid batches
   of that exact comparison are pooled; a source change makes a new experiment. The two looks'
   nominal 95% intervals are not simultaneous coverage; the rule is fixed here so it is not
   chosen after the first result.
@@ -152,8 +154,10 @@ branching factor is about 2. So a scaled move saves between 0 and 50% of its tim
 that saving is depths that today run into the hard limit and are wasted. Prediction: over moves
 9–40, the candidate's mean time per move is 0.75–0.95× the reference's. This is a diagnostic
 forecast, not a validity test: the PGN mean also mixes in clock balances that differ between the
-sides, depth granularity and which games reach move 40. A ratio outside the range is
-investigated, not grounds to discard the result. Whether the option acted is settled before the
+sides, depth granularity and which games reach move 40. A ratio of 0.95 or less shows the design
+was exercised. Below 0.75 is plausible: the cold wiring check already gave 0.77, and the warm TT
+lengthens runs in games. A ratio outside the range is investigated, not grounds to discard the
+result. Whether the option acted is settled before the
 lab by the wiring check (Validation).
 
 ## Assumptions I cannot verify from the code

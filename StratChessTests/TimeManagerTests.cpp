@@ -159,6 +159,11 @@ TEST_CASE("TimeManager: soft percent scales only the soft limit", "[time_mgr]")
 	CHECK(tm.elapsed() >= 200ms);
 	CHECK_FALSE(tm.should_stop_iteration(100));
 	CHECK_FALSE(tm.should_stop_iteration());
+
+	while (!tm.should_stop_iteration(100) && std::chrono::steady_clock::now() < deadline)
+		std::this_thread::yield();
+	REQUIRE(tm.should_stop_iteration(100));
+	CHECK(tm.elapsed() >= 400ms);
 	CHECK_FALSE(tm.should_stop_search());
 }
 

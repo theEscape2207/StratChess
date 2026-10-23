@@ -67,8 +67,8 @@ namespace Engine {
 	// node ratio, PV length, changed move. REJECTED iff reason != NONE; rejection preserves all state.
 	// Ratio is main-node delta / prior nodes, or 1.0 without a positive denominator; PV minimum is
 	// max(1, int(depth * min_pv_ratio)). Only completed acceptance updates last_iteration_move and
-	// move_run: run + 1 on the same move, else 1. TT-replayed depths count in full (#103 found the
-	// signal holds on warm-TT game searches).
+	// move_run: run + 1 on the same move, else 1. TT-replayed depths count in full: the signal holds
+	// on warm-TT game searches too.
 	IterationAssessment assess_iteration(const IterationSample& sample, const IterationState& previous,
 	                                     const IterationThresholds& thresholds) noexcept;
 
@@ -79,11 +79,11 @@ namespace Engine {
 	IterationContinuation continue_iteration(const IterationAssessment& completed, bool soft_limit_reached) noexcept;
 
 	// Percent of the soft limit to spend after move_run completed depths on one root move, in
-	// [floor_percent, 100] and never increasing in move_run. Runs 1-2 keep 100: in #886 the move
-	// changed at the next depth ~30% of the time after a change and 13-28% at run 2. The rate falls
-	// steadily through runs 3-5 (11-16%) and flattens at 5-7% from run 6, so the cut is linear to
-	// the floor at run 6 rather than a step. Score, node-growth and depth signals measured no
-	// better (#103). A changed move has run 1, so the changed-move extension always sees 100.
+	// [floor_percent, 100] and never increasing in move_run. Short runs, where the next depth most
+	// often changes the move, keep the full budget; that rate falls steadily to a plateau, so the
+	// cut is linear to the floor rather than a step. A changed move has run 1, so the changed-move
+	// extension always sees 100. In a time scramble the result may cut below compute_budget's soft
+	// floor; that only saves clock, as the hard limit is untouched.
 	int soft_limit_percent(int move_run, int floor_percent) noexcept;
 
 } // namespace Engine

@@ -63,10 +63,13 @@ namespace Engine {
 
 	int soft_limit_percent(int move_run, int floor_percent) noexcept
 	{
+		constexpr int LAST_FULL_BUDGET_RUN = 2;
+		constexpr int FLOOR_RUN = 6;
 		assert(floor_percent >= 0 && floor_percent <= 100);
-		if (move_run <= 2)
+		if (move_run <= LAST_FULL_BUDGET_RUN)
 			return 100;
-		return 100 - (100 - floor_percent) * (std::min(move_run, 6) - 2) / 4;
+		return 100 - (100 - floor_percent) * (std::min(move_run, FLOOR_RUN) - LAST_FULL_BUDGET_RUN) /
+		                 (FLOOR_RUN - LAST_FULL_BUDGET_RUN);
 	}
 
 } // namespace Engine
