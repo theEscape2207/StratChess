@@ -1,14 +1,12 @@
 // This is an independent project of an individual developer. Dear PVS-Studio, please check it.
 
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-#include "StdAfx.h"
+#include "Common.h"
 #include "Eval.h"
 
 #include "Board.h"
 #include "Magic.h" // RookAttacks/BishopAttacks, for ComputePieceAggregates
 #include "PawnCache.h"
-
-#include <bit> // std::popcount
 
 // Square 0 is a8, a LIGHT square, and bit 0 of this mask is clear -- so the mask
 // holds the DARK squares. The wrong-coloured-bishop fortress asks which colour a

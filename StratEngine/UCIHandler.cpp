@@ -1,7 +1,7 @@
 // This is an independent project of an individual developer. Dear PVS-Studio, please check it.
 
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-#include "StdAfx.h"
+#include "Common.h"
 #include "UCIHandler.h"
 #include "AIPerplex.h"
 #include "MoveFormatter.h"
@@ -11,10 +11,6 @@
 #include "Eval.h"
 #include "defines.h"
 #include "Utils/Logger.h"
-#include <spdlog/spdlog.h>
-#include <iostream>
-#include <sstream>
-#include <vector>
 #ifdef _WIN32
 #	include <process.h>
 #else

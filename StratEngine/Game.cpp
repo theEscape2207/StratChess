@@ -2,7 +2,7 @@
 
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
-#include "StdAfx.h"
+#include "Common.h"
 #include "Game.h"
 #include "Board.h"
 #include "IPlayer.h"

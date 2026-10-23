@@ -1,3 +1,4 @@
+#include "Common.h"
 #include "TranspositionTable.h"
 
 #if defined(__linux__)

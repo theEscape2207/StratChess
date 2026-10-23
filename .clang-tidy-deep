@@ -1,5 +1,5 @@
 # Analyzer-heavy checks run only in failing Nightly jobs.
-# misc-include-cleaner stays off on purpose: it contradicts the StdAfx.h umbrella convention (#281).
+# misc-include-cleaner stays off on purpose: it contradicts the Common.h umbrella convention (#281).
 Checks: >
   -*,
   clang-analyzer-*,
