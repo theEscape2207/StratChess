@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-23 | 0c434b0, `LateMovePruningMinIndex=6`: LMP from the seventh legal move instead of the ninth (#888; no PR, option-only run on `main`, 5 of 18 shards favour it) | 0c434b0 (same commit, default 8) | 28800 | 10+0.1 | **-1.76 +/- 2.95** | inconclusive @ 28800; fails the ship rule, default stays 8 |
 | 2026-10-22 | d865270, CONFIRM arm B: `InternalIterativeReduction=true IirMinDepth=4` (#96; PR #885; confirms the screen's arm B on openings 9,991-23,310, 16 of 18 shards favour it) | a9b4e60 | 26640 | 10+0.1 | **+9.18 +/- 3.10** | gain; passes the ship rule, default changed to on at 4 |
 | 2026-10-22 | adb3267, SCREEN arm B: `InternalIterativeReduction=true IirMinDepth=4` (#96; PR #885; best of two by 3.0 sigma, confirmed by the CONFIRM row) | 34a4ab8 | 9990 | 10+0.1 | **+9.11 +/- 5.04** | gain |
 | 2026-10-22 | adb3267, SCREEN arm A: `InternalIterativeReduction=true IirMinDepth=5` (#96; PR #885) | 34a4ab8 | 9990 | 10+0.1 | **+1.43 +/- 4.96** | inconclusive @ 9990 |
@@ -105,6 +106,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-23 -- 0c434b0, `LateMovePruningMinIndex=6` (#888) (28800 games)
+
+**Fails the ship rule declared in #888's triage before dispatch (Elo minus its error bar above 0); default stays 8, no rerun.** [Run `39856572387`](https://github.com/theEscape2207/StratChess/actions/runs/39856572387), about 4 h 40 min, 18 shards x 800 pairs, both sides `main` `0c434b0` (post-IIR), candidate options `LateMovePruningMinIndex=6`. Pooled Ptnml(0-2) [1101, 3459, 5394, 3377, 1069], score 49.75%, interval [-4.71, +1.18]. The option reached the engine: on shard 0's colour-swapped first moves where both sides reported the same depth, 39 of 40 lab scores (candidate and reference) reproduce exactly with a local `go depth` at index 6 and 8 respectively. The 8-position node probe's -7.6% from 8 to 6 bought nothing measurable; index 8 (#869, +3.98) stays the default.
 
 ### 2026-10-22 -- internal iterative reduction confirmation (#96) (26640 games)
 
