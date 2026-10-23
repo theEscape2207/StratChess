@@ -1,5 +1,6 @@
 # Fast Gate profile used by local PrePR validation and required PR CI.
 # Analyzer checks and exception-escape analysis run in the Deep Nightly profile.
+# misc-include-cleaner stays off on purpose: it contradicts the Common.h umbrella convention (#281).
 Checks: >
   -*,
   bugprone-*,

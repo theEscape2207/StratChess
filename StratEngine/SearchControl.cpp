@@ -1,4 +1,4 @@
-#include "StdAfx.h"
+#include "Common.h"
 #include "SearchControl.h"
 
 SearchControl::SearchControl(unsigned default_depth, std::chrono::milliseconds default_time) noexcept

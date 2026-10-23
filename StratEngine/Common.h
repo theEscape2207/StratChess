@@ -22,17 +22,22 @@
 #include <bit>
 #include <cassert>
 #include <cctype>
+#include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <format>
 #include <fstream>
-#include <immintrin.h> // _pext_u64 for Magic.h — requires /arch:AVX2 (BMI2), see Magic.h
 #include <functional>
-#include <iostream> // cout
+#include <immintrin.h> // _pext_u64 for Magic.h — requires /arch:AVX2 (BMI2), see Magic.h
+#include <iostream>    // cout
+#include <limits>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread> // std::jthread — Lazy SMP helper threads (AIPerplex::Search)
@@ -43,7 +48,4 @@
 #	pragma warning(pop)
 #endif
 
-//Allow using spdlog all over
 #include <spdlog/spdlog.h>
-
-using BitSpan = std::span<BITBOARD>;

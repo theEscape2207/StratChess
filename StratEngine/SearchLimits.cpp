@@ -1,4 +1,4 @@
-#include "StdAfx.h"
+#include "Common.h"
 #include "SearchLimits.h"
 
 SearchLimits SearchLimits::from_clock(std::chrono::milliseconds remaining, std::chrono::milliseconds increment,

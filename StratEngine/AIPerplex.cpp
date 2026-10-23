@@ -1,7 +1,7 @@
 // This is an independent project of an individual developer. Dear PVS-Studio, please check it.
 
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-#include "StdAfx.h"
+#include "Common.h"
 #include "AIPerplex.h"
 #include "MoveGenerator.h"
 #include "PVIntegrity.h"
@@ -12,14 +12,10 @@
 #include "defines.h"
 #include "MoveHelper.h"
 #include "MoveFormatter.h"
-#include <bit> // std::popcount
 #include <cmath>
-#include <cstdlib>
 #include <cstring>
 #include <iterator>
 #include <new>
-#include <stdexcept>
-#include <utility>
 #include <spdlog/common.h>
 #include <spdlog/logger.h>
 #include <spdlog/sinks/basic_file_sink.h>

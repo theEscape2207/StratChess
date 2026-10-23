@@ -35,6 +35,36 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   Lab +12.37 +/- 3.04 over the merge base (26,640 games, ci-per-change); time per move 0.91x, and
   moves under 2 s fall from 49% to 21%. Threads=1 only; F = 70 and a uniform-cut control untested.
 
+## 2026-10-23: `StdAfx.h` renamed to `Common.h`, umbrella applied everywhere (#901)
+
+### Changed
+- The umbrella header is now `StratEngine/Common.h`; "StdAfx" named an MSVC precompiled header,
+  and nothing here precompiles (#281). It now also carries `<chrono>`, `<cstddef>`, `<limits>`,
+  `<mutex>` and `<stdexcept>`, which several files used without including. `Logger.cpp`,
+  `Perft.cpp` and `TranspositionTable.cpp` now include it first, and direct includes it already
+  provides were dropped from nine `.cpp` files.
+- Headers keep their own includes and must compile standalone; tests do not adopt the umbrella.
+  The rename commit is in `.git-blame-ignore-revs`.
+
+### Removed
+- The unused `BitSpan` alias.
+
+## 2026-10-23: TSan `stop` scenario restored (#243)
+
+### Changed
+- `tsan-linux` drives `threads8-stop-midsearch` again (two `stop` rounds at Threads=8, via the
+  driver's `@nowait`/`@sleep`/`@await` directives), so the externally requested abort is exercised
+  under ThreadSanitizer alongside the `movetime` abort. It had been dropped because the GCC 13.3 /
+  Ubuntu 24.04 TSan build never answered `stop`; the spike on `ubuntu-26.04` shows it does.
+
+## 2026-10-23: Keep the StdAfx.h umbrella (#281)
+
+### Changed
+- Decided to keep the `StdAfx.h` umbrella rather than migrate to include-what-you-use: ccache
+  makes untouched TUs hits regardless of include width, and the remaining fan-out comes from
+  `defines.h` and `Compat.h`, which IWYU would not remove. `misc-include-cleaner` stays off, now
+  recorded in both clang-tidy profiles. Comments only; no behaviour change.
+
 ## 2026-10-23: Search tuning layout
 
 ### Fixed

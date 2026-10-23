@@ -1,4 +1,4 @@
-#include "StdAfx.h"
+#include "Common.h"
 #include "SearchPlayer.h"
 
 SearchPlayer::SearchPlayer(Board& board, AIPerplexConfig config, std::string description)

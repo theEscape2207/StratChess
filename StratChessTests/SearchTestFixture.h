@@ -495,12 +495,19 @@ class AIPerlexTestFixture {
 
 	const SearchTelemetry& helper_telemetry(size_t index) const { return ai->helper_tds_.at(index)->telemetry; }
 
-	// A helper still holding an earlier search's telemetry, numbered as Search() numbers helpers.
-	void add_stale_helper(const SearchTelemetry& telemetry) const
+	int64_t helper_nodes(size_t index) const { return ai->helper_tds_.at(index)->nodes_searched; }
+	int64_t helper_qnodes(size_t index) const { return ai->helper_tds_.at(index)->qnodes_searched; }
+
+	// A helper still holding an earlier search's telemetry and node counts, numbered as Search()
+	// numbers helpers.
+	void add_stale_helper(const SearchTelemetry& telemetry, int64_t stale_nodes) const
 	{
 		add_fake_helper();
-		ai->helper_tds_.back()->thread_id = static_cast<int>(ai->helper_tds_.size());
-		ai->helper_tds_.back()->telemetry = telemetry;
+		ThreadData& htd = *ai->helper_tds_.back();
+		htd.thread_id = static_cast<int>(ai->helper_tds_.size());
+		htd.telemetry = telemetry;
+		htd.nodes_searched = stale_nodes;
+		htd.qnodes_searched = stale_nodes;
 	}
 
 	// --- Quiescence ordering helpers ---

@@ -1,13 +1,9 @@
-#include "StdAfx.h"
+#include "Common.h"
 #include "PlayerFactory.h"
 
 #include "Eval.h"
 #include "HumanPlayer.h"
 #include "SearchPlayer.h"
-
-#include <sstream>
-#include <spdlog/spdlog.h>
-#include <stdexcept>
 
 static_assert(Config::SEARCH_PLAYER_TYPE == static_cast<unsigned>(PlayerType::Search));
 

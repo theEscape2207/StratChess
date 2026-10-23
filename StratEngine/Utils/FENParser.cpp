@@ -1,10 +1,9 @@
-#include "StdAfx.h"
+#include "../Common.h"
 #include "FENParser.h"
 #include "Board.h"
 #include "PieceHelper.h"
 #include "Formatters.h" // For logging of pieces and squares
 #include <regex>
-#include <optional>
 
 /*
 FEN specifies the piece placement, the active color, the castling availability,

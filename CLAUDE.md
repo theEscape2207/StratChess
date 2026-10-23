@@ -33,10 +33,10 @@ Live backlog is GitHub Issues (`theEscape2207/StratChess`) via `gh`, bodies alwa
 
 - **Warnings are errors everywhere**, in Debug and Release on every compiler. Approved
   suppressions: `[[maybe_unused]]` for params used only in `assert()`; `static_cast<>` for
-  intentional narrowing. `#pragma warning(disable)` lives only around `StdAfx.h`'s STL includes.
-- `StratEngine/StdAfx.h` is the shared common-include header (no build precompiles it) — add
-  frequently-used STL headers there, alphabetically inside the `#pragma warning push/pop` block, not
-  in individual `.cpp` files.
+  intentional narrowing. `#pragma warning(disable)` lives only around `Common.h`'s STL includes.
+- `StratEngine/Common.h` is the shared common-include header (no build precompiles it;
+  include-what-you-use rejected, #281) — add frequently-used STL headers there, alphabetically
+  inside the `#pragma warning push/pop` block, not in individual `.cpp` files.
 - **Adding a `.cpp` needs no project edit.** `CMakeLists.txt` globs with `CONFIGURE_DEPENDS`; just
   create the file.
 

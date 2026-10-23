@@ -1,9 +1,8 @@
-#include "StdAfx.h"
+#include "Common.h"
 #include "SearchTuningSchema.h"
 #include "SearchTelemetry.h"
 #include <charconv>
 #include <climits>
-#include <limits>
 #include <nlohmann/json.hpp>
 #include <type_traits>
 
