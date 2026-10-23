@@ -8,8 +8,6 @@
 #include "Magic.h" // RookAttacks/BishopAttacks, for ComputePieceAggregates
 #include "PawnCache.h"
 
-#include <bit> // std::popcount
-
 // Square 0 is a8, a LIGHT square, and bit 0 of this mask is clear -- so the mask
 // holds the DARK squares. The wrong-coloured-bishop fortress asks which colour a
 // specific square is, so a mislabelled constant would put it in the wrong corner.

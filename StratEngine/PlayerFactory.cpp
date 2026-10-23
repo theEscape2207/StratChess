@@ -5,7 +5,6 @@
 #include "HumanPlayer.h"
 #include "SearchPlayer.h"
 
-#include <sstream>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 

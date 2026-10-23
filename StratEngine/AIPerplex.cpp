@@ -12,14 +12,11 @@
 #include "defines.h"
 #include "MoveHelper.h"
 #include "MoveFormatter.h"
-#include <bit> // std::popcount
 #include <cmath>
-#include <cstdlib>
 #include <cstring>
 #include <iterator>
 #include <new>
 #include <stdexcept>
-#include <utility>
 #include <spdlog/common.h>
 #include <spdlog/logger.h>
 #include <spdlog/sinks/basic_file_sink.h>

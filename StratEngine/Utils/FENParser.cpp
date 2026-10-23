@@ -4,7 +4,6 @@
 #include "PieceHelper.h"
 #include "Formatters.h" // For logging of pieces and squares
 #include <regex>
-#include <optional>
 
 /*
 FEN specifies the piece placement, the active color, the castling availability,

@@ -1,3 +1,4 @@
+#include "../StdAfx.h"
 #include "Perft.h"
 #include "../Board.h"
 #include "../Move.h"
@@ -6,8 +7,6 @@
 #include "../MoveGenerator.h"
 #include "../GameState.h"
 #include "../Utils/ArgParse.h"
-#include <iostream>
-#include <fstream>
 #include <filesystem>
 #include <nlohmann/json.hpp>
 
