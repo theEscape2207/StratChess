@@ -91,8 +91,8 @@ TEST_CASE("SMP - trigger counters exclude helpers the current Threads leaves idl
 	SearchTelemetry stale;
 	stale.frontier.skips = kStale;
 	stale.lmp.skips = kStale;
-	fix.add_stale_helper(stale);
-	fix.add_stale_helper(stale);
+	fix.add_stale_helper(stale, kStale);
+	fix.add_stale_helper(stale, kStale);
 
 	const SearchResult returned = fix.get_move_at_threads(2, 6);
 	REQUIRE_FALSE(returned.best_move.is_null());
@@ -103,6 +103,13 @@ TEST_CASE("SMP - trigger counters exclude helpers the current Threads leaves idl
 	CHECK(fix.helper_telemetry(1).lmp.skips == kStale);
 	CHECK(returned.telemetry.frontier.skips == fix.frontier_skips() + fix.helper_telemetry(0).frontier.skips);
 	CHECK(returned.telemetry.lmp.skips == fix.lmp_skips() + fix.helper_telemetry(0).lmp.skips);
+
+	CHECK(fix.helper_nodes(0) < kStale);
+	CHECK(fix.helper_qnodes(0) < kStale);
+	CHECK(fix.helper_nodes(1) == kStale);
+	CHECK(fix.helper_qnodes(1) == kStale);
+	CHECK(returned.nodes_searched == fix.mainnodes() + fix.helper_nodes(0));
+	CHECK(returned.qnodes_searched == fix.qnodes() + fix.helper_qnodes(0));
 }
 
 // Run-Bench.ps1 parses the frontier line and measure_tt_capacity.py the ttstats line.
