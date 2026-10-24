@@ -23,7 +23,7 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
-## 2026-10-23: Stability-scaled soft limit (#103)
+## 2026-10-24: Stability-scaled soft limit (#103)
 
 ### Added
 - `StabilityTimeFloor` (default 50, 10-100; 100 = off): under a clock, the soft limit shrinks as
