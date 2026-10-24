@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-24 | cf6709d, `StabilityTimeFloor=50` at **Threads=4**: harm check for #103's default (#906; no PR, option-only run on `main`, reference `StabilityTimeFloor=100`, run `40123111726`, 13 of 18 shards favour it, zero forfeits) | cf6709d (same commit, floor 100) | 6660 | 10+0.1 | **+5.48 +/- 5.99** | inconclusive @ 6660; no harm shown, default stays 50 |
 | 2026-10-23 | f1956c5, `StabilityTimeFloor=50`: under a clock, the soft limit shrinks to 50% as the root move holds across completed depths (#103; PR #898, run `39928078074`, 18 of 18 shards favour it, zero forfeits) | 866ced1 | 26640 | 10+0.1 | **+12.37 +/- 3.04** | gain; passes the ship rule, default changed to 50 |
 | 2026-10-23 | 0c434b0, `LateMovePruningMinIndex=6`: LMP from the seventh legal move instead of the ninth (#888; no PR, option-only run on `main`, 5 of 18 shards favour it) | 0c434b0 (same commit, default 8) | 28800 | 10+0.1 | **-1.76 +/- 2.95** | inconclusive @ 28800; fails the ship rule, default stays 8 |
 | 2026-10-22 | d865270, CONFIRM arm B: `InternalIterativeReduction=true IirMinDepth=4` (#96; PR #885; confirms the screen's arm B on openings 9,991-23,310, 16 of 18 shards favour it) | a9b4e60 | 26640 | 10+0.1 | **+9.18 +/- 3.10** | gain; passes the ship rule, default changed to on at 4 |
@@ -107,6 +108,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-24 -- cf6709d, `StabilityTimeFloor=50` at Threads=4 (#906) (6660 games)
+
+**Passes the harm rule declared in #906 before dispatch (a regression only if the whole interval is below 0; it is [-0.52, +11.47]), so the default stays 50 at every thread count and no multi-thread schedule issue is opened.** [Run `40123111726`](https://github.com/theEscape2207/StratChess/actions/runs/40123111726), about 3 h 10 min, 18 shards x 185 pairs, `threads=4`, concurrency 1, both sides `main` `cf6709d` (identical binary), reference options `StabilityTimeFloor=100`. All 21 jobs are green and the PGNs carry 6660 games ending only by adjudication or normally, so no time loss, illegal move or disconnect. Pooled Ptnml(0-2) [210, 791, 1258, 826, 245], score 50.79%. Lab runners are 2 cores x SMT, so Threads=4 is about 2 physical cores. **The option reached the reference:** the candidate's mean time per move over moves 9-40 is 0.85x the reference's (0.79x over 9-20, 0.95x over 31-40), against 0.91x at Threads=1, so the soft limit does bite harder with helpers (design assumption A4) without showing harm. The interval cannot resolve a gain this small; the point estimate is not one.
 
 ### 2026-10-23 -- f1956c5, `StabilityTimeFloor=50` (#103) (26640 games)
 
