@@ -180,3 +180,41 @@ class, splits 202/166 the other way. That is why the rows above are pooled rathe
 The [baseline run](#run-33215162562--baseline) predates the level line, so its
 dead-level `OCB` entries are not broken out at all: they sit in that run's unpublished `< +100`
 band rather than in any row above.
+
+---
+
+## Run 39928078074 — stability-scaled soft limit (#103)
+
+| | |
+|---|---|
+| Run | [39928078074](https://github.com/theEscape2207/StratChess/actions/runs/39928078074), 2026-10-23 |
+| Builds | `candidate-f1956c5` (`StabilityTimeFloor=50`) vs `reference-866ced1` (merge-base, no scaling) |
+| Result | pooled **+12.37 ± 3.04 Elo**, 13,320 pairs, score 51.78% |
+| Corpus | 26,640 games · 3,372,451 annotated moves · 16,190 mate scores · 0 games skipped |
+| Toolchain / TC | GCC, Release, Threads=1, 10+0.1 |
+
+An allocation diagnostic for #103, split by build. It explains where the time went; it is not the
+ship decision, which the Elo row in [`ci-per-change.md`](ci-per-change.md) made.
+
+**The candidate left the low-clock band.** Share of each build's moves by clock remaining:
+
+| Build | > 8 s | 5–8 s | 2–5 s | < 2 s |
+|---|---|---|---|---|
+| candidate | 11.9% | 23.8% | 43.4% | **20.9%** |
+| reference | 8.3% | 15.3% | 27.6% | **48.8%** |
+
+Mean recorded time per move, candidate / reference: **0.85** over moves 9–20, 0.94 over 21–30,
+1.00 over 31–40, **0.91** over 9–40 (design prediction 0.75–0.95). Settled middlegame moves are
+shortened, and the saved clock is spent later rather than lost.
+
+Contested blunders (≥ 150 cp, |score| ≤ 150 cp before the move):
+
+| Phase | candidate | reference |
+|---|---|---|
+| opening | 339 / 380,831 | 359 / 380,463 |
+| middlegame | 699 / 406,941 | 789 / 406,974 |
+| endgame | 404 / 326,664 | 563 / 326,695 |
+| all | **0.129%** | **0.154%** |
+
+The endgame gap is the largest, where the reference spends most of its moves under 2 s. Counts are
+per build, unclustered, so read them as direction, not an interval.

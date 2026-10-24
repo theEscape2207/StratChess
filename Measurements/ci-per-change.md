@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-23 | f1956c5, `StabilityTimeFloor=50`: under a clock, the soft limit shrinks to 50% as the root move holds across completed depths (#103; PR #898, run `39928078074`, 18 of 18 shards favour it, zero forfeits) | 866ced1 | 26640 | 10+0.1 | **+12.37 +/- 3.04** | gain; passes the ship rule, default changed to 50 |
 | 2026-10-23 | 0c434b0, `LateMovePruningMinIndex=6`: LMP from the seventh legal move instead of the ninth (#888; no PR, option-only run on `main`, 5 of 18 shards favour it) | 0c434b0 (same commit, default 8) | 28800 | 10+0.1 | **-1.76 +/- 2.95** | inconclusive @ 28800; fails the ship rule, default stays 8 |
 | 2026-10-22 | d865270, CONFIRM arm B: `InternalIterativeReduction=true IirMinDepth=4` (#96; PR #885; confirms the screen's arm B on openings 9,991-23,310, 16 of 18 shards favour it) | a9b4e60 | 26640 | 10+0.1 | **+9.18 +/- 3.10** | gain; passes the ship rule, default changed to on at 4 |
 | 2026-10-22 | adb3267, SCREEN arm B: `InternalIterativeReduction=true IirMinDepth=4` (#96; PR #885; best of two by 3.0 sigma, confirmed by the CONFIRM row) | 34a4ab8 | 9990 | 10+0.1 | **+9.11 +/- 5.04** | gain |
@@ -106,6 +107,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-23 -- f1956c5, `StabilityTimeFloor=50` (#103) (26640 games)
+
+**Passes the ship rule declared in the PR #898 design doc before dispatch (interval [+9.33, +15.41], above 0), so the default flips to 50.** [Run `39928078074`](https://github.com/theEscape2207/StratChess/actions/runs/39928078074), about 4 h 10 min, 18 shards x 740 pairs, reference the merge base `866ced1`, candidate `f1956c5` with the option set over UCI. All 21 jobs are green, so no shard hit a time loss, illegal move or disconnect; PV-compliance warnings (#310) are reporting-only. Pooled Ptnml(0-2) [879, 2846, 5157, 3324, 1114], score 51.78%. **The option reached the engine:** the candidate's mean time per move over moves 9-40 is 0.91x the reference's (0.85x over 9-20, 1.00x over 31-40), inside the predicted 0.75-0.95x, and its share of moves played under 2 s fell from 48.8% to 20.9% ([`move-quality-tier1.md`](move-quality-tier1.md)). The pass shows the policy gains Elo, not that the stability signal beats a uniform soft-limit cut of the same size; that control and F = 70 are untested. Threads=1 only.
 
 ### 2026-10-23 -- 0c434b0, `LateMovePruningMinIndex=6` (#888) (28800 games)
 

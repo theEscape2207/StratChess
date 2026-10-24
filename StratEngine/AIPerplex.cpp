@@ -536,7 +536,9 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			emit_iteration_info(td, state.depth_completed, state.best_score, search_start_age, observer);
 
 			// The observer can consume time or request Stop(); sample the soft limit after it.
-			const auto continuation = Engine::continue_iteration(assessment, control_.ShouldStopIteration());
+			const int soft_percent = Engine::soft_limit_percent(state.move_run, tuning_.stability_time_floor);
+			const auto continuation =
+			    Engine::continue_iteration(assessment, control_.ShouldStopIteration(soft_percent));
 			state = continuation.next_state;
 			continue_search = continuation.stop_reason == Engine::IterationStopReason::NONE;
 			if (continuation.stop_reason == Engine::IterationStopReason::MATE && verbose_logging_ && s_logger)
