@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-25 | 79cc6c3, uniform soft-limit cut at matched time, `StabilityTimeFloor=100 UniformSoftPercent=55`: the control for #103's floor 50 (#905; no PR, throwaway branch `lab-905-uniform-soft`, never merged, run `40142881571`, 11 of 20 shards favour it, zero forfeits) | 79cc6c3 (same commit, defaults: floor 50) | 33200 | 10+0.1 | **+0.92 +/- 2.72** | allocation carries the gain; signal adds nothing measurable |
 | 2026-10-24 | cf6709d, `StabilityTimeFloor=50` at **Threads=4**: harm check for #103's default (#906; no PR, option-only run on `main`, reference `StabilityTimeFloor=100`, run `40123111726`, 13 of 18 shards favour it, zero forfeits) | cf6709d (same commit, floor 100) | 6660 | 10+0.1 | **+5.48 +/- 5.99** | inconclusive @ 6660; no harm shown, default stays 50 |
 | 2026-10-23 | f1956c5, `StabilityTimeFloor=50`: under a clock, the soft limit shrinks to 50% as the root move holds across completed depths (#103; PR #898, run `39928078074`, 18 of 18 shards favour it, zero forfeits) | 866ced1 | 26640 | 10+0.1 | **+12.37 +/- 3.04** | gain; passes the ship rule, default changed to 50 |
 | 2026-10-23 | 0c434b0, `LateMovePruningMinIndex=6`: LMP from the seventh legal move instead of the ninth (#888; no PR, option-only run on `main`, 5 of 18 shards favour it) | 0c434b0 (same commit, default 8) | 28800 | 10+0.1 | **-1.76 +/- 2.95** | inconclusive @ 28800; fails the ship rule, default stays 8 |
@@ -108,6 +109,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-25 -- 79cc6c3, uniform soft-limit cut vs floor 50 (#905) (33200 games)
+
+**The allocation reading declared in #905 before dispatch holds (lower bound -1.80, above -6); the signal reading does not (upper bound +3.64, not below 0).** A uniform 55% soft-limit cut at matched time plays level with floor 50: its +12.37 comes from spending less time per move, not from the stability signal choosing which moves to cut. [Run `40142881571`](https://github.com/theEscape2207/StratChess/actions/runs/40142881571), about 4 h 27 min, 20 shards x 830 pairs, both sides `79cc6c3` (identical binary), candidate options `StabilityTimeFloor=100 UniformSoftPercent=55`, reference at the defaults. All 23 jobs are green and the PGNs carry 33,200 games ending only by adjudication or normally, so no time loss, illegal move or disconnect; PV-compliance warnings (#310) are reporting-only. Pooled Ptnml(0-2) [1215, 3835, 6454, 3839, 1257], score 50.13%. **Validity: the time was matched** — the candidate's mean time per move over moves 9-40 is 0.992x the reference's [0.991, 0.993] (game bootstrap), inside the declared 1.00 +/- 0.03; 0.98x over 9-20, 1.00x over 21-30, 1.01x over 31-40, flatter than floor 50's profile as predicted. The interval spans 0, so this does not show the two equal; it shows the signal is worth less than about +2 here. Threads=1, 10+0.1 only. Follow-up: #908 (`compute_budget` tuning).
 
 ### 2026-10-24 -- cf6709d, `StabilityTimeFloor=50` at Threads=4 (#906) (6660 games)
 
