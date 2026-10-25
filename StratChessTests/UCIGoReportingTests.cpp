@@ -99,6 +99,38 @@ TEST_CASE("cmd_go: 'go depth 4' emits per-iteration info lines with strictly inc
 	REQUIRE(bestmove_lines == 1);
 }
 
+TEST_CASE("cmd_go: info lines carry seldepth and nps in UCI field order", "[uci]")
+{
+	UciHandlerTestFixture fix;
+	fix.position("position startpos");
+
+	const std::string output = fix.capture([&] {
+		fix.dispatch("go depth 6");
+		fix.join_search();
+	});
+
+	for (const std::string& line : split_lines(output)) {
+		if (!line.starts_with("info depth "))
+			continue;
+		const auto at = [&line](std::string_view key) { return line.find(key); };
+		CHECK(at(" seldepth ") < at(" score "));
+		CHECK(at(" nodes ") < at(" nps "));
+		CHECK(at(" nps ") < at(" hashfull "));
+	}
+
+	const auto info_lines = parse_info_depth_lines(output);
+	REQUIRE(info_lines.size() >= 6);
+	bool extended = false;
+	for (const auto& info : info_lines) {
+		CHECK(info.seldepth >= info.depth);
+		CHECK(info.nps == info.nodes * 1000 / std::max<int64_t>(info.time_ms, 1));
+		extended = extended || info.seldepth > info.depth;
+	}
+	// Quiescence runs past the nominal depth from the start position, so seldepth is measured, not
+	// just the clamp echoing depth.
+	CHECK(extended);
+}
+
 TEST_CASE("cmd_go: hashfull falls when the same workload uses a larger table", "[uci][hashfull]")
 {
 	auto final_hashfull = [](unsigned hash_mb) {

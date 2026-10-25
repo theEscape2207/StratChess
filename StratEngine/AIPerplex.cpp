@@ -503,10 +503,13 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 	td.begin_search(tuning_.continuation_history_plies > 0);
 
 	// Copied on acceptance: a later rejected iteration rewrites row 0 but not best_move.
+	// So is seldepth, which the next iteration resets.
 	std::vector<Move> accepted_pv;
-	const auto accept_root_pv = [&td, &accepted_pv] {
+	int accepted_seldepth = 0;
+	const auto accept_root_pv = [&td, &accepted_pv, &accepted_seldepth] {
 		const auto& line = td.pv_table.get_line(0);
 		accepted_pv.assign(line.begin(), line.begin() + td.pv_table.get_length(0));
+		accepted_seldepth = td.seldepth;
 	};
 
 	for (int depth = 1; depth <= max_depth; ++depth) {
@@ -515,6 +518,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 		// the whole search and was set by Search().
 		td.age_history();
 		const int64_t nodes_at_start = td.nodes_searched;
+		td.seldepth = 0;
 
 		// EXECUTE SEARCH: This might get interrupted by timeout
 		int current_best_score;
@@ -581,7 +585,8 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 	                    .depth_completed = state.depth_completed,
 	                    .nodes_searched = state.nodes_at_completed_depth,
 	                    .search_was_stable = state.search_was_stable,
-	                    .pv = std::move(accepted_pv)};
+	                    .pv = std::move(accepted_pv),
+	                    .seldepth = accepted_seldepth};
 }
 
 bool AIPerplex::poll_search_limits(ThreadData& td)
@@ -661,6 +666,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// A verification search can never reach this: it runs at its parent's ply, and that
 	// parent returned from this same test before it could launch one. So there is no row
 	// another frame is building, and the clear is unconditional.
+	if (ply > td.seldepth)
+		td.seldepth = ply;
+
 	if (ply >= MAX_PLY - 1) {
 		td.pv_table.clear_ply(ply);
 		return evaluator_.Evaluate(td.board, *td.pawn_cache);
@@ -1448,6 +1456,9 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	if (poll_search_limits(td))
 		return GameValues::Draw;
 
+	if (ply > td.seldepth)
+		td.seldepth = ply;
+
 	if constexpr (kSearchProfileCompiled)
 		td.telemetry.qsearch.max_depth =
 		    std::max(td.telemetry.qsearch.max_depth, static_cast<int64_t>(QSEARCH_BUDGET - qsearch_budget));
@@ -2119,6 +2130,7 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, 
 
 	IterationInfo iter;
 	iter.depth = depth;
+	iter.seldepth = td.seldepth;
 	iter.score = score;
 	iter.nodes = td.nodes_searched + td.qnodes_searched;
 	iter.hashfull = tt_->hashfull(search_start_age);

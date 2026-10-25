@@ -324,8 +324,10 @@ inline std::vector<std::string> split_lines(const std::string& text)
 // re-deriving GameValues::Mate_Threshold.
 struct ParsedInfoLine {
 	int depth = 0;
+	int seldepth = -1;
 	std::string score;
 	int64_t nodes = 0;
+	int64_t nps = -1;
 	int hashfull = -1;
 	int time_ms = 0;
 	std::vector<std::string> pv;
@@ -348,6 +350,8 @@ inline std::vector<ParsedInfoLine> parse_info_depth_lines(const std::string& out
 		while (iss >> tok) {
 			if (tok == "depth") {
 				iss >> info.depth;
+			} else if (tok == "seldepth") {
+				iss >> info.seldepth;
 			} else if (tok == "score") {
 				std::string kind;
 				std::string value;
@@ -355,6 +359,8 @@ inline std::vector<ParsedInfoLine> parse_info_depth_lines(const std::string& out
 				info.score = kind + " " + value;
 			} else if (tok == "nodes") {
 				iss >> info.nodes;
+			} else if (tok == "nps") {
+				iss >> info.nps;
 			} else if (tok == "hashfull") {
 				iss >> info.hashfull;
 			} else if (tok == "time") {

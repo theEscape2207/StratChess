@@ -122,7 +122,7 @@ function ConvertTo-BenchResult {
 
     # The engine emits one info line per iteration, then a summary line and bestmove.
     # Take the LAST info line: the summary.
-    $info = [regex]::Matches($Output, 'info depth \d+.*?nodes (\d+)(?: hashfull \d+)? time (\d+)')
+    $info = [regex]::Matches($Output, 'info depth \d+.*?nodes (\d+)(?: nps \d+)?(?: hashfull \d+)? time (\d+)')
     $best = [regex]::Match($Output, 'bestmove (\S+)')
 
     if ($info.Count -eq 0) {
@@ -244,6 +244,12 @@ if ($SelfTest) {
     Assert-Case 'main/qs split is parsed' ($r.MainNodes -eq 100 -and $r.QsNodes -eq 40) `
         "got main $($r.MainNodes) qs $($r.QsNodes)"
     Assert-Case 'no frontier skips line means zero skips' ($r.FrontierSkips -eq 0) "got $($r.FrontierSkips)"
+
+    # The #911 line shape: seldepth after depth, nps between nodes and hashfull.
+    $withNps = $contract1 -replace 'depth (\d) score', 'depth $1 seldepth 7 score' -replace 'nodes 140 hashfull', 'nodes 140 nps 15555 hashfull'
+    $r = ConvertTo-BenchResult -Output $withNps -Fen 'startpos'
+    Assert-Case 'seldepth and nps fields do not break the parse' ($r.Nodes -eq 140 -and $r.Ms -eq 9) `
+        "got nodes $($r.Nodes) ms $($r.Ms)"
 
     $withSkips = $contract1 -replace 'bestmove e2e4', "info string frontier skips 17`nbestmove e2e4"
     $r = ConvertTo-BenchResult -Output $withSkips -Fen 'startpos'
