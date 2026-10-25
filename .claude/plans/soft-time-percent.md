@@ -37,8 +37,10 @@ second time control. It ships the knob's default only if both pass, and deletes 
 - keep it at default 100 (identical to `main`) on the PR branch while the lab runs;
 - run up to three owner-approved lab runs from the PR branch under D5's rule: arm A, arm B
   (conditional) and a 30+0.3 harm check;
-- on a pass, set the default to the winning U in the same PR and record the rows. On a park, close
-  the PR and record the row on #908.
+- on a pass, set the default to the winning U in the same PR and record the rows there. On any
+  outcome that does not ship (park, inconclusive, a failed second TC), close the engine PR and
+  record every completed or discarded run in a separate measurements-only PR, as
+  `Measurements/README.md` requires.
 
 **This change will not:**
 
@@ -46,8 +48,10 @@ second time control. It ships the knob's default only if both pass, and deletes 
   or the 100 ms floor. Each would be its own follow-up, opened only if this one ships (D1);
 - touch the hard limit, the changed-move extension, `StabilityTimeFloor` or its schedule
   (`soft_limit_percent`);
-- change `movetime`, `depth`, `nodes`, `infinite` (with or without a clock) or the default-time
-  fallback. The existing `soft_scalable` gate already excludes them;
+- change `movetime`, depth-only, nodes-only or `infinite` searches (with or without a clock), or the
+  default-time fallback. The existing `soft_scalable` gate already excludes them. A clock search with
+  an extra `depth` or `nodes` cap stays scalable, as it already is for `StabilityTimeFloor`
+  (`SearchLimits.cpp:58-61`, `SearchLimitsTests`);
 - measure `Threads>1` (A4; optional, priced below);
 - run a third arm. Going past B is a new owner decision taken from the ledger.
 
@@ -111,18 +115,23 @@ Rejected:
 
 ### D3: Arms, calibrated on measured time, on top of floor 50
 
-| Arm | Candidate | Reference | Target ratio, moves 9–40 | Prior for U (unverified) |
+| Arm | Candidate | Reference | Binding target, moves 9–40, vs the run's own reference | Prior for U (unverified) |
 |---|---|---|---|---|
-| A | `SoftTimePercent=U_A` | `merge-base` (`main`, floor 50) | **0.90 ± 0.03** vs floor 50 | 45–60 |
-| B | `SoftTimePercent=U_B` | PR head, `SoftTimePercent=U_A` | **0.80 ± 0.03** vs floor 50, so about **0.89 ± 0.03** vs A | 30–45 |
+| A | `SoftTimePercent=U_A` | `merge-base` (`main`, floor 50) | **0.90 ± 0.03** | 45–60 |
+| B | `SoftTimePercent=U_B` | PR head, `SoftTimePercent=U_A` | **0.89 ± 0.03** (about 0.80x of floor 50 cumulatively; a label, not a gate) | 30–45 |
+
+Each target is a ratio against that run's own reference, the one D4 check 2 can measure directly.
+Ratios from different matches do not chain exactly (positions and move counts differ), so B's
+cumulative 0.80x is never checked.
 
 The soft percent only decides whether the next depth *starts*, so time is strongly nonlinear in U.
 At floor 100, #905 measured U=75 cutting almost nothing and U=55 cutting about 10%. U is therefore
 chosen from measured time, never from the percent.
 
 **Calibration probe** (local, clang-cl, 10+0.1, 200 games per point, under `measure-strength`'s
-quiet-window rule, about 1–1.5 h). Run `SoftTimePercent=U` against the defaults on the same binary,
-for U ∈ {70, 55, 40}, and add points as needed. Read the mean recorded time per move by build over
+quiet-window rule, about 1–1.5 h). The probe uses the same denominator as the lab gate. For A, run
+`SoftTimePercent=U` against the defaults for U ∈ {70, 55, 40}. For B, run it against
+`SoftTimePercent=U_A` for U ∈ {45, 35, 25}. On the same binary, add points as needed. Read the mean recorded time per move by build over
 moves 9–40, plus 9–20 / 21–30 / 31–40, with a 95% game-bootstrap interval. Pick the U whose
 interval lies inside the target, interpolating between points. The 200-game Elo is not read. U_B is
 calibrated only if A passes. The chosen U, its measured ratio and its interval go in an issue
@@ -160,16 +169,17 @@ earlier #908 runs consumed.
 
 - **Run A**: 10+0.1, `games=26640`, 18 shards (about ±3, about 4 h), `opening_offset=0`.
   - **Headroom:** lower bound > 0. Calibrate U_B and request run B.
-  - **Park:** upper bound < +3. The remaining gain is too small to pay for the TC risk. Record it,
-    close the PR, close #908 as measured.
-  - **Otherwise, inconclusive:** record it, run nothing more without a new owner call, and do not
-    ship. It closes the PR the same way a park does: the branch is deleted, and the code stays
+  - **Park:** upper bound < +3. The remaining gain is too small to pay for the TC risk. Close the
+    PR, record the row in a measurements-only PR, and close #908 as measured.
+  - **Otherwise, inconclusive:** record it in a measurements-only PR, run nothing more without a
+    new owner call, and do not ship. It closes the PR the same way a park does: the branch is deleted, and the code stays
     reachable at `refs/pull/<n>/head`. Under the prior this is likely. For a true gain of +1 to +3,
     the chance of an inconclusive result is about 50–65%.
 - **Run B** (only after headroom on A): 10+0.1, `games=26640`, 18 shards, `opening_offset=13320`.
   - **B wins** if its lower bound is > 0.
-  - **Otherwise A wins.** The curve has turned, and nothing more aggressive is run here. If the
-    owner declines run B, A is the winner.
+  - **Otherwise A wins.** B has not shown an additional gain, which does not show it is worse.
+    Keep A and stop this experiment; nothing more aggressive is run here. If the owner declines
+    run B, A is the winner.
 - **Second TC** (winner vs `merge-base`, `candidate_tc=reference_tc=30+0.3`): `games=8000`, 20
   shards (400 per shard, about ±5.5), `opening_offset` = pairs consumed so far.
   - **Non-inferiority at −8:** the winner ships only if the lower bound is > −8, which needs a
@@ -178,9 +188,11 @@ earlier #908 runs consumed.
     the time. #906's rule (harm only if the whole interval is below 0) is rejected here. It would
     block a true −5 only about 43% of the time, and #906 was checking a shipped default, not
     admitting a new one.
-  - Otherwise the result is recorded and nothing ships.
-  - D4 applies here too, with time matched at the winner's 10+0.1 ratio ± 0.05: the ratio is
-    expected to drift with TC, and a larger drift is reported, not disqualifying.
+  - Otherwise nothing ships. The engine PR closes and the row goes in a measurements-only PR.
+  - D4 checks 1, 3 and 4 apply here. Check 2 is reporting only. The ratio is measured against this
+    run's own reference (`merge-base`, floor 50) and is expected to drift with TC. It is reported
+    next to A's lab ratio (when A wins) or B's cumulative label (when B wins). It never
+    disqualifies the run.
 
 The 26,640-game runs detect a true +5 about 90% of the time and a true +3 about half the time.
 Park at upper bound < +3 means a park reads as "below about +3 here", not "zero". Both looks' nominal
@@ -210,8 +222,9 @@ result.
 
 - At `SoftTimePercent=100` every search is identical to `main`: `p * 100 / 100 == p` exactly.
 - The hard limit, the stop latch, `compute_budget` and the changed-move extension are untouched.
-- Only clock searches with `soft_scalable` are scaled. `movetime`, `depth`, `nodes`, `infinite`,
-  `go infinite` with a clock, and the default-time fallback behave as on `main` at any U.
+- Only clock searches with `soft_scalable` are scaled, including a clock search with a `depth` or
+  `nodes` cap. `movetime`, depth-only, nodes-only, `infinite`, `go infinite` with a clock, and the
+  default-time fallback behave as on `main` at any U.
 - The merged binary differs from the measured one only in the default of `SoftTimePercent`.
 - The effective percent stays in [1, 100]: floor ≥ 10 and U ≥ 10, so the stop threshold never
   exceeds the soft limit.
@@ -230,8 +243,9 @@ reviews this document and the diff.
   the measured ratio would be 1.00 at every U.
 - **No bench pass:** one multiply per completed iteration, nothing per node.
 - **Elo:** D5's runs. **Needed:** the change exists only to gain strength.
-- **Records:** each run gets a `Measurements/ci-per-change.md` row with its ratio, D4 checks and
-  forfeit count. The shipped arm gets the D4 clock-band table in
+- **Records:** each completed or discarded run gets a `Measurements/ci-per-change.md` row with its
+  ratio, D4 checks and forfeit count. That happens in the engine PR when it ships, and in a
+  measurements-only PR otherwise. The shipped arm gets the D4 clock-band table in
   `Measurements/move-quality-tier1.md`.
 
 ## Cost
