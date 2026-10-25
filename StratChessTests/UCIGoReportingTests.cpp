@@ -225,6 +225,49 @@ TEST_CASE("cmd_go: a node-limited search never reports a spliced pv", "[uci]")
 	REQUIRE(info_lines.back().pv.front() == extract_bestmove(output));
 }
 
+TEST_CASE("cmd_go: the final info line repeats the accepted iteration's full pv", "[uci]")
+{
+	// A rejected iteration emits nothing and rewrites the PV table, so the final line must come
+	// from the last line emitted, not from the table. The node budgets end in a partial iteration.
+	const std::string go = GENERATE(as<std::string>{}, "go depth 6", "go nodes 5000", "go nodes 50000");
+
+	UciHandlerTestFixture fix;
+	fix.position("position startpos moves e2e4 e7e5 g1f3");
+
+	const std::string output = fix.capture([&] {
+		fix.dispatch(go);
+		fix.join_search();
+	});
+
+	const auto info_lines = parse_info_depth_lines(output);
+	REQUIRE(info_lines.size() >= 2);
+	INFO(go);
+	const ParsedInfoLine& final_line = info_lines.back();
+	CHECK(final_line.pv == info_lines[info_lines.size() - 2].pv);
+	REQUIRE(final_line.pv.size() > 1);
+	REQUIRE(final_line.pv.front() == extract_bestmove(output));
+
+	Board board;
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2"));
+	REQUIRE(replay_pv_is_legal(board, final_line.pv));
+}
+
+TEST_CASE("cmd_go: a checkmated root reports pv 0000 on the final line", "[uci]")
+{
+	UciHandlerTestFixture fix;
+	fix.position("position fen rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3");
+
+	const std::string output = fix.capture([&] {
+		fix.dispatch("go depth 4");
+		fix.join_search();
+	});
+
+	const auto info_lines = parse_info_depth_lines(output);
+	REQUIRE_FALSE(info_lines.empty());
+	REQUIRE(info_lines.back().pv == std::vector<std::string>{"0000"});
+	REQUIRE(extract_bestmove(output) == "0000");
+}
+
 TEST_CASE("cmd_go: a node limit bounds a multi-threaded search too", "[uci][smp]")
 {
 	// Only thread 0 polls, so the budget bounds thread 0's node count and the reported

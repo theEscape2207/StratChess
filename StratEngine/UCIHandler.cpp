@@ -59,7 +59,7 @@ namespace {
 		return "cp " + std::to_string(cp);
 	}
 
-	// Per-iteration lines show the full PV; the final info line reports one move.
+	// Both lines show the full PV; an empty one means no move, which UCI spells 0000.
 	std::string format_uci_pv(const std::vector<Move>& pv)
 	{
 		if (pv.empty())
@@ -424,7 +424,7 @@ void UciHandler::cmd_go(std::string_view line)
 		writer->send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
 		             std::to_string(result.nodes_searched + result.qnodes_searched) + " hashfull " +
 		             std::to_string(result.hashfull) + " time " + std::to_string(result.elapsed.count()) + " pv " +
-		             (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
+		             format_uci_pv(result.pv));
 
 		// The split, as an 'info string' so GUIs and match runners ignore it: without it a
 		// change that relocates work between the trees looks like one that simply got slower.

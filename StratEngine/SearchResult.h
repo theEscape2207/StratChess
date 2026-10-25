@@ -5,6 +5,7 @@
 #include "SearchTelemetry.h"
 #include <chrono>
 #include <cstdint>
+#include <vector>
 
 // What one GetMove() call produced: the move to play, and everything the caller needs to know
 // about how it was reached. It lives in its own header because IPlayer returns it and cannot
@@ -34,4 +35,7 @@ struct SearchResult {
 	// Trigger counters for this search, summed over every thread; see SearchTelemetry.h. They
 	// measure how often a heuristic fires, not whether it helped: only a match can answer that.
 	SearchTelemetry telemetry{};
+
+	// The accepted iteration's line, starting with best_move; empty when best_move is null.
+	std::vector<Move> pv{};
 };

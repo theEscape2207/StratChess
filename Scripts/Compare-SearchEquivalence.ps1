@@ -184,6 +184,10 @@ function ConvertTo-ComparableLines {
         can differ without the search tree changing; every other field on these
         lines is a property of the search.
 
+        The final 'info depth' line keeps only its first pv move: a pre-#912 build
+        printed that move alone, and the full line repeats the last iteration's,
+        which is compared already.
+
         Every 'info string' line from the first 'info depth' on is kept verbatim: those
         are what `go` reports (node split, trigger counters), so a change that rewords,
         drops or adds one is a difference. Everything before — the 'uci' banner, option
@@ -201,7 +205,14 @@ function ConvertTo-ComparableLines {
             $line
         }
     }
-    return @($kept)
+    $kept = @($kept)
+    for ($i = $kept.Count - 1; $i -ge 0; $i--) {
+        if ($kept[$i] -match '^info depth \d+') {
+            $kept[$i] = $kept[$i] -replace ' pv (\S+).*$', ' pv $1'
+            break
+        }
+    }
+    return $kept
 }
 
 # 'info string' keys compared only when both builds emit them; see the help above.
@@ -352,6 +363,14 @@ if ($SelfTest) {
     $pvDiff = $sampleOut -replace 'pv e2e4 e7e5', 'pv e2e4 c7c5'
     $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $pvDiff)
     Assert-Case 'pv difference is caught' ((-not $r.Identical) -and $r.Index -eq 2) "diff at $($r.Index)"
+
+    # Only the final line's pv tail is ignored, so an old build's one-move final line matches.
+    $oldFinal = $sampleOut -replace 'nodes 140 hashfull 18 time 9 pv e2e4 e7e5', 'nodes 140 hashfull 18 time 9 pv e2e4'
+    $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $oldFinal)
+    Assert-Case 'final-line pv tail compares identical' $r.Identical "first diff at line $($r.Index)"
+    $finalMoveDiff = $sampleOut -replace 'time 9 pv e2e4 e7e5', 'time 9 pv d2d4 e7e5'
+    $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $finalMoveDiff)
+    Assert-Case 'final-line first pv move difference is caught' ((-not $r.Identical) -and $r.Index -eq 3) "diff at $($r.Index)"
 
     $bestDiff = $sampleOut -replace 'bestmove e2e4', 'bestmove d2d4'
     $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $bestDiff)
