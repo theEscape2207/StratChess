@@ -44,7 +44,7 @@ repeats the aborted-frame tripwire; change both together.
   join, on every exit. A stale prefetch never faults and changes no result, so only the
   `[tt_prefetch]` tests catch a missing bind or reset; `SetHash` may free the table once `Search()`
   returns.
-- `SearchResult` carries best move, score, elapsed time, split node counts and the `GameStates` the
+- `SearchResult` carries best move, its PV, score, elapsed time, split node counts and the `GameStates` the
   player adjudicated at its own root. It is never `DRAW_50_MOVES`: the fifty-move rule is a fact about
   the committed position, and `Game::Run` adjudicates it. The returned value is the **post-join
   aggregate** and remains the authoritative record after later searches; Game owns combined totals.

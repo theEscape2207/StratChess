@@ -502,6 +502,13 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 
 	td.begin_search(tuning_.continuation_history_plies > 0);
 
+	// Copied on acceptance: a later rejected iteration rewrites row 0 but not best_move.
+	std::vector<Move> accepted_pv;
+	const auto accept_root_pv = [&td, &accepted_pv] {
+		const auto& line = td.pv_table.get_line(0);
+		accepted_pv.assign(line.begin(), line.begin() + td.pv_table.get_length(0));
+	};
+
 	for (int depth = 1; depth <= max_depth; ++depth) {
 
 		// BEFORE ITERATION: Prepare for this depth's search. The TT age belongs to
@@ -534,6 +541,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			state = assessment.next_state;
 			log_completed_iteration(metrics, td.pv_table);
 			emit_iteration_info(td, state.depth_completed, state.best_score, search_start_age, observer);
+			accept_root_pv();
 
 			// The observer can consume time or request Stop(); sample the soft limit after it.
 			const int soft_percent = Engine::soft_limit_percent(state.move_run, tuning_.stability_time_floor);
@@ -549,6 +557,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			state = assessment.next_state;
 			log_acceptance(metrics);
 			emit_iteration_info(td, state.depth_completed, state.best_score, search_start_age, observer);
+			accept_root_pv();
 			break;
 		case Engine::IterationDisposition::REJECTED:
 			log_rejection(depth, assessment.reason, metrics, state);
@@ -561,13 +570,18 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 
 	// No accepted move: either the game is over at the root, or an emergency move is found.
 	const bool has_move = !state.best_move.is_null() || handle_empty_move_emergency(td, state);
+	if (has_move && accepted_pv.empty())
+		accept_root_pv(); // the emergency move: its row 0 is that one move
+	assert(accepted_pv.empty() ? state.best_move.is_null() : accepted_pv.front() == state.best_move);
+	assert(pv_replays_legally(td.board, accepted_pv));
 	if (has_move && state.depth_completed > 0)
 		log_search_complete(state, td.pv_table);
 	return SearchResult{.best_move = state.best_move,
 	                    .best_score = state.best_score,
 	                    .depth_completed = state.depth_completed,
 	                    .nodes_searched = state.nodes_at_completed_depth,
-	                    .search_was_stable = state.search_was_stable};
+	                    .search_was_stable = state.search_was_stable,
+	                    .pv = std::move(accepted_pv)};
 }
 
 bool AIPerplex::poll_search_limits(ThreadData& td)
