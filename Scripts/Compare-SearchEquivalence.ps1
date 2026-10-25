@@ -184,8 +184,8 @@ function ConvertTo-ComparableLines {
         can differ without the search tree changing; every other field on these
         lines is a property of the search.
 
-        The final 'info depth' line keeps only its first pv move: a pre-#912 build
-        printed that move alone, and the full line repeats the last iteration's,
+        The final 'info depth' line keeps only its first pv move: an older baseline
+        prints that move alone, and the full line repeats the last iteration's,
         which is compared already.
 
         Every 'info string' line from the first 'info depth' on is kept verbatim: those

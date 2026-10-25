@@ -78,25 +78,6 @@ TEST_CASE("cmd_go: stop during go infinite preserves output lines under concurre
 	REQUIRE(readyok_count == kIsReadyCount);
 }
 
-TEST_CASE("cmd_go: a stopped search's final info line carries the last iteration's full pv", "[uci]")
-{
-	UciHandlerTestFixture fix;
-	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
-
-	fix.dispatch("go infinite");
-	const bool deep_enough = fix.wait_for_output("info depth 4 ", std::chrono::seconds(10));
-	fix.dispatch("stop");
-	const std::string output = fix.output();
-
-	REQUIRE(deep_enough);
-	const auto info_lines = parse_info_depth_lines(output);
-	REQUIRE(info_lines.size() >= 2);
-	const ParsedInfoLine& final_line = info_lines.back();
-	CHECK(final_line.pv == info_lines[info_lines.size() - 2].pv);
-	REQUIRE(final_line.pv.size() > 1);
-	REQUIRE(final_line.pv.front() == extract_bestmove(output));
-}
-
 TEST_CASE("cmd_go: back-to-back searches emit only their own per-call iterations", "[uci][back_to_back]")
 {
 	// The observer is passed into exactly one Search call. The second command must

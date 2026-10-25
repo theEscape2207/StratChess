@@ -573,6 +573,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 	if (has_move && accepted_pv.empty())
 		accept_root_pv(); // the emergency move: its row 0 is that one move
 	assert(accepted_pv.empty() ? state.best_move.is_null() : accepted_pv.front() == state.best_move);
+	assert(pv_replays_legally(td.board, accepted_pv));
 	if (has_move && state.depth_completed > 0)
 		log_search_complete(state, td.pv_table);
 	return SearchResult{.best_move = state.best_move,

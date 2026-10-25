@@ -36,6 +36,7 @@ struct SearchResult {
 	// measure how often a heuristic fires, not whether it helped: only a match can answer that.
 	SearchTelemetry telemetry{};
 
-	// The accepted iteration's line, starting with best_move; empty when best_move is null.
+	// AIPerplex: the accepted iteration's line, starting with best_move, and empty when best_move is
+	// null. The human player leaves it empty.
 	std::vector<Move> pv{};
 };
