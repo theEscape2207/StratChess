@@ -50,6 +50,7 @@ namespace {
 		int continuation_history_plies;
 		int contempt;
 		int stability_time_floor;
+		int soft_time_percent;
 		bool aspiration_enabled;
 		bool lmr_enabled;
 		bool null_move_enabled;
@@ -102,6 +103,7 @@ namespace {
 	SAME_MEMBER(continuation_history_plies)
 	SAME_MEMBER(contempt)
 	SAME_MEMBER(stability_time_floor)
+	SAME_MEMBER(soft_time_percent)
 #undef SAME_MEMBER
 	static_assert(sizeof(SearchTuning) == sizeof(BaselineTuning));
 	static_assert(alignof(SearchTuning) == alignof(BaselineTuning));
@@ -439,6 +441,13 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(uci_rejection("StabilityTimeFloor", "101") == Code::OutOfRange);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("SoftTimePercent", "55", tuning));
+	expected.soft_time_percent = 55;
+	CHECK(tuning == expected);
+	CHECK(uci_rejection("SoftTimePercent", "9") == Code::OutOfRange);
+	CHECK(uci_rejection("SoftTimePercent", "101") == Code::OutOfRange);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("LmrHistoryDivisor", "8192", tuning));
 	expected.lmr_history_divisor = 8192;
 	CHECK(tuning == expected);
@@ -569,6 +578,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    // so an advertised negative minimum would be a value the engine then refuses to apply.
 	    "option name Contempt type spin default 0 min 0 max 100",
 	    "option name StabilityTimeFloor type spin default 50 min 10 max 100",
+	    "option name SoftTimePercent type spin default 100 min 10 max 100",
 	};
 	CHECK(SearchTuningSchema::UciOptionLines() == expected);
 }

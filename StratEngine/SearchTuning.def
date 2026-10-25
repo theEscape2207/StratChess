@@ -134,6 +134,13 @@ TUNING_FIELD(int,     contempt, 0, 0, 100, true, "Contempt", true)
 // nearly every settled search would stop at its next completed depth, a value no lab would test.
 TUNING_FIELD(int,     stability_time_floor, 50, 10, 100, true, "StabilityTimeFloor", true)
 
+// Percent of the clock soft limit every clock search may spend before it stops starting depths,
+// multiplied into StabilityTimeFloor's schedule. Uniform rather than stability-keyed: #905 measured
+// a uniform cut at matched time level with floor 50 (+0.92 +/- 2.72), so the time saved carries the
+// gain, not which moves are cut. 100 is off and search-identical to no scaling. The hard limit is
+// untouched, so no move can spend more than it does at 100.
+TUNING_FIELD(int,     soft_time_percent, 100, 10, 100, true, "SoftTimePercent", true)
+
 // clang-format on
 
 #ifdef TUNING_FLAG_DEFAULTED

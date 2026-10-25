@@ -536,7 +536,10 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			emit_iteration_info(td, state.depth_completed, state.best_score, search_start_age, observer);
 
 			// The observer can consume time or request Stop(); sample the soft limit after it.
-			const int soft_percent = Engine::soft_limit_percent(state.move_run, tuning_.stability_time_floor);
+			// SoftTimePercent scales here, not in compute_budget: SearchControl ignores the percent
+			// for go infinite with a clock, and compute_budget's floor clamp would undo the cut at low clock.
+			const int soft_percent = Engine::soft_limit_percent(state.move_run, tuning_.stability_time_floor) *
+			                         tuning_.soft_time_percent / 100;
 			const auto continuation =
 			    Engine::continue_iteration(assessment, control_.ShouldStopIteration(soft_percent));
 			state = continuation.next_state;
