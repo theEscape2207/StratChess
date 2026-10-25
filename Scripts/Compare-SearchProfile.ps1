@@ -766,7 +766,7 @@ if ($SelfTest) {
     Assert-Case 'the repeated summary line is not an iteration' ($r.Iterations.Count -eq 8 -and $r.Iterations[7].Nodes -eq 194493)
     Assert-Case 'bestmove is read' ($r.Best -eq 'd5e6')
 
-    # The #911 line shape: seldepth after depth, nps between nodes and hashfull.
+    # The current line shape: seldepth after depth, nps between nodes and hashfull.
     $withNps = $kiwi -replace 'info depth (\d) score', 'info depth $1 seldepth 12 score' -replace ' hashfull (\d+) ', ' nps 2000 hashfull $1 '
     $n = Parse $withNps
     Assert-Case 'seldepth and nps fields do not break the parse' ($n.Iterations.Count -eq 8 -and $n.Iterations[4].Score -eq 4 -and $n.Iterations[7].Nodes -eq 194493)

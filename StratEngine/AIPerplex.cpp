@@ -666,13 +666,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// A verification search can never reach this: it runs at its parent's ply, and that
 	// parent returned from this same test before it could launch one. So there is no row
 	// another frame is building, and the clear is unconditional.
-	if (ply > td.seldepth)
-		td.seldepth = ply;
-
 	if (ply >= MAX_PLY - 1) {
 		td.pv_table.clear_ply(ply);
 		return evaluator_.Evaluate(td.board, *td.pawn_cache);
 	}
+
+	if (ply > td.seldepth)
+		td.seldepth = ply;
 
 	// This frame is a singular verification search when the slot is set: it re-enters pvs()
 	// at the ply its parent is still working on, so it must leave that parent's PV row alone.

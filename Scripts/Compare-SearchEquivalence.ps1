@@ -182,7 +182,7 @@ function ConvertTo-ComparableLines {
         'time' and 'nps' are stripped because they are wall clock and legitimately
         differ between two runs of the SAME binary. 'hashfull' is sampled telemetry and
         can differ without the search tree changing. 'seldepth' is a property of the
-        search, but builds before #911 do not print it, so keeping it would fail every
+        search, but older builds do not print it, so keeping it would fail every
         old-vs-new comparison; every other field on these lines is a property of the search.
 
         The final 'info depth' line keeps only its first pv move: an older baseline
@@ -351,7 +351,7 @@ if ($SelfTest) {
     $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $telemetryDiff)
     Assert-Case 'telemetry-only differences compare identical' $r.Identical "first diff at line $($r.Index)"
 
-    # A #911 build adds seldepth and nps; against a build without them the search is unchanged.
+    # A build printing seldepth and nps compares identical to one without them.
     $withNps = $sampleOut -replace 'depth (\d) score', 'depth $1 seldepth 9 score' -replace ' hashfull (\d+) ', ' nps 4000 hashfull $1 '
     $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $withNps)
     Assert-Case 'seldepth and nps fields compare identical to a build without them' $r.Identical "first diff at line $($r.Index)"

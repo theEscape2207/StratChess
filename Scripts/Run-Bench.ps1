@@ -245,7 +245,7 @@ if ($SelfTest) {
         "got main $($r.MainNodes) qs $($r.QsNodes)"
     Assert-Case 'no frontier skips line means zero skips' ($r.FrontierSkips -eq 0) "got $($r.FrontierSkips)"
 
-    # The #911 line shape: seldepth after depth, nps between nodes and hashfull.
+    # The current line shape: seldepth after depth, nps between nodes and hashfull.
     $withNps = $contract1 -replace 'depth (\d) score', 'depth $1 seldepth 7 score' -replace 'nodes 140 hashfull', 'nodes 140 nps 15555 hashfull'
     $r = ConvertTo-BenchResult -Output $withNps -Fen 'startpos'
     Assert-Case 'seldepth and nps fields do not break the parse' ($r.Nodes -eq 140 -and $r.Ms -eq 9) `

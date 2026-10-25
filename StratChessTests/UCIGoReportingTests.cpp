@@ -131,6 +131,24 @@ TEST_CASE("cmd_go: info lines carry seldepth and nps in UCI field order", "[uci]
 	CHECK(extended);
 }
 
+TEST_CASE("cmd_go: seldepth is clamped to depth when every line ends early", "[uci]")
+{
+	// One halfmove short of the fifty-move rule: every child is a draw at ply 1, whatever the depth.
+	UciHandlerTestFixture fix;
+	fix.position("position fen 8/8/8/4k3/8/8/8/4K3 w - - 99 80");
+
+	const std::string output = fix.capture([&] {
+		fix.dispatch("go depth 4");
+		fix.join_search();
+	});
+
+	const auto info_lines = parse_info_depth_lines(output);
+	REQUIRE(info_lines.size() >= 4);
+	CHECK(info_lines.back().depth == 4);
+	for (const auto& info : info_lines)
+		CHECK(info.seldepth >= info.depth);
+}
+
 TEST_CASE("cmd_go: hashfull falls when the same workload uses a larger table", "[uci][hashfull]")
 {
 	auto final_hashfull = [](unsigned hash_mb) {
