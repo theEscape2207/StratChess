@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-25 | ea91b0b, `SoftTimePercent=78`: every clock search's soft stop cut to 78% on top of floor 50, run A (#908; PR #910, never merged, run `40184736357`, 5 of 18 shards favour it, zero forfeits) | f562abc | 26640 | 10+0.1 | **-2.92 +/- 3.02** | park: upper bound +0.10 below +3; default stays 100 |
 | 2026-10-25 | 79cc6c3, uniform soft-limit cut at matched time, `StabilityTimeFloor=100 UniformSoftPercent=55`: the control for #103's floor 50 (#905; no PR, throwaway branch `lab-905-uniform-soft`, never merged, run `40142881571`, 11 of 20 shards favour it, zero forfeits) | 79cc6c3 (same commit, defaults: floor 50) | 33200 | 10+0.1 | **+0.92 +/- 2.72** | allocation carries the gain; signal adds nothing measurable |
 | 2026-10-24 | cf6709d, `StabilityTimeFloor=50` at **Threads=4**: harm check for #103's default (#906; no PR, option-only run on `main`, reference `StabilityTimeFloor=100`, run `40123111726`, 13 of 18 shards favour it, zero forfeits) | cf6709d (same commit, floor 100) | 6660 | 10+0.1 | **+5.48 +/- 5.99** | inconclusive @ 6660; no harm shown, default stays 50 |
 | 2026-10-23 | f1956c5, `StabilityTimeFloor=50`: under a clock, the soft limit shrinks to 50% as the root move holds across completed depths (#103; PR #898, run `39928078074`, 18 of 18 shards favour it, zero forfeits) | 866ced1 | 26640 | 10+0.1 | **+12.37 +/- 3.04** | gain; passes the ship rule, default changed to 50 |
@@ -109,6 +110,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-25 -- ea91b0b, `SoftTimePercent=78` vs floor 50, run A (#908) (26640 games)
+
+**Parks under the reading rule declared in #908 before dispatch: interval [-5.95, +0.10], upper bound below +3.** A further uniform soft-limit cut on top of floor 50 shows no headroom; the gain #905 found is used up at floor 50. [Run `40184736357`](https://github.com/theEscape2207/StratChess/actions/runs/40184736357), about 3 h 50 min, 18 shards x 740 pairs, candidate `ea91b0b` with `SoftTimePercent=78`, reference the merge base `f562abc` at the defaults. All 21 jobs are green and the PGNs carry 26,640 games ending only by adjudication or normally, so no time loss, illegal move or disconnect; PV-compliance warnings (#310) are reporting-only. Pooled Ptnml(0-2) [1001, 3139, 5231, 2981, 968], score 49.58%. **Validity: time matched** — candidate mean time per move over moves 9-40 is 0.902x the reference's [0.902, 0.903] (game bootstrap), inside the declared 0.90 +/- 0.03; 0.875x over 9-20, 0.913x over 21-30, 0.945x over 31-40. **Low-clock band passes:** share of moves started under 2 s, candidate 5.9% vs reference 22.2%, difference -16.3 points [-16.5, -16.1]. Reported only: over 8 s 14.4% vs 11.6%; mean clock at game end 3.18 s vs 2.25 s; contested blunders (>= 150 cp, |score| <= 150 cp before the move) 1,495 vs 1,496. The candidate banks clock it never spends and plays no better for it. Threads=1, 10+0.1 only. Run B and the 30+0.3 check were not run.
 
 ### 2026-10-25 -- 79cc6c3, uniform soft-limit cut vs floor 50 (#905) (33200 games)
 
