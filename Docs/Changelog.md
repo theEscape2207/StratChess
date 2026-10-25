@@ -23,6 +23,15 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-25: Full PV on the final info line (#912)
+
+### Changed
+- The final `info ... pv` line, the one paired with `bestmove`, now carries the accepted
+  iteration's full line instead of the best move alone. `SearchResult::pv` holds it, copied when
+  an iteration is accepted: a later rejected iteration rewrites the PV table but not `best_move`.
+  `Compare-SearchEquivalence.ps1` compares only the final line's first PV move, so a pre-change
+  baseline still compares identical. No search change.
+
 ## 2026-10-24: Stability-scaled soft limit (#103)
 
 ### Added
