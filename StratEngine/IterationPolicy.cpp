@@ -72,4 +72,10 @@ namespace Engine {
 		                 (FLOOR_RUN - LAST_FULL_BUDGET_RUN);
 	}
 
+	int scaled_soft_percent(int move_run, int floor_percent, int scale_percent) noexcept
+	{
+		assert(scale_percent >= 0 && scale_percent <= 100);
+		return soft_limit_percent(move_run, floor_percent) * scale_percent / 100;
+	}
+
 } // namespace Engine

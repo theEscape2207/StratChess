@@ -86,4 +86,8 @@ namespace Engine {
 	// floor; that only saves clock, as the hard limit is untouched.
 	int soft_limit_percent(int move_run, int floor_percent) noexcept;
 
+	// soft_limit_percent scaled by a uniform scale_percent, in [floor·scale/100, scale] and so at
+	// least 1 for the tuning minimums of 10 and 10. 100 returns soft_limit_percent exactly.
+	int scaled_soft_percent(int move_run, int floor_percent, int scale_percent) noexcept;
+
 } // namespace Engine

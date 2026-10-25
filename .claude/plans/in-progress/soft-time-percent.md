@@ -124,14 +124,17 @@ Each target is a ratio against that run's own reference, the one D4 check 2 can 
 Ratios from different matches do not chain exactly (positions and move counts differ), so B's
 cumulative 0.80x is never checked.
 
-The soft percent only decides whether the next depth *starts*, so time is strongly nonlinear in U.
-At floor 100, #905 measured U=75 cutting almost nothing and U=55 cutting about 10%. U is therefore
-chosen from measured time, never from the percent.
+The soft percent only decides whether the next depth *starts*, so time is not the percent. At floor
+100, #905 measured U=75 cutting almost nothing and U=55 cutting about 10%. U is therefore chosen
+from measured time, never from the percent. **Measured at floor 50 (CP2):** the curve is close to
+linear, about `0.4 + 0.6·U/100`: U=80 0.917, 70 0.846, 55 0.743, 40 0.625, null 100 0.994. So the
+U priors in the table were wrong. U_A is **78**, interpolated to about 0.90 so it sits mid-target
+(80's 0.917 was 0.013 from the edge). U_B is about 65 against U_A.
 
 **Calibration probe** (local, clang-cl, 10+0.1, 200 games per point, under `measure-strength`'s
 quiet-window rule, about 1–1.5 h). The probe uses the same denominator as the lab gate. For A, run
 `SoftTimePercent=U` against the defaults for U ∈ {70, 55, 40}. For B, run it against
-`SoftTimePercent=U_A` for U ∈ {45, 35, 25}. On the same binary, add points as needed. Read the mean recorded time per move by build over
+`SoftTimePercent=U_A` for U ∈ {70, 65, 60}. On the same binary, add points as needed. Read the mean recorded time per move by build over
 moves 9–40, plus 9–20 / 21–30 / 31–40, with a 95% game-bootstrap interval. Pick the U whose
 interval lies inside the target, interpolating between points. The 200-game Elo is not read. U_B is
 calibrated only if A passes. The chosen U, its measured ratio and its interval go in an issue

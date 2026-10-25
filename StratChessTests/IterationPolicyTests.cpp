@@ -279,3 +279,13 @@ TEST_CASE("Soft-limit percent keeps runs 1-2 whole and falls linearly to the flo
 		}
 	}
 }
+
+TEST_CASE("Scaled soft percent multiplies the schedule, truncating, and is exact at 100", "[search][iteration_policy]")
+{
+	for (int run = 0; run <= 8; ++run)
+		CHECK(scaled_soft_percent(run, 50, 100) == soft_limit_percent(run, 50));
+	CHECK(scaled_soft_percent(1, 50, 80) == 80); // a changed move gets the scale itself
+	CHECK(scaled_soft_percent(3, 50, 80) == 70); // 88 * 80 / 100 = 70.4, truncated
+	CHECK(scaled_soft_percent(6, 50, 80) == 40);
+	CHECK(scaled_soft_percent(6, 10, 10) == 1); // the tuning minimums never reach 0
+}
