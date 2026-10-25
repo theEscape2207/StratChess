@@ -41,6 +41,7 @@
 // caller can report iteration and final times on one monotonic timeline.
 struct IterationInfo {
 	int depth = 0;
+	int seldepth = 0;
 	int score = 0;
 	int64_t nodes = 0;
 	int hashfull = 0;

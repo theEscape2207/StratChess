@@ -74,6 +74,8 @@ repeats the aborted-frame tripwire; change both together.
   - **The pawn-structure cache** (`PawnCache.h`, one per thread) memoises a pure function of its
     key — the two pawn bitboards and a king square — so an entry written by an aborted frame is
     exactly what a recompute would give. It is never cleared, for the same reason.
+  - **`seldepth`** is written at frame entry and kept from frames that never finished: it reports
+    how deep the search went, and no search decision reads it.
 - **A drawn score is context the Zobrist key does not carry.** With `contempt` non-zero, the score
   of a draw — repetition, fifty-move, stalemate, or a position the evaluator settles as drawn —
   depends on the root colour and the contempt value, and reaches parent entries through the terminal

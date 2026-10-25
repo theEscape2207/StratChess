@@ -72,6 +72,19 @@ namespace {
 		}
 		return result;
 	}
+
+	// The iteration and final lines, in the UCI field order. seldepth is clamped to depth: a search
+	// whose every line ends early (mate, draw) never enters a frame at ply depth. nps divides by at
+	// least 1 ms so a sub-millisecond search reports a finite rate.
+	std::string format_uci_info(int depth, int seldepth, int score, int64_t nodes, int hashfull,
+	                            std::chrono::milliseconds elapsed, const std::vector<Move>& pv)
+	{
+		const int64_t nps = nodes * 1000 / std::max<int64_t>(elapsed.count(), 1);
+		return "info depth " + std::to_string(depth) + " seldepth " + std::to_string(std::max(seldepth, depth)) +
+		       " score " + format_uci_score(score) + " nodes " + std::to_string(nodes) + " nps " + std::to_string(nps) +
+		       " hashfull " + std::to_string(hashfull) + " time " + std::to_string(elapsed.count()) + " pv " +
+		       format_uci_pv(pv);
+	}
 } // namespace
 
 void UciHandler::send(std::string_view msg) const { writer_->send(msg); }
@@ -403,9 +416,8 @@ void UciHandler::cmd_go(std::string_view line)
 	const SearchLimits limits = search_limits_for(parse_go(line), board_.GetCurrentColor());
 
 	IterationObserver observer = [writer = writer_](const IterationInfo& iter) {
-		writer->send("info depth " + std::to_string(iter.depth) + " score " + format_uci_score(iter.score) + " nodes " +
-		             std::to_string(iter.nodes) + " hashfull " + std::to_string(iter.hashfull) + " time " +
-		             std::to_string(iter.elapsed.count()) + " pv " + format_uci_pv(iter.pv));
+		writer->send(
+		    format_uci_info(iter.depth, iter.seldepth, iter.score, iter.nodes, iter.hashfull, iter.elapsed, iter.pv));
 	};
 
 	// IsSearching() is true once this returns, so a command arriving immediately after 'go' is
@@ -415,16 +427,12 @@ void UciHandler::cmd_go(std::string_view line)
 	ai_->StartAsync(board_, limits, std::move(observer), [writer = writer_](const SearchResult& result) {
 		const Move best = result.best_move;
 
-		const int cp = result.best_score;
-		const std::string score_str = format_uci_score(cp);
-
 		// 'nodes' covers both trees rather than the main tree alone, which is what the
 		// protocol means and what keeps the client's nps from charging quiescence work to
 		// the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
-		writer->send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
-		             std::to_string(result.nodes_searched + result.qnodes_searched) + " hashfull " +
-		             std::to_string(result.hashfull) + " time " + std::to_string(result.elapsed.count()) + " pv " +
-		             format_uci_pv(result.pv));
+		writer->send(format_uci_info(result.depth_completed, result.seldepth, result.best_score,
+		                             result.nodes_searched + result.qnodes_searched, result.hashfull, result.elapsed,
+		                             result.pv));
 
 		// The split, as an 'info string' so GUIs and match runners ignore it: without it a
 		// change that relocates work between the trees looks like one that simply got slower.

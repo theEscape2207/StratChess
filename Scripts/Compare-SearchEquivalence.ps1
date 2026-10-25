@@ -179,10 +179,11 @@ function ConvertTo-ComparableLines {
     <#
         Engine output into the lines that carry search behaviour, normalised.
 
-        'time' is stripped because it is wall clock and legitimately differs
-        between two runs of the SAME binary. 'hashfull' is sampled telemetry and
-        can differ without the search tree changing; every other field on these
-        lines is a property of the search.
+        'time' and 'nps' are stripped because they are wall clock and legitimately
+        differ between two runs of the SAME binary. 'hashfull' is sampled telemetry and
+        can differ without the search tree changing. 'seldepth' is a property of the
+        search, but older builds do not print it, so keeping it would fail every
+        old-vs-new comparison; every other field on these lines is a property of the search.
 
         The final 'info depth' line keeps only its first pv move: an older baseline
         prints that move alone, and the full line repeats the last iteration's,
@@ -200,7 +201,7 @@ function ConvertTo-ComparableLines {
         $line = $raw.Trim()
         if ($line -match '^info depth \d+') { $inSearch = $true }
         if ($line -match '^info depth \d+' -or $line -match '^bestmove ') {
-            ($line -replace ' hashfull \d+', '') -replace ' time \d+', ''
+            $line -replace ' (?:seldepth|nps|hashfull|time) \d+', ''
         } elseif ($inSearch -and $line -match '^info string ') {
             $line
         }
@@ -349,6 +350,11 @@ if ($SelfTest) {
     $telemetryDiff = ($sampleOut -replace ' time 5 ', ' time 5000 ') -replace ' hashfull 14 ', ' hashfull 999 '
     $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $telemetryDiff)
     Assert-Case 'telemetry-only differences compare identical' $r.Identical "first diff at line $($r.Index)"
+
+    # A build printing seldepth and nps compares identical to one without them.
+    $withNps = $sampleOut -replace 'depth (\d) score', 'depth $1 seldepth 9 score' -replace ' hashfull (\d+) ', ' nps 4000 hashfull $1 '
+    $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $withNps)
+    Assert-Case 'seldepth and nps fields compare identical to a build without them' $r.Identical "first diff at line $($r.Index)"
 
     $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $sampleOut)
     Assert-Case 'identical output compares identical' $r.Identical

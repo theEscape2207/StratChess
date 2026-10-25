@@ -23,6 +23,18 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-25: nps and seldepth on info lines (#911)
+
+### Added
+- Both `info depth` lines now print `seldepth` and `nps`, in the UCI field order
+  `depth D seldepth S score .. nodes N nps P hashfull H time T pv ..`. `seldepth` is the main
+  thread's deepest pvs/quiescence ply in the accepted iteration, snapshotted with the PV and
+  clamped to at least `depth`. `nps` is `nodes * 1000 / max(time, 1)`; on the iteration line, as
+  with `nodes`, it counts the main thread only, so at `Threads>1` it jumps on the final line.
+  The update is a compare-and-store per node.
+- `Run-Bench.ps1` and `Compare-SearchProfile.ps1` parse the new shape. `Compare-SearchEquivalence.ps1`
+  strips `nps` (wall clock) and `seldepth` (absent from older builds) as it strips `time`.
+
 ## 2026-10-25: Full PV on the final info line (#912)
 
 ### Changed

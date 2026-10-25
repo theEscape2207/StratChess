@@ -55,6 +55,10 @@ struct ThreadData {
 	// the main tree — and are reported both together (UCI 'nodes') and apart (Run-Bench.ps1).
 	int64_t qnodes_searched = 0;
 
+	// Deepest ply any pvs() or quiescence() frame of the current iteration entered; UCI 'seldepth'.
+	// Reset per iteration by iterative_deepening(). Reporting only: no search decision reads it.
+	int seldepth = 0;
+
 	// Node-based SearchControl polling counter. Reset alongside nodes_searched. Only thread 0 counts
 	// and calls the wall-clock check (poll_search_limits(), gated on thread_id == 0); helper threads
 	// rely solely on the cheap atomic IsAborted() read instead.

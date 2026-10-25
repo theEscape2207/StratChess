@@ -39,4 +39,9 @@ struct SearchResult {
 	// AIPerplex: the accepted iteration's line, starting with best_move, and empty when best_move is
 	// null. The human player leaves it empty.
 	std::vector<Move> pv{};
+
+	// AIPerplex: the main thread's deepest ply in the accepted iteration, or for an emergency move
+	// in the interrupted one. May be below depth_completed when every line ends early (a fifty-move
+	// draw at ply 1); the UCI line clamps it.
+	int seldepth = 0;
 };

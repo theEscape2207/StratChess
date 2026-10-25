@@ -119,7 +119,9 @@ read [search-service contracts](EngineContracts.md#the-search-service) before in
 
 During search, UCI `info depth` lines describe accepted iterations: score, cumulative nodes,
 elapsed time and principal variation (PV). The final `info depth` line is a summary with aggregate
-counts and a one-move PV. `score cp` is in centipawns and `score mate` is a mate distance in moves,
+counts and the accepted iteration's full PV. `seldepth` is the deepest ply the main thread reached
+in that iteration, quiescence included, and never less than `depth`; `nps` is `nodes` per second of
+`time`. `score cp` is in centipawns and `score mate` is a mate distance in moves,
 from the root side's perspective. `bestmove` completes the search; `0000` indicates no move.
 `hashfull` reports the fraction of sampled TT entries written since this search began, in
 permille. Older occupied entries do not count; it measures neither total occupancy nor usefulness.
