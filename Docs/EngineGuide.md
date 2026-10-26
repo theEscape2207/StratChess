@@ -260,12 +260,22 @@ build configured with `-DSTRAT_RELEASE=ON` drops the `+` suffix. The version say
 binary came from. It is not the `info string benchcontract` number, which versions what a
 measurement means.
 
+The engine runs on x64 Windows with a CPU that has AVX2 and BMI2. It is a single `.exe` that links
+the C runtime statically, so it needs no VC++ Redistributable or other runtime install, and it
+imports only `KERNEL32.dll` and one Windows API set. `Scripts/Test-StandaloneExe.ps1` checks both
+and the files below.
+
 ## Logging and runtime files
 
 For a UCI command trace, launch with `uci --log-commands` or
 `uci --log-commands=logs/session.log`. Logging is opt-in, and received commands are flushed one
 line at a time. Failure to open this command log produces a diagnostic on stderr and exits.
 UCI output stays on the protocol channel; general console logging is disabled in UCI mode.
+
+Without `--log-commands`, UCI mode needs no file beside the exe and leaves none: run alone from an
+empty directory, it plays a search and the directory still holds only the exe. That is an observed
+result, not a filesystem trace. `--log-commands` writes `logs/uci_commands_<pid>.log`, and
+`--log-commands=<path>` writes that path verbatim, which may be outside `logs/`.
 
 For an embedded service, enable verbose search logging at construction:
 

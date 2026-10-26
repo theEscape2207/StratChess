@@ -746,7 +746,8 @@ cmake --build --preset windows-clang-cl --target StratChessTests
 ```
 
 Presets: `windows-clang-cl`, `windows-clang-cl-debug`, `windows-clang-cl-coverage`. clang-cl is the
-only Windows toolchain; `CMakeLists.txt` refuses `cl.exe`.
+only Windows toolchain; `CMakeLists.txt` refuses `cl.exe`. Every Windows configuration links the C
+runtime statically (`/MT`, `/MTd`), set in `CMakeLists.txt` rather than a preset (#924).
 
 Configuring is only needed when the build tree does not exist — Ninja re-runs CMake by itself when
 `CMakeLists.txt` or `CMakePresets.json` change. Add `--verbose` to `cmake --build` to see the real

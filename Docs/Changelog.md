@@ -23,6 +23,23 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-27: Static C runtime, standalone exe (#924, slice 2)
+
+### Changed
+- Every Windows configuration links the C runtime statically (`/MT`, `/MTd`), so the engine runs
+  without the VC++ Redistributable. It imports only `KERNEL32.dll` and the Windows API set
+  `api-ms-win-core-synch-l1-2-0.dll` (`WaitOnAddress`, for `std::atomic::wait`). Set in
+  `CMakeLists.txt`, not a preset, because a preset edit never reaches an existing build tree; one
+  recipe serves measurement, CI and release. Each local tree and Windows ccache key misses once.
+
+### Added
+- `Scripts/Test-StandaloneExe.ps1`: an import allowlist plus a UCI search run from an otherwise
+  empty directory, which must leave only the exe behind. `UciDriver.ps1` gains an optional launch
+  argument for it.
+
+### Results
+- BENCH_PLACEHOLDER
+
 ## 2026-10-26: Version in UCI id name (#924, slice 1)
 
 ### Added
