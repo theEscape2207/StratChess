@@ -437,8 +437,8 @@ strat_configure_target(StratChessTests)
 # detection, no pre-release segment.
 #
 # One generated TU carries the string, compiled into both executables (the test target builds
-# the engine separately). Outside StratEngine/, so the engine glob never sees the template.
-# Not a header: every includer would recompile on each commit and go cold in the compiler cache.
+# the engine separately), and generated into the build tree rather than StratEngine/. Not a
+# header: every includer would recompile on each commit and go cold in the compiler cache.
 # The hash is captured at build time, not configure time -- why: cmake/GenerateVersion.cmake.
 # ---------------------------------------------------------------------------
 option(STRAT_RELEASE "Report the plain project version, with no commit hash (release builds)" OFF)
