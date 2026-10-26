@@ -11,6 +11,7 @@
 #include "Eval.h"
 #include "defines.h"
 #include "Utils/Logger.h"
+#include "Version.h"
 #ifdef _WIN32
 #	include <process.h>
 #else
@@ -146,7 +147,8 @@ namespace {
 	// computed from. Two bench tables are comparable only if this matches; a run that
 	// reports no contract at all predates the split and counted main-tree nodes only.
 	// This is not a build id and not an engine version: refactors and strength changes
-	// leave it alone, because they do not change what the numbers mean.
+	// leave it alone, because they do not change what the numbers mean. The engine version
+	// is Version.h's EngineVersion().
 	//
 	//   1 — UCI 'nodes' is the main tree plus the quiescence tree, both counted in
 	//       MOVE EDGES, so the two sum with nothing counted twice. pvs() also counted moves
@@ -159,7 +161,7 @@ namespace {
 
 void UciHandler::cmd_uci()
 {
-	send("id name StratChess");
+	send("id name StratChess " + std::string(EngineVersion()));
 	send("id author Thees");
 	send("option name Threads type spin default 1 min 1 max " + std::to_string(AIPerplex::MAX_THREADS));
 	// Hash budgets TT entry bytes. Arbitrary values round down to a power-of-two

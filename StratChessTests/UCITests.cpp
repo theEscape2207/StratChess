@@ -10,11 +10,13 @@
 #include "Board.h"
 #include "MoveFactory.h"
 #include "MoveFormatter.h"
+#include "Version.h"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <limits>
 #include <random>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -293,6 +295,19 @@ TEST_CASE("cmd_uci: advertises the Hash default and policy bounds", "[uci][tt]")
 	const std::string output = fix.capture([&] { fix.uci(); });
 
 	REQUIRE(output.find("option name Hash type spin default 192 min 1 max 1536\n") != std::string::npos);
+}
+
+// No assertion on the '+' suffix: the release workflow runs this suite on a STRAT_RELEASE build.
+TEST_CASE("cmd_uci: id name carries the engine version", "[uci]")
+{
+	const std::string version(EngineVersion());
+	REQUIRE(std::regex_match(version, std::regex(R"(^\d+\.\d+\.\d+(\+([0-9a-f]{8,}|unknown))?$)")));
+	REQUIRE(version.substr(0, version.find('+')) == STRAT_PROJECT_VERSION);
+
+	UciHandlerTestFixture fix;
+	const auto lines = split_lines(fix.capture([&] { fix.uci(); }));
+	REQUIRE_FALSE(lines.empty());
+	REQUIRE(lines.front() == "id name StratChess " + version);
 }
 
 TEST_CASE("AIPerplex default Hash reports its packed geometry", "[uci][tt]")

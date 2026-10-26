@@ -257,7 +257,7 @@ step the issue approved.
 
 | File | Change | Slice |
 |---|---|---|
-| `Docs/EngineGuide.md` | New "Versions and requirements" section: `id name` format and what `+<hash>`/`+unknown` mean; AVX2 + BMI2, x64 Windows, single exe, no runtime install; UCI reads and writes nothing beside the exe, `--log-commands` paths as in D6; subscribing via Watch → Custom → Releases or `/releases.atom`; the D9 contract | 1 (identity), 2 (requirements, files), 3 (subscribe) |
+| `Docs/EngineGuide.md` | New "Versions and requirements" section: `id name` format and what `+<hash>`/`+unknown` mean; AVX2 + BMI2, x64 Windows, single exe, no runtime install; UCI reads and writes nothing beside the exe, `--log-commands` paths as in D6; subscribing via Watch → Custom → Releases or `/releases.atom`; the D9 contract | 1 (identity), 2 (requirements, files), 3 (subscribe, D9 contract — moved from slice 1 in implementation so the contract lands with the release docs) |
 | `Docs/Releasing.md` (new) | Maintainer procedure: bump `project(VERSION)` in a PR, merge, confirm green, tag `vX.Y.Z` on that `main` commit, dispatch `release.yml`, curate notes from `uci-facing` PRs and Changelog headlines, then publish. Strength lines only with a linked measurement (reference, conditions, interval); lab GCC rows are labelled as GCC. Retry and defective-release handling as in D7 | 3 |
 | `Docs/CI.md` | New `release.yml` section and an index row; the generated-version exclusion in "Input identity" (D4) | 1, 3 |
 | `Docs/Workflow.md` | Raw-CMake preset list gains `windows-clang-cl-publish`; one line that Windows builds link the CRT statically | 2, 3 |

@@ -406,7 +406,10 @@ Input identity compares tracked Git paths, modes and objects under `CMakeLists.t
 `StratEngine/` and `StratChessEvolved/` at both revisions. Thus a docs-only commit cannot evade the
 check; same source with different options remains a valid comparison. Shared CMake definitions,
 toolchain/Release recipe and the shared `threads` value are recorded but cannot distinguish the sides.
-Future per-side build inputs or generated engine inputs must extend this rule. Unequal inputs
+Future per-side build inputs or generated engine inputs must extend this rule. The generated
+version TU (`cmake/GenerateVersion.cmake`) is excluded by design: it embeds the commit hash and
+carries no chess behaviour. Identical tracked inputs are still refused, but two commits' binaries
+can no longer match byte for byte. Unequal inputs
 permit a code comparison; they do not prove different chess behaviour.
 
 The readable `comparison.md` records full revisions, input identity, binary SHA-256 hashes, build
