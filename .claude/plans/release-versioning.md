@@ -173,19 +173,24 @@ PASS/FAIL line per check:
    so a new `MSVCP*`, `VCRUNTIME*` or `api-ms-win-crt-*` import fails too.
 2. **Empty-directory UCI smoke.** It copies the exe alone into a fresh temporary directory and runs
    it with that directory as the working directory and no arguments, which is UCI mode
-   (`StratChessEvolved.cpp`, `argc == 1`). It drives `uci` and `isready` through
-   `UciDriver.ps1`'s read-until-reply loop (piped input searches nothing), then
+   (`StratChessEvolved.cpp`, `argc == 1`) and is how a GUI launches it. `UciDriver.ps1` hard-codes
+   the `uci` launch argument (`:65`, `:75`), so slice 2 gives it an optional argument list whose
+   default stays `uci`, which leaves its existing callers unchanged. It drives `uci` and `isready`
+   through the driver's read-until-reply loop (piped input searches nothing), then
    `position startpos` / `go depth <n>` (default 8) through `bestmove`, then `quit`, and requires
    exit 0 within a timeout. `uciok`, `readyok` and `bestmove` must appear. With `-ExpectedId`, the
    `id name` line must equal it exactly.
-3. **Filesystem.** After the process exits, the directory must contain only the exe. This is the
-   recorded fact the issue's acceptance asked for, corrected by the triage: ordinary UCI reads no
-   adjacent file and writes nothing. Only `--log-commands` writes, to
+3. **Filesystem.** After the process exits, the directory must contain only the exe. This
+   establishes standalone operation that leaves no output files. It is not a filesystem trace, so
+   it does not prove the absence of every read or every transient write. That corrected form, from
+   the triage, is the fact the issue's acceptance asked to record. Only `--log-commands` writes, to
    `logs/uci_commands_<pid>.log`, or with `--log-commands=<path>` to that path verbatim, which may
    be outside `logs/` (`StratChessEvolved.cpp:291-292`, `UCIHandler.cpp:105`).
 
 It lives in `Scripts/` because `.gitignore:372-380` allowlists only `*.py`, `*.yml` and `action.yml`
-under `.github/`. A `.ps1` there would be silently untracked.
+under `.github/`. A `.ps1` there would be silently untracked. Release CI invokes it, so slice 2 adds
+it to `Get-ChangeTier.ps1`'s Build list, with a classifier self-test case. `Get-ChangeTier.ps1:31`
+requires a new gate script to join that list; an unlisted `Scripts/*.ps1` classifies as Tooling.
 
 ### D7: The release workflow, `.github/workflows/release.yml`
 
@@ -227,6 +232,21 @@ holding a write token:
 - **Published:** fail. The workflow never runs `--clobber` against a published release and never
   deletes a release or a tag.
 
+The decision logic (tag shape, version match, which of the three release states applies) lives in
+`.github/scripts/release_stage.py` with a `--self-test`. The PR gate's Linux Release leg runs it
+like the other workflow helpers, so the mismatch, missing-tag and published-state branches are
+covered by fixtures rather than only by a live run.
+
+**The re-check is not atomic.** `--clobber` deletes the old asset before uploading the new one, and
+the owner can publish between the re-check and the write. Workflow concurrency serializes runs, not
+the owner's action on the release page. Invariant I8 therefore rests on an operating rule, recorded
+in `Docs/Releasing.md`: **publish only when no `release.yml` run for the tag is queued or running,
+the latest run succeeded, and the draft shows the asset.** If a staging upload fails, the draft may
+be left without its asset; re-dispatching the same tag recovers it. A release published without its
+asset is fixed by a new PATCH version, never by uploading to the published release. This is an
+operator race, not an attacker scenario. Rejected: an atomic server-side draft-only write, which
+the CLI does not offer.
+
 **Failure behaviour.** Any failure in `build` stops before `stage`, so no release object is created
 or changed. Re-dispatching the same tag is the retry. A defective *published* binary gets a new
 PATCH version and notes pointing to it. The owner reviews the draft and publishes it by hand.
@@ -241,7 +261,7 @@ step the issue approved.
 | `Docs/Releasing.md` (new) | Maintainer procedure: bump `project(VERSION)` in a PR, merge, confirm green, tag `vX.Y.Z` on that `main` commit, dispatch `release.yml`, curate notes from `uci-facing` PRs and Changelog headlines, then publish. Strength lines only with a linked measurement (reference, conditions, interval); lab GCC rows are labelled as GCC. Retry and defective-release handling as in D7 | 3 |
 | `Docs/CI.md` | New `release.yml` section and an index row; the generated-version exclusion in "Input identity" (D4) | 1, 3 |
 | `Docs/Workflow.md` | Raw-CMake preset list gains `windows-clang-cl-publish`; one line that Windows builds link the CRT statically | 2, 3 |
-| `.claude/skills/open-pull-request/SKILL.md` | One rule under "3. PR body": apply `uci-facing` (`gh pr edit <n> --add-label uci-facing`) when a PR changes what a UCI client sees, meaning the D9 contract or `id` lines. Loads `writing-for-agents` first | 3 |
+| `.claude/skills/open-pull-request/SKILL.md` | One rule under "3. PR body": apply `uci-facing` (`gh pr edit <n> --add-label uci-facing`) when a PR changes anything a UCI client can observe, meaning any advertised option (tuning options included), `info` output including `info string` diagnostics, `bestmove`, `id` lines or protocol behaviour. The label is a notification and is broader than D9, which decides only the version consequence. Loads `writing-for-agents` first | 3 |
 | `Docs/Changelog.md` | One entry per slice | 1–3 |
 
 ### D9: The supported UCI contract
@@ -252,14 +272,16 @@ additive features or measured strength gains, PATCH for fixes) apply to:
 - the `id` lines;
 - the commands `uci`, `isready`, `ucinewgame`, `position`, `go` (with the parameters EngineGuide
   documents), `stop` and `quit`;
-- the `Threads` and `Hash` options: name, type, range and default semantics;
+- the `Threads` and `Hash` options: name, type, range and default semantics as advertised, and their
+  `setoption` behaviour;
 - the `info` fields EngineGuide's "Interpret search output" defines;
 - the `bestmove` line.
 
 The `SearchTuningSchema` options (`LmrLogBase` … `StabilityTimeFloor`) are advertised but
 **unsupported tuning controls**: they may be renamed or removed in any MINOR. `info string` lines
 are diagnostics, not contract. Rejected: putting every advertised option under contract, which would
-make each tuning experiment that retires a knob a MAJOR change after 1.0.
+make each tuning experiment that retires a knob a MAJOR change after 1.0. This boundary is a new
+proposal, not one of #924's owner decisions; approving this design approves it.
 
 ## Assumptions I cannot verify from the code
 
@@ -276,17 +298,24 @@ make each tuning experiment that retires a knob a MAJOR change after 1.0.
   and `memcpy` are the same code either way), but placement moves. Settled by slice 2's bench (Validation).
 - **A5: `/MT` removes every `MSVCP*`, `VCRUNTIME*` and `api-ms-win-crt-*` import.** Settled by
   `Test-StandaloneExe.ps1` in slice 2; the measured list becomes the allowlist.
-- **A6: UCI mode touches no file.** The source shows verbose logging off
-  (`UciHandler::DefaultSearchConfig()`), spdlog off, and no `game_settings.json` read. Settled by
-  D6's filesystem check, not by reading the source.
-- **A7: GitHub behaves as D7 assumes.** That covers four things: a draft's assets are invisible to
-  `/releases.atom` until publication; `gh release upload --clobber` works on a draft; `--verify-tag`
-  refuses a missing tag; the release page shows each asset's digest (owner amendment 4). Settled by
-  slice 3's draft rehearsal against a throwaway tag (for example `v0.0.0-rehearsal`, deleted
-  afterwards by the owner).
+- **A6: UCI mode needs no adjacent file and leaves no output file.** The source shows verbose
+  logging off (`UciHandler::DefaultSearchConfig()`), spdlog off, and no `game_settings.json` read.
+  Settled by D6's empty-directory check, not by reading the source. That check is not a filesystem
+  trace.
+- **A7: GitHub behaves as D7 assumes.** That covers four things:
+  - a draft's assets stay invisible to `/releases.atom` until publication;
+  - `gh release upload --clobber` works on a draft;
+  - `--verify-tag` refuses a missing tag;
+  - the release page shows each asset's digest (owner amendment 4);
+  - `workflow_dispatch` needs the workflow file on the default branch. This last one is taken from
+    GitHub's documentation, and it is why slice 3 has no pre-merge live run.
+
+  The draft path is settled by the first real `v0.8.0` dispatch and its re-dispatch. Feed visibility,
+  the digest and published-state refusal are settled at and after the owner's first publication
+  (slice 3 Validation). Neither is pre-merge evidence.
 - **A8: the runner image has the tool D6 needs.** `windows-2025-vs2026` is assumed to ship
   `VC\Tools\Llvm\x64\bin\llvm-objdump.exe`. It comes with the VS Clang component `build.ps1` already
-  requires. Settled by slice 3's first run.
+  requires. Settled by the first `v0.8.0` dispatch.
 
 ## Invariants
 
@@ -301,7 +330,10 @@ make each tuning experiment that retires a knob a MAJOR change after 1.0.
 - **I6:** Catch2 and both project targets agree on the CRT in Release and Debug.
 - **I7:** A shipped exe imports only allowlisted OS DLLs, needs no adjacent file, and writes
   nothing in UCI mode without `--log-commands`.
-- **I8:** The workflow never modifies a published release, asset or tag.
+- **I8:** The workflow never modifies a published release, asset or tag, **provided** the owner
+  follows D7's publication rule: publish only when no run for the tag is queued or running, the
+  latest run succeeded, and the asset is present. Without that rule, a publish between the
+  re-check and the upload is unguarded.
 
 ## Validation
 
@@ -318,7 +350,9 @@ make each tuning experiment that retires a knob a MAJOR change after 1.0.
   normal tree, check `+<HEAD short hash>`. Point `PATH` away from Git and rebuild to see `+unknown`.
 - A1/A2/I3: the three timed builds, with ccache stats showing one miss per target after the empty
   commit.
-- I2: `Test-ReleaseReproducibility.ps1`, both modes.
+- I2: `Test-ReleaseReproducibility.ps1`, both modes. It builds the ordinary preset, so it covers
+  the `+<hash>` path. It is not evidence for `STRAT_RELEASE=ON`, whose file is a fixed
+  `configure_file` with no Git input.
 - I5: `Compare-SearchEquivalence.ps1 -After <exe> -BaselineRef origin/main`. Its `id name` fixture
   lines (`Compare-SearchEquivalence.ps1:323`, `Run-Bench.ps1:230`) are self-test data and parse
   nothing.
@@ -341,10 +375,12 @@ make each tuning experiment that retires a knob a MAJOR change after 1.0.
     the equivalence cache's exe;
   - the series runs in a quiet window, announced first.
 
-  **Acceptance threshold, fixed before the run:** the verdict must be **No slowdown**, meaning the
-  95% lower bound is at least −0.5%. *Unresolved* or *Slowdown* escalates once, as the skill
-  prescribes: `New-OrderedBuildPair.ps1`, then `-Control -Rounds 60 -Affinity 4`. That series must
-  also read No slowdown. Anything else stops slice 2 and goes back to the owner with the numbers.
+  **Acceptance threshold, fixed before the run:** the 95% lower bound must be at least −0.5%. That
+  is a verdict of **No slowdown**, or **Speedup**, which `Compare-Bench.ps1` tests first and whose
+  lower bounds exceed zero. *Unresolved* or *Slowdown* escalates once, as the skill prescribes:
+  `New-OrderedBuildPair.ps1`, then `-Control -Rounds 60 -Affinity 4`. That series must also read
+  No slowdown or Speedup. Anything else, including a relink that cannot produce an ordered pair,
+  stops slice 2 and goes back to the owner with the numbers. No verdict carries an Elo inference.
   The benefit here is distribution, not strength, so no stated benefit pre-approves a cost. Record
   the result in `Measurements/local.md` with exe sizes before and after.
 - **No Elo match.** The change is node-identical by I5, and a bench verdict is not an Elo claim. The
@@ -355,24 +391,35 @@ make each tuning experiment that retires a knob a MAJOR change after 1.0.
 **Slice 3: workflow and docs** (Build tier for `release.yml`; Docs for the rest).
 
 - `Test-WorkflowTimeouts.ps1` and `Test-WorkflowCcachePaths.ps1` pass.
-- A draft-only rehearsal: dispatch against a throwaway tag whose number matches a temporary
-  `project(VERSION)` on a branch. The run must check the tag against the CMake version, stage a
-  draft, then on re-dispatch replace only the asset. A dispatch with a mismatched tag must fail
-  before any build. The downloaded asset must report the expected `id name` and pass
-  `Test-StandaloneExe.ps1` on the dev machine. Record the release job's duration (A7, A8, I8).
-- The owner publishes the first real `v0.8.0` draft; that is not part of the slice.
-- **Acceptance:** the rehearsal stages a draft whose asset reports the tag's version and passes the
-  standalone check; a mismatched tag and a published release both fail without writing (I8).
+- `release_stage.py --self-test` runs in the PR gate. Its fixtures cover each branch on its own: a
+  malformed tag, a tag that does not exist, a version mismatch, no release yet, an existing draft,
+  and a published release. The last must refuse without writing.
+- A workflow that is not yet on the default branch cannot be dispatched, and the provenance check
+  refuses any tag outside `main` history. **There is therefore no pre-merge live run.** The live
+  evidence comes after merge, in this order:
+  1. The owner tags the first real `v0.8.0` on `main` and dispatches. The run must stage a draft
+     whose downloaded asset reports `id name StratChess 0.8.0` and passes `Test-StandaloneExe.ps1`
+     on the dev machine.
+  2. A re-dispatch of the same tag replaces only the asset and leaves the notes alone.
+  3. Dispatches with `v9.9.9` (no such tag) and with a numerically valid tag whose version does not
+     match CMake must fail before any build. A mismatched tag is created only if the owner agrees,
+     and deleted straight after.
+  4. Record the job's duration (A7 draft path, A8).
+- After the owner's first publication: a re-dispatch of `v0.8.0` must fail without writing (I8),
+  and the feed and digest are checked (A7). The publication itself is the owner's act.
+- **Acceptance:** the PR merges on the fixtures plus the workflow guards. The slice closes once
+  steps 1–3 pass on `v0.8.0`. A failure there is fixed by a follow-up PR before publication.
 
 ## Cost
 
-- **Size:** over 200 lines in total, across roughly 14 files. By slice:
+- **Size:** about 500–800 lines in total, across about 20 distinct files. These are forecasts.
+  By slice:
 
   | Slice | Lines | Files |
   |---|---|---|
   | 1 | 100–150 | `CMakeLists.txt`, two `cmake/` files, `Version.h`, `UCIHandler.cpp`, one test, EngineGuide, CI.md, Changelog |
-  | 2 | 150–250 | one `CMakeLists.txt` line, `Test-StandaloneExe.ps1` with its self-test, EngineGuide, Workflow.md, Measurements, Changelog |
-  | 3 | 200–300 | `release.yml`, a `CMakePresets.json` preset, the `build.ps1` switch, `Releasing.md`, CI.md, EngineGuide, the skill line, Changelog |
+  | 2 | 180–280 | one `CMakeLists.txt` line, `Test-StandaloneExe.ps1` with its self-test, the `UciDriver.ps1` launch argument, a `Get-ChangeTier.ps1` Build entry with a self-test case, EngineGuide, Workflow.md, Measurements, Changelog |
+  | 3 | 250–380 | `release.yml`, `release_stage.py` with fixtures, a `CMakePresets.json` preset, the `build.ps1` switch, `Releasing.md`, CI.md, EngineGuide, the skill line, Changelog |
 
 - **Blast radius:**
   - Slice 1 is Engine tier: every build gains the version step, and every commit relinks both exes.
@@ -386,8 +433,9 @@ make each tuning experiment that retires a knob a MAJOR change after 1.0.
 - **Optional, each priced alone:**
   - *Provenance check* (`merge-base --is-ancestor`): about 5 lines. It stops a tag on an unmerged
     branch from shipping. Keep it.
-  - *Throwaway-tag rehearsal*: one extra dispatch, about 15 min of runner time. It is the only
-    evidence for A7 before a real release. Keep it.
+  - *Mismatched-tag live check* (slice 3, step 3): one dispatch plus a tag created and deleted.
+    The fixtures already cover the same branch, so it can be dropped if the owner prefers not to
+    create a junk tag.
 
 ## Harvest
 
@@ -401,6 +449,7 @@ make each tuning experiment that retires a knob a MAJOR change after 1.0.
 | D5 measured nps and size change | `Measurements/local.md` row, headline in `Docs/Changelog.md` |
 | D6 allowlist reasons, UCI filesystem fact | `Test-StandaloneExe.ps1` help; `Docs/EngineGuide.md` → Logging and runtime files |
 | D7 dispatch, draft, retry, never-overwrite | `Docs/Releasing.md`; `release.yml` comments; `Docs/CI.md` |
+| D7 publication rule behind I8; recovery from a failed upload | `Docs/Releasing.md`; `release_stage.py` header |
 | D9 supported UCI contract | `Docs/EngineGuide.md` → Versions and requirements |
 | `uci-facing` rule | `open-pull-request` skill |
 
