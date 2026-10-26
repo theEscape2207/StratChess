@@ -22,8 +22,8 @@ owner-initiated, repeatable procedure.
 - **D3, build-time hash capture.** Its correctness rests on Ninja `restat` skipping recompiles when
   the hash is unchanged (Assumption A2), and on the #580 reproducibility gates still passing with a
   generated TU.
-- **D9, the supported UCI contract** puts only `Threads` and `Hash` under compatibility. That is a
-  choice the owner did not make explicitly.
+- **D9, the supported UCI contract** puts only `Threads` and `Hash` under compatibility. The owner
+  approved it on 2026-10-26.
 
 ## Scope
 
@@ -280,8 +280,8 @@ additive features or measured strength gains, PATCH for fixes) apply to:
 The `SearchTuningSchema` options (`LmrLogBase` … `StabilityTimeFloor`) are advertised but
 **unsupported tuning controls**: they may be renamed or removed in any MINOR. `info string` lines
 are diagnostics, not contract. Rejected: putting every advertised option under contract, which would
-make each tuning experiment that retires a knob a MAJOR change after 1.0. This boundary is a new
-proposal, not one of #924's owner decisions; approving this design approves it.
+make each tuning experiment that retires a knob a MAJOR change after 1.0. The owner approved this
+boundary on 2026-10-26. No UI should depend on the unsupported options.
 
 ## Assumptions I cannot verify from the code
 
@@ -401,9 +401,8 @@ proposal, not one of #924's owner decisions; approving this design approves it.
      whose downloaded asset reports `id name StratChess 0.8.0` and passes `Test-StandaloneExe.ps1`
      on the dev machine.
   2. A re-dispatch of the same tag replaces only the asset and leaves the notes alone.
-  3. Dispatches with `v9.9.9` (no such tag) and with a numerically valid tag whose version does not
-     match CMake must fail before any build. A mismatched tag is created only if the owner agrees,
-     and deleted straight after.
+  3. A dispatch with `v9.9.9` (no such tag) must fail before any build. Version mismatch is
+     covered by the fixtures only; the owner declined a live check, which would need a junk tag.
   4. Record the job's duration (A7 draft path, A8).
 - After the owner's first publication: a re-dispatch of `v0.8.0` must fail without writing (I8),
   and the feed and digest are checked (A7). The publication itself is the owner's act.
@@ -433,9 +432,8 @@ proposal, not one of #924's owner decisions; approving this design approves it.
 - **Optional, each priced alone:**
   - *Provenance check* (`merge-base --is-ancestor`): about 5 lines. It stops a tag on an unmerged
     branch from shipping. Keep it.
-  - *Mismatched-tag live check* (slice 3, step 3): one dispatch plus a tag created and deleted.
-    The fixtures already cover the same branch, so it can be dropped if the owner prefers not to
-    create a junk tag.
+  - *Mismatched-tag live check*: dropped by the owner (2026-10-26), because the fixtures cover the
+    same branch.
 
 ## Harvest
 
