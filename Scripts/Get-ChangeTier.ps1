@@ -104,6 +104,9 @@ function Get-TierForPath {
     # build that is not one -- a false PASS about the property, which is the same
     # self-concealment. Build rather than Tooling for that reason alone.
     if ($p -like '*Scripts/Test-ReleaseReproducibility.ps1') { return 'Build' }
+    # The release workflow's gate on the shipped exe; a bug in it ships a binary that needs
+    # a runtime install, or one that writes beside itself, while reporting PASS.
+    if ($p -like '*Scripts/Test-StandaloneExe.ps1')         { return 'Build' }
     # A guard on every script change; a bug in it would wave scripts through unchecked.
     if ($p -like '*Scripts/Test-ScriptTraps.ps1')           { return 'Build' }
     # Decides what those guards check; a bug in it scopes them to nothing.
@@ -217,6 +220,7 @@ if ($SelfTest) {
         @{ Name = 'validator -> Build NOT Tooling'; Files = @('Scripts/Validate-PrePR.ps1');   Expect = 'Build' }
         @{ Name = 'alignment check -> Build';   Files = @('Scripts/Test-CodeAlignment.ps1');   Expect = 'Build' }
         @{ Name = 'reproducibility check -> Build'; Files = @('Scripts/Test-ReleaseReproducibility.ps1'); Expect = 'Build' }
+        @{ Name = 'standalone-exe check -> Build'; Files = @('Scripts/Test-StandaloneExe.ps1'); Expect = 'Build' }
     # The PR driver gates validation, so it must never take the Tooling shortcut.
     @{ Name = 'New-PullRequest -> Build NOT Tooling'; Files = @('Scripts/New-PullRequest.ps1'); Expect = 'Build' }
         @{ Name = 'classifier -> Build';        Files = @('Scripts/Get-ChangeTier.ps1');       Expect = 'Build' }

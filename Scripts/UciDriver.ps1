@@ -58,7 +58,9 @@ function Invoke-UciFixedDepthSearch {
         [Parameter(Mandatory)][string]$Description,
         # Wall clock for the whole exchange, search and shutdown together. Only the
         # self-test lowers it, so that a timeout case costs seconds rather than ten minutes.
-        [ValidateRange(1, 3600000)][int]$TimeoutMs = 600000
+        [ValidateRange(1, 3600000)][int]$TimeoutMs = 600000,
+        # The engine's command line. Empty is how a GUI launches it (Test-StandaloneExe.ps1).
+        [AllowEmptyString()][string]$Arguments = 'uci'
     )
 
     $commands = @(
@@ -72,7 +74,7 @@ function Invoke-UciFixedDepthSearch {
 
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName               = $ExePath
-    $psi.Arguments              = 'uci'
+    $psi.Arguments              = $Arguments
     $psi.WorkingDirectory       = $WorkDir
     $psi.RedirectStandardInput  = $true
     $psi.RedirectStandardOutput = $true

@@ -55,6 +55,15 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 # Ignored by every non-MSVC-frontend toolchain, so the Linux builds do not see it.
 set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
 
+# Static C runtime (/MT, /MTd) in every Windows configuration, so the shipped exe needs no VC++
+# Redistributable and the measured, CI and released binaries are one recipe (#924). Set here, not
+# in a preset: a preset edit never reaches an existing build tree. It must precede
+# FetchContent_MakeAvailable, because it initialises each target's runtime when the target is
+# created and Catch2's must agree; a mismatch fails the link with LNK2038, never silently.
+#
+# Ignored by every non-MSVC-ABI toolchain, so the Linux builds do not see it.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 # Consumed by clangd, VS Code, Zed and coding agents. Costs nothing to emit.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
