@@ -19,7 +19,7 @@
          wrote no output file. It is not a filesystem trace: it does not prove the
          absence of every read or transient write.
 
-    The allowlist is what the static-CRT build (#924) measured: KERNEL32.dll plus one OS API
+    The allowlist is what the static-CRT Release build imports: KERNEL32.dll plus one OS API
     set. /MT links the UCRT as well as the C++ runtime statically. Add an entry only with its
     reason.
 
@@ -113,29 +113,33 @@ function Invoke-StandaloneSmoke {
         Copy-Item -LiteralPath $ExePath -Destination $copy
 
         $smoke = ''
+        $smokeDetail = ''
         try {
             $transcript = Invoke-UciFixedDepthSearch -ExePath $copy -WorkDir $dir -Position 'startpos' `
                 -SearchDepth $SearchDepth -Threads 1 -Description "standalone $leaf" `
                 -TimeoutMs $TimeoutMs -Arguments ''
             $lines = @($transcript -split "`r?`n")
-            foreach ($required in 'uciok', 'readyok') {
-                if ($lines -notcontains $required) { $smoke = "no '$required' line" }
-            }
-            if (-not $smoke -and $Id) {
+            $missing = @('uciok', 'readyok' | Where-Object { $lines -notcontains $_ })
+            if ($missing.Count -gt 0) {
+                $smoke = "no $($missing -join ', ') line"
+            } elseif ($Id) {
                 $idLines = @($lines | Where-Object { $_ -like 'id name *' })
                 if ($idLines.Count -ne 1 -or $idLines[0] -cne "id name $Id") {
                     $smoke = "expected 'id name $Id', got '$($idLines -join ' | ')'"
                 }
             }
         } catch {
-            $smoke = $_.Exception.Message -replace '\s+', ' '
+            # The driver's message carries the engine's stderr and transcript after its first line.
+            $smoke = ($_.Exception.Message -split "`r?`n")[0]
+            $smokeDetail = $_.Exception.Message
         }
 
-        $stray = @(Get-ChildItem -LiteralPath $dir -Recurse -Force |
-            Where-Object { $_.FullName -ne $copy } | ForEach-Object { $_.FullName.Substring($dir.Length + 1) })
+        # Relative names, so an 8.3 short TEMP path (CI's RUNNER~1) cannot mismatch the long form
+        # Get-ChildItem reports.
+        $stray = @(Get-ChildItem -LiteralPath $dir -Recurse -Force -Name | Where-Object { $_ -ne $leaf })
         $files = if ($stray.Count -gt 0) { "left behind: $($stray -join ', ')" } else { '' }
 
-        return [pscustomobject]@{ Smoke = $smoke; Files = $files }
+        return [pscustomobject]@{ Smoke = $smoke; SmokeDetail = $smokeDetail; Files = $files }
     } finally {
         Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -160,6 +164,7 @@ if ($SelfTest) {
     $importCases = @(
         @{ Name = 'KERNEL32 alone passes';             Dlls = @('KERNEL32.dll');                        Expect = '' }
         @{ Name = 'casing does not matter';            Dlls = @('kernel32.dll');                        Expect = '' }
+        @{ Name = 'the synch API set passes';          Dlls = @('KERNEL32.dll', 'API-MS-WIN-CORE-SYNCH-L1-2-0.dll'); Expect = '' }
         @{ Name = 'FALSIFY: C++ runtime DLL fails';     Dlls = @('KERNEL32.dll', 'MSVCP140.dll');        Expect = 'MSVCP140\.dll' }
         @{ Name = 'FALSIFY: VCRUNTIME fails';           Dlls = @('VCRUNTIME140.dll', 'KERNEL32.dll');    Expect = 'VCRUNTIME140\.dll' }
         @{ Name = 'FALSIFY: UCRT forwarder fails';      Dlls = @('KERNEL32.dll', 'api-ms-win-crt-heap-l1-1-0.dll'); Expect = 'api-ms-win-crt-heap' }
@@ -245,6 +250,7 @@ Write-Check "imports ($((Get-DllImport -ObjdumpText $objdumpText) -join ', '))" 
 
 $result = Invoke-StandaloneSmoke -ExePath $exePath -Id $ExpectedId -SearchDepth $Depth
 Write-Check "empty-directory UCI smoke (depth $Depth$(if ($ExpectedId) { ", id '$ExpectedId'" }))" $result.Smoke
+if ($result.SmokeDetail) { Write-Host $result.SmokeDetail }
 Write-Check 'no file left beside the exe' $result.Files
 
 if ($importFailure -or $result.Smoke -or $result.Files) { exit 1 }

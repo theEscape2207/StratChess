@@ -104,8 +104,8 @@ function Get-TierForPath {
     # build that is not one -- a false PASS about the property, which is the same
     # self-concealment. Build rather than Tooling for that reason alone.
     if ($p -like '*Scripts/Test-ReleaseReproducibility.ps1') { return 'Build' }
-    # The release workflow's gate on the shipped exe; a bug in it ships a binary that needs
-    # a runtime install, or one that writes beside itself, while reporting PASS.
+    # Asserts that an exe runs standalone; a bug in it passes a binary that needs a runtime
+    # install, or one that writes beside itself.
     if ($p -like '*Scripts/Test-StandaloneExe.ps1')         { return 'Build' }
     # A guard on every script change; a bug in it would wave scripts through unchecked.
     if ($p -like '*Scripts/Test-ScriptTraps.ps1')           { return 'Build' }
