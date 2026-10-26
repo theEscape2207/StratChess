@@ -3,7 +3,8 @@
 # shares nothing but sources. It also brings CMP0141, without which
 # CMAKE_MSVC_DEBUG_INFORMATION_FORMAT below is inert.
 cmake_minimum_required(VERSION 3.30)
-project(StratChess CXX)
+# The only place the version number is written; UCI 'id name' reports it (see "Version identity").
+project(StratChess VERSION 0.8.0 LANGUAGES CXX)
 
 # Builds on Linux (GCC/Clang) and on Windows via clang-cl + Ninja, configured by
 # the windows-clang-cl presets in CMakePresets.json.
@@ -428,6 +429,41 @@ add_executable(StratChessTests
     ${TEST_SOURCES})
 strat_configure_target(StratChessTests)
 
+# ---------------------------------------------------------------------------
+# Version identity
+#
+# STRAT_RELEASE=ON reports PROJECT_VERSION alone and runs no Git. Every other build reports
+# X.Y.Z+<short hash>, meaning "built from that commit, after X.Y.Z" -- no dirty marker, no tag
+# detection, no pre-release segment.
+#
+# One generated TU carries the string, compiled into both executables (the test target builds
+# the engine separately). Outside StratEngine/, so the engine glob never sees the template.
+# Not a header: every includer would recompile on each commit and go cold in the compiler cache.
+# The hash is captured at build time, not configure time -- why: cmake/GenerateVersion.cmake.
+# ---------------------------------------------------------------------------
+option(STRAT_RELEASE "Report the plain project version, with no commit hash (release builds)" OFF)
+
+set(strat_version_cpp ${CMAKE_BINARY_DIR}/generated/Version.cpp)
+if(STRAT_RELEASE)
+    set(STRAT_VERSION_STRING "${PROJECT_VERSION}")
+    configure_file(${CMAKE_SOURCE_DIR}/cmake/Version.cpp.in ${strat_version_cpp} @ONLY)
+else()
+    add_custom_target(strat_version ALL
+        COMMAND ${CMAKE_COMMAND}
+                -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
+                -D VERSION=${PROJECT_VERSION}
+                -D TEMPLATE=${CMAKE_SOURCE_DIR}/cmake/Version.cpp.in
+                -D OUTPUT=${strat_version_cpp}
+                -P ${CMAKE_SOURCE_DIR}/cmake/GenerateVersion.cmake
+        BYPRODUCTS ${strat_version_cpp}
+        COMMENT "Reading the commit hash for the engine version"
+        VERBATIM)
+    add_dependencies(StratChessEvolved strat_version)
+    add_dependencies(StratChessTests strat_version)
+endif()
+target_sources(StratChessEvolved PRIVATE ${strat_version_cpp})
+target_sources(StratChessTests PRIVATE ${strat_version_cpp})
+
 # The /clang: spelling is what reaches the frontend (see the clang-cl note in
 # strat_configure_target); the driver then names the profile runtime in each object
 # for lld-link, so no link option is needed.
@@ -440,7 +476,8 @@ endif()
 # whatever its working directory.
 target_compile_definitions(StratChessTests PRIVATE
     STRAT_ENABLE_TEST_ACCESS STRAT_TT_STATS=1 STRAT_SEARCH_PROFILE=1
-    STRAT_TESTS_DATA_DIR="${CMAKE_SOURCE_DIR}/Tests")
+    STRAT_TESTS_DATA_DIR="${CMAKE_SOURCE_DIR}/Tests"
+    STRAT_PROJECT_VERSION="${PROJECT_VERSION}")
 target_link_libraries(StratChessTests PRIVATE Catch2::Catch2WithMain)
 
 # The depfile override above sets CMake variables; this asserts what CMake generated from

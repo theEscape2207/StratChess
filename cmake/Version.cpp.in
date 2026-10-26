@@ -1,0 +1,4 @@
+// Generated from cmake/Version.cpp.in -- do not edit.
+#include "Version.h"
+
+std::string_view EngineVersion() { return "@STRAT_VERSION_STRING@"; }
