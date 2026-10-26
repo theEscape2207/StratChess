@@ -23,6 +23,20 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-27: Version in UCI id name (#924, slice 1)
+
+### Added
+- `id name StratChess <version>`, so a GUI can tell which build it runs. The number is
+  `project(StratChess VERSION 0.8.0)`; ordinary builds append `+<8-char commit hash>` (`+unknown`
+  without Git), and only `-DSTRAT_RELEASE=ON` reports the plain `X.Y.Z`. No dirty marker, no tag
+  detection.
+- The hash is read at build time into one generated `Version.cpp` per executable, rewritten only
+  when it changes: a no-op build stays a no-op (~0.05 s for the version step), and a new commit
+  recompiles that one TU per target and relinks both. A configure-time hash was rejected because
+  Ninja does not reconfigure on a commit, so the id would go stale.
+- `MEASUREMENT_CONTRACT` and `info string benchcontract` are unchanged. The strength lab's binary
+  hashes now differ between commits; its source-identity refusal is unaffected.
+
 ## 2026-10-25: nps and seldepth on info lines (#911)
 
 ### Added

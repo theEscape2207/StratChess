@@ -245,6 +245,20 @@ integer exits with a diagnostic. It is a neutral reordering, the noise source th
 `Compare-SearchProfile.ps1 -Seeds` averages over. Unset or 0 leaves the build node-identical. The
 test binary is a profile build too, so a seed left set in the shell reorders every search test.
 
+## Versions and requirements
+
+The engine reports its version in the reply to `uci`, as `id name StratChess <version>`:
+
+| `<version>` | Meaning |
+|---|---|
+| `0.8.0` | A release build of version 0.8.0 |
+| `0.8.0+3bd1ae39` | Built from commit `3bd1ae39`, after 0.8.0. Uncommitted changes are not marked |
+| `0.8.0+unknown` | Built after 0.8.0 where Git could not name the commit, such as from a source archive |
+
+The number lives in `project(... VERSION ...)` in [CMakeLists.txt](../CMakeLists.txt); only a
+build configured with `-DSTRAT_RELEASE=ON` drops the `+` suffix. The version says which source a
+binary came from. It is not the `info string benchcontract` number, which versions what a
+measurement means.
 
 ## Logging and runtime files
 
