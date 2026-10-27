@@ -1,7 +1,7 @@
 # Fast Gate profile used by local PrePR validation and required PR CI.
 # Analyzer checks and exception-escape analysis run in the Deep Nightly profile.
 # misc-include-cleaner stays off on purpose: it contradicts the Common.h umbrella convention (#281).
-# bugprone-signed-bitwise (LLVM 23+, a rename of hicpp-signed-bitwise) is excluded: bitboard code uses signed bitwise ops deliberately; 185 sites, no defect class (#475).
+# bugprone-signed-bitwise (LLVM 23+, a rename of hicpp-signed-bitwise) is excluded: bitboard code uses signed bitwise ops deliberately; no defect in a 20-site sample (#475).
 Checks: >
   -*,
   bugprone-*,
