@@ -23,12 +23,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
-## 2026-10-27: Static C runtime, standalone exe (#924, slice 2)
+## 2026-10-27: Static C++ runtime, standalone exe (#924, slice 2)
 
 ### Changed
 - Every Windows configuration links the C runtime statically (`/MT`, `/MTd`), so the engine runs
-  without the VC++ Redistributable. It imports only `KERNEL32.dll` and the Windows API set
-  `api-ms-win-core-synch-l1-2-0.dll` (`WaitOnAddress`, for `std::atomic::wait`). Set in
+  without the VC++ Redistributable. Release takes the Universal CRT from Windows 10+ instead
+  (`/NODEFAULTLIB:libucrt.lib`, `ucrt.lib`): the fully static UCRT cost 1.6% nps. It imports only
+  `KERNEL32.dll`, `api-ms-win-core-synch-l1-2-0.dll` (`WaitOnAddress`, for `std::atomic::wait`)
+  and the `api-ms-win-crt-*` UCRT API sets. Set in
   `CMakeLists.txt`, not a preset, because a preset edit never reaches an existing build tree; one
   recipe serves measurement, CI and release. Each local tree and Windows ccache key misses once.
 

@@ -136,6 +136,14 @@ This goes beside `CMAKE_MSVC_DEBUG_INFORMATION_FORMAT` (`CMakeLists.txt:55`), ab
   cannot pass silently.
 - **Linux is unaffected.** Non-MSVC-ABI toolchains ignore the variable.
 
+**Amended in slice 2 (owner-approved): hybrid CRT in Release.** The fully static build measured
+Slowdown −1.58% [−1.75, −1.41] (60-round control; about 0.5 points of it placement). Release and
+coverage therefore add `/NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib`: the C++ runtime and
+vcruntime stay static, and the UCRT comes from Windows 10+, which ships it as an OS component. That
+measured No slowdown against `/MD`, +0.13% [−0.04, +0.31]. Debug keeps `/MTd` whole, since the
+debug UCRT DLL is not part of Windows. Rejected: app-local `/MD` DLLs beside the exe, which breaks
+the single-file goal.
+
 **Why `CMakeLists.txt` and not the preset.** `build.ps1` configures only when `CMakeCache.txt` is
 missing (`Docs/Workflow.md`, Compiler cache). A preset `cacheVariables` edit therefore never reaches
 an existing tree, and the freshness guard fails until every worktree's `build/` is deleted.
@@ -168,9 +176,9 @@ PASS/FAIL line per check:
 
 1. **Imports.** It locates `llvm-objdump` through `vswhere` under `VC\Tools\Llvm\x64\bin`, never
    `ARM64`, and runs `-p` on the exe. Every `DLL Name` must be on an allowlist of OS-shipped DLLs.
-   The allowlist starts as what slice 2 measures, expected to be `KERNEL32.dll` alone, since `/MT`
-   also links the UCRT statically. Each entry is added with its reason. An unlisted import fails,
-   so a new `MSVCP*`, `VCRUNTIME*` or `api-ms-win-crt-*` import fails too.
+   The allowlist is what slice 2 measured: `KERNEL32.dll`, `api-ms-win-core-synch-l1-2-0.dll` and,
+   after the D5 amendment, the `api-ms-win-crt-*` UCRT API sets. Each entry is added with its
+   reason. An unlisted import fails, so a new `MSVCP*` or `VCRUNTIME*` import fails too.
 2. **Empty-directory UCI smoke.** It copies the exe alone into a fresh temporary directory and runs
    it with that directory as the working directory and no arguments, which is UCI mode
    (`StratChessEvolved.cpp`, `argc == 1`) and is how a GUI launches it. `UciDriver.ps1` hard-codes
@@ -295,9 +303,11 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
 - **A3: the coverage runtime links under `/MT`.** clang-cl's `clang_rt.profile` is assumed to link
   against the static CRT. Settled in slice 2 by one `Get-Coverage.ps1` run.
 - **A4: static CRT has no meaningful nps effect.** The hot path calls little CRT code (UCRT `malloc`
-  and `memcpy` are the same code either way), but placement moves. Settled by slice 2's bench (Validation).
+  and `memcpy` are the same code either way), but placement moves. Settled by slice 2's bench (Validation):
+  false for the static UCRT (−1.58%), true for the hybrid (D5 amendment).
 - **A5: `/MT` removes every `MSVCP*`, `VCRUNTIME*` and `api-ms-win-crt-*` import.** Settled by
-  `Test-StandaloneExe.ps1` in slice 2; the measured list becomes the allowlist.
+  `Test-StandaloneExe.ps1` in slice 2; the measured list becomes the allowlist. True, plus the synch
+  API set; the hybrid keeps the `api-ms-win-crt-*` imports by design.
 - **A6: UCI mode needs no adjacent file and leaves no output file.** The source shows verbose
   logging off (`UciHandler::DefaultSearchConfig()`), spdlog off, and no `game_settings.json` read.
   Settled by D6's empty-directory check, not by reading the source. That check is not a filesystem

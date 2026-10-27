@@ -19,9 +19,9 @@
          wrote no output file. It is not a filesystem trace: it does not prove the
          absence of every read or transient write.
 
-    The allowlist is what the static-CRT Release build imports: KERNEL32.dll plus one OS API
-    set. /MT links the UCRT as well as the C++ runtime statically. Add an entry only with its
-    reason.
+    The allowlist is what the hybrid-CRT Release build imports: KERNEL32.dll, one OS API set,
+    and the api-ms-win-crt-* UCRT API sets. The C++ runtime and vcruntime are linked
+    statically, so any MSVCP* or VCRUNTIME* import fails. Add an entry only with its reason.
 
 .PARAMETER Exe
     The engine to check. Required unless -SelfTest.
@@ -55,13 +55,16 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'UciDriver.ps1')
 
-# Case-insensitive: the PE import table's casing is the linker's choice.
+# Wildcard patterns, case-insensitive: the PE import table's casing is the linker's choice.
 $AllowedImports = @(
     # The Win32 base API. Ships with every Windows; nothing links without it.
     'KERNEL32.dll'
     # WaitOnAddress / WakeByAddressAll, for the static STL's std::atomic::wait. A Windows API
     # set resolved by the OS loader since Windows 8, not a redistributable.
     'api-ms-win-core-synch-l1-2-0.dll'
+    # The Universal CRT. Part of Windows since Windows 10; Release links it dynamically because
+    # the static UCRT cost nps.
+    'api-ms-win-crt-*-l1-1-0.dll'
 )
 
 function Get-DllImport {
@@ -78,7 +81,7 @@ function Test-ImportAllowlist {
 
     $imports = @(Get-DllImport -ObjdumpText $ObjdumpText)
     if ($imports.Count -eq 0) { return 'no DLL imports parsed; the objdump output is not what this check reads' }
-    $unlisted = @($imports | Where-Object { $AllowedImports -notcontains $_ })
+    $unlisted = @($imports | Where-Object { $dll = $_; -not ($AllowedImports | Where-Object { $dll -like $_ }) })
     if ($unlisted.Count -gt 0) { return "unlisted import(s): $($unlisted -join ', ')" }
     return ''
 }
@@ -167,7 +170,8 @@ if ($SelfTest) {
         @{ Name = 'the synch API set passes';          Dlls = @('KERNEL32.dll', 'API-MS-WIN-CORE-SYNCH-L1-2-0.dll'); Expect = '' }
         @{ Name = 'FALSIFY: C++ runtime DLL fails';     Dlls = @('KERNEL32.dll', 'MSVCP140.dll');        Expect = 'MSVCP140\.dll' }
         @{ Name = 'FALSIFY: VCRUNTIME fails';           Dlls = @('VCRUNTIME140.dll', 'KERNEL32.dll');    Expect = 'VCRUNTIME140\.dll' }
-        @{ Name = 'FALSIFY: UCRT forwarder fails';      Dlls = @('KERNEL32.dll', 'api-ms-win-crt-heap-l1-1-0.dll'); Expect = 'api-ms-win-crt-heap' }
+        @{ Name = 'UCRT API sets pass';                Dlls = @('KERNEL32.dll', 'api-ms-win-crt-heap-l1-1-0.dll', 'API-MS-WIN-CRT-STDIO-L1-1-0.dll'); Expect = '' }
+        @{ Name = 'FALSIFY: an unlisted API set fails'; Dlls = @('KERNEL32.dll', 'api-ms-win-core-file-l1-1-0.dll'); Expect = 'api-ms-win-core-file' }
         @{ Name = 'FALSIFY: nothing parsed fails';      Dlls = @();                                      Expect = 'no DLL imports parsed' }
     )
     foreach ($case in $importCases) {

@@ -261,8 +261,9 @@ binary came from. It is not the `info string benchcontract` number, which versio
 measurement means.
 
 The engine runs on x64 Windows with a CPU that has AVX2 and BMI2. It is a single `.exe` that links
-the C runtime statically, so it needs no VC++ Redistributable or other runtime install, and it
-imports only `KERNEL32.dll` and one Windows API set. `Scripts/Test-StandaloneExe.ps1` checks both
+the C++ runtime statically and takes the Universal CRT from Windows, so it needs Windows 10 or
+later but no VC++ Redistributable or other runtime install. It imports only `KERNEL32.dll` and
+Windows API sets. `Scripts/Test-StandaloneExe.ps1` checks both
 and the files below.
 
 ## Logging and runtime files
