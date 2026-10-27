@@ -23,6 +23,15 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-27: Build with Visual Studio's clang-cl on the runners (#924)
+
+### Fixed
+- `build.ps1` now puts Visual Studio's `VC\Tools\Llvm\x64\bin` first on `PATH` and refuses any other
+  `clang-cl`. `vcvars64` appends that directory after the machine `PATH`, so on the Windows runner
+  image the standalone LLVM 20.1.8 won the bare `clang-cl` lookup, and the Windows CI legs and the
+  first `v0.8.0` draft were built with it rather than the clang (22.1.3 locally) that every local
+  build and measurement uses. Each build now prints the compiler it uses.
+
 ## 2026-10-27: Release workflow and docs (#924, slice 3)
 
 ### Added

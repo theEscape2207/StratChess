@@ -5,7 +5,7 @@
     {
       "name": "windows-base",
       "hidden": true,
-      "description": "Run from a VS Developer PowerShell so clang-cl, llvm-rc, lld-link and ninja are on PATH. CMAKE_RC_COMPILER is llvm-rc: the Windows SDK rc.exe is the only tool in this chain that is not long-path aware and fails with RC1109 under a deep build path. llvm-rc has no such limit, and this repo has no .rc files of its own, so it only ever compiles the manifest CMake generates. It ships with the same VS 'C++ Clang tools for Windows' component clang-cl comes from.",
+      "description": "Run from a VS Developer PowerShell so clang-cl, llvm-rc, lld-link and ninja are on PATH, with VS's VC\\Tools\\Llvm\\x64\\bin first: the shell appends it after the machine PATH, where a standalone LLVM would win (build.ps1 does this itself).CMAKE_RC_COMPILER is llvm-rc: the Windows SDK rc.exe is the only tool in this chain that is not long-path aware and fails with RC1109 under a deep build path. llvm-rc has no such limit, and this repo has no .rc files of its own, so it only ever compiles the manifest CMake generates. It ships with the same VS 'C++ Clang tools for Windows' component clang-cl comes from.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "condition": {

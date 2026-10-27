@@ -737,7 +737,9 @@ The rest of it is non-obvious in these ways:
 
 `build.ps1` is the documented path: it imports the VS developer environment via `vswhere` and then
 drives the presets. Use these only when driving CMake directly, from a **VS Developer PowerShell**
-so the compiler, `ninja` and `cmake` are on `PATH`.
+so the compiler, `ninja` and `cmake` are on `PATH`. The Developer PowerShell appends VS's
+`VC\Tools\Llvm\x64\bin` after the machine `PATH`, so a standalone LLVM install shadows its
+`clang-cl`: put that directory first, as `build.ps1` does.
 
 ```
 cmake --preset windows-clang-cl            # configure (once per build tree)

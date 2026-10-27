@@ -444,8 +444,8 @@ if ($currentBlameIgnoreRevs -ne '.git-blame-ignore-revs') {
 # Developer environment
 #
 # vcvars64.bat is the only supported way to get the compiler's INCLUDE/LIB and
-# the Windows SDK onto the environment. It also puts cmake, ninja, clang-cl,
-# lld-link and llvm-rc on PATH, so nothing below needs an absolute tool path.
+# the Windows SDK onto the environment. It also puts cmake and ninja on PATH;
+# VS's LLVM directory (clang-cl, lld-link, llvm-rc) is moved to the front below.
 # ---------------------------------------------------------------------------
 function Import-VsDevEnvironment {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -483,13 +483,23 @@ function Import-VsDevEnvironment {
         }
     }
 
-    # Check the compiler by name here rather than letting CMake fail later: a
-    # missing clang-cl otherwise surfaces as a configure error about a broken
-    # compiler, which does not say which VS component to install.
-    if (-not (Get-Command clang-cl -ErrorAction SilentlyContinue)) {
-        Write-Error "clang-cl not on PATH after vcvars64. Install the 'C++ Clang tools for Windows' VS component."
+    # vcvars64 appends VS's LLVM directory after the machine PATH, so a standalone
+    # LLVM install wins the bare `clang-cl` lookup the presets make. The Windows
+    # runner image has one with an older clang. Put VS's copy first, so CI, release
+    # and local builds all use the compiler the VS install ships.
+    $vsLlvmBin = Join-Path $vsRoot 'VC\Tools\Llvm\x64\bin'
+    $env:PATH = "$vsLlvmBin;$env:PATH"
+
+    # Check the compiler here rather than letting CMake fail later: a missing
+    # clang-cl otherwise surfaces as a configure error about a broken compiler,
+    # which does not say which VS component to install.
+    $clangCl = Get-Command clang-cl -ErrorAction SilentlyContinue
+    if (-not $clangCl -or (Split-Path $clangCl.Source -Parent) -ine $vsLlvmBin) {
+        Write-Error "clang-cl not found in $vsLlvmBin. Install the 'C++ Clang tools for Windows' VS component."
         exit 1
     }
+    $clangVersion = & $clangCl.Source --version | Select-Object -First 1
+    Write-Host "Compiler: $clangVersion ($($clangCl.Source))" -ForegroundColor DarkGray
 }
 
 # Shared dependency sources (cmake/DependencySources.cmake): one checkout per tag in

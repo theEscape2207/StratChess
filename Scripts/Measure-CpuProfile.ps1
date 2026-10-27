@@ -443,9 +443,15 @@ function Import-VsDevEnvironment {
         if ($env:VSCMD_ARG_TGT_ARCH -ine 'x64') { throw "PROCESSOR_ARCHITECTURE is missing and vcvars64 reported target '$env:VSCMD_ARG_TGT_ARCH'." }
         $env:PROCESSOR_ARCHITECTURE = 'AMD64'
     }
-    foreach ($tool in 'cmake', 'ninja', 'clang-cl') {
+    # vcvars64 appends VS's LLVM after the machine PATH, where a standalone LLVM would win;
+    # build.ps1 puts VS's copy first for the same reason.
+    $vsLlvmBin = Join-Path $vsRoot 'VC\Tools\Llvm\x64\bin'
+    $env:PATH = "$vsLlvmBin;$env:PATH"
+    foreach ($tool in 'cmake', 'ninja') {
         if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "$tool not on PATH after vcvars64." }
     }
+    $clangCl = Get-Command clang-cl -ErrorAction SilentlyContinue
+    if (-not $clangCl -or (Split-Path $clangCl.Source -Parent) -ine $vsLlvmBin) { throw "clang-cl not found in $vsLlvmBin." }
     return $vsRoot
 }
 
