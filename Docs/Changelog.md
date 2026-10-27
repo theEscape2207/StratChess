@@ -27,7 +27,7 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
 ### Changed
 - `release.yml` drafts now open with an empty **Highlights** heading and end with the PRs merged
-  since the previous tag (`--generate-notes`), grouped by the new `.github/release.yml` with
+  since the latest published release (`--generate-notes`), grouped by the new `.github/release.yml` with
   `uci-facing` first and Dependabot left out. `Docs/Releasing.md` says how to pick the 2-5
   highlights.
 

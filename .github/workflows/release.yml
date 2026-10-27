@@ -171,7 +171,7 @@ jobs:
             exit 1
           fi
 
-      # --generate-notes appends the PRs merged since the previous tag, grouped by
+      # --generate-notes appends the PRs merged since the latest published release, grouped by
       # .github/release.yml.
       - name: Create draft release
         run: >

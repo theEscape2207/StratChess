@@ -1,4 +1,4 @@
-# Groups the PR list that release.yml's --generate-notes appends to a draft release.
+# Groups the PR list that workflows/release.yml's --generate-notes appends to a draft release.
 changelog:
   exclude:
     labels:
