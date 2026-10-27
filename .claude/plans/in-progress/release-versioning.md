@@ -263,8 +263,12 @@ step the issue approved.
 
 **Amended in slice 3 (owner-approved 2026-10-27): create-only staging, inline checks.** `stage`
 never updates a release. Any existing release for the tag, draft or published, fails the run, and a
-retry deletes the draft first. This removes the `--clobber` path and its non-atomic re-check, so I8
-holds without the publication rule. `release_stage.py` and its fixtures are dropped. The tag shape,
+retry deletes the draft first. This removes the `--clobber` path and its non-atomic re-check.
+`gh release create --draft` is itself two requests, though: the draft is created, then the asset
+is uploaded, and a failed upload leaves the draft behind (PR #929 review, from the `gh` source). A
+reduced publication rule therefore stays: publish only after the run finished successfully and the
+draft lists the asset. A failed upload is recovered by deleting the draft, keeping the tag, and
+re-dispatching. `release_stage.py` and its fixtures are dropped. The tag shape,
 version and ancestry checks are inline in `build`, and the existence check is inline in `stage`.
 `build`'s early read-token check for a published release (step 3) is dropped as well, since
 `stage` refuses one anyway. Cost: no pre-merge fixture coverage; the first `v0.8.0` dispatch is
@@ -355,7 +359,8 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
 - **I7:** A shipped exe imports only allowlisted OS DLLs, needs no adjacent file, and writes
   nothing in UCI mode without `--log-commands`.
 - **I8:** The workflow never modifies an existing release, asset or tag (create-only staging, D7
-  amendment).
+  amendment). A published release is complete **provided** the owner publishes only after the run
+  succeeded and the draft lists the asset.
 
 ## Validation
 

@@ -3,11 +3,14 @@ name: Release
 # Stages a DRAFT GitHub Release for an existing vX.Y.Z tag on main. The owner reviews
 # the draft, fills in its notes and publishes it by hand. Procedure: Docs/Releasing.md.
 #
-# Manual dispatch only, and the tag must already exist: no tag push triggers this, and
-# the workflow never creates, moves or deletes a tag or a release. `stage` only ever
-# creates. Any existing release for the tag, draft or published, fails the run without
-# writing; retrying means deleting the draft first. With no update path there is no
-# window in which the owner's publish can race an upload.
+# Manual dispatch only, and the tag must already exist: no tag push triggers this. The
+# workflow never creates, moves or deletes a tag, and never updates or deletes an existing
+# release. Any existing release for the tag, draft or published, fails the run without
+# writing; retrying means deleting the draft first.
+#
+# `gh release create --draft` is not atomic: it creates the draft, then uploads the asset
+# in a separate request, and a failed upload leaves the draft without it. A visible draft
+# therefore proves nothing; publish only after the run succeeded and the asset is listed.
 
 on:
   workflow_dispatch:

@@ -488,8 +488,9 @@ policy and manual commands: [`Dependencies.md`](Dependencies.md#automated-releas
 
 ## Release (`release.yml`)
 
-Manual dispatch only, with one input: an existing `vX.Y.Z` tag. It never creates, moves or deletes
-a tag or a release, and nothing triggers it automatically. The maintainer procedure is
+Manual dispatch only, with one input: an existing `vX.Y.Z` tag. It creates a draft release, never
+creates, moves or deletes a tag, and never updates or deletes an existing release. Nothing triggers
+it automatically. The maintainer procedure is
 [`Releasing.md`](Releasing.md).
 
 - **`build`** (`windows-2025-vs2026`, `contents: read`, 45 min). Checks out the tag, then refuses
@@ -504,7 +505,10 @@ a tag or a release, and nothing triggers it automatically. The maintainer proced
   runs no project code. It fails if the tag no longer names the commit `build` compiled, or if any
   release already exists for the tag, draft or published:
   only a write token can see drafts. Otherwise it runs `gh release create --draft --verify-tag`.
-  Because it only ever creates, nothing races the owner's publish, and no asset is ever replaced.
+  It never replaces an asset. The create is not atomic, though: `gh` creates the draft, then
+  uploads the asset in a second request, so a draft can be visible while the upload runs, or left
+  without its asset if the upload fails. The owner publishes only after the run succeeded and the
+  asset is listed (`Releasing.md`).
 
 `concurrency: release` serializes runs. A failed run before `stage` writes nothing, so
 re-dispatching is the retry. The tag and version checks are inline shell with no fixtures. Their

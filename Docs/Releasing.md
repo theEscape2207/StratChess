@@ -28,15 +28,21 @@ workflow mechanics are in [CI.md](CI.md#release-releaseyml). What a version numb
      conditions and interval. Label lab rows as GCC: the lab does not build the shipped clang-cl
      binary.
    - **Fixes.** Take these from the `Docs/Changelog.md` headlines since the previous tag.
-5. **Publish** the draft by hand. Release watchers and `/releases.atom` see it from that point.
+5. **Publish** the draft by hand, but only once the `release.yml` run for the tag has **finished
+   successfully** and the draft lists `StratChess-X.Y.Z-windows-x64.exe`. A visible draft alone
+   proves nothing: the workflow creates the draft before it uploads the asset, so a draft exists
+   while the upload runs and stays behind if it fails. Release watchers and `/releases.atom` see
+   the release from the moment it is published.
 
 ## Retries and defects
 
 - **A run fails before staging** (a build, test or standalone check): nothing was written. Fix the
   cause, then dispatch again. If the fix needs a new commit, it also needs a new tag, so it ships
   as a new version.
+- **The upload failed** (the run failed in `stage` after creating the draft): the draft has no
+  asset or an incomplete one. Delete that draft, keep the tag, and dispatch again.
 - **A draft exists and needs rebuilding:** delete the draft (not the tag), then dispatch again. The
-  workflow only ever creates a release. It refuses a tag that already has one, draft or published,
-  so it never changes a release you are reviewing or one you have published.
+  workflow refuses a tag that already has a release, draft or published, so it never changes a
+  release you are reviewing or one you have published.
 - **A published release is defective:** never replace its asset. Ship a new PATCH version, and add
   a line to the old release's notes that points to it.
