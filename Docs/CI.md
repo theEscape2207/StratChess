@@ -13,6 +13,7 @@ the mechanics.
 | know why validation is split across platforms | `Workflow.md` → Standing decisions |
 | know what else scans the repo | [Repository services](#repository-services) |
 | check upstream library and fastchess releases | [Dependency release checks](#dependency-release-checks-dependency-releasesyml) |
+| publish a versioned engine build | [Release](#release-releaseyml); procedure in `Releasing.md` |
 
 ---
 
@@ -482,6 +483,32 @@ It runs only in `theEscape2207/StratChess` on `main`; fork and other-ref dispatc
 The checker fixtures also run in the PR gate's Linux Release job. API/pin failures fail this
 workflow before issue writes, and its result does not gate engine PRs. Issue lifecycle, channel
 policy and manual commands: [`Dependencies.md`](Dependencies.md#automated-release-checks).
+
+---
+
+## Release (`release.yml`)
+
+Manual dispatch only, with one input: an existing `vX.Y.Z` tag. It never creates, moves or deletes
+a tag or a release, and nothing triggers it automatically. The maintainer procedure is
+[`Releasing.md`](Releasing.md).
+
+- **`build`** (`windows-2025-vs2026`, `contents: read`, 45 min). Checks out the tag, then refuses
+  it unless it is `vX.Y.Z`, matches `project(VERSION)` in `CMakeLists.txt` and is an ancestor of
+  `origin/main`. Builds with `build.ps1 all -Publish`, the `windows-clang-cl-publish` preset
+  (Release with `STRAT_RELEASE=ON`). The build is **uncached**, like Nightly's `extended-tests`: a
+  wrong cached object must not reach the shipped binary. It runs the fast tier and the hot-code
+  alignment check on that tree. It then runs `Test-StandaloneExe.ps1` on the renamed asset with
+  `-ExpectedId "StratChess X.Y.Z"`, which proves both that `STRAT_RELEASE` reached the build and
+  that the binary is the tagged version. Uploads the asset and a release-notes skeleton.
+- **`stage`** (`ubuntu-26.04`, `contents: write`, 10 min). The only job with a write token, and it
+  runs no project code. It fails if any release already exists for the tag, draft or published:
+  only a write token can see drafts. Otherwise it runs `gh release create --draft --verify-tag`.
+  Because it only ever creates, nothing races the owner's publish, and no asset is ever replaced.
+
+`concurrency: release` serializes runs. A failed run before `stage` writes nothing, so
+re-dispatching is the retry. The tag and version checks are inline shell with no fixtures. Their
+live evidence is the first `v0.8.0` dispatch, because `workflow_dispatch` needs the workflow on the
+default branch.
 
 ---
 

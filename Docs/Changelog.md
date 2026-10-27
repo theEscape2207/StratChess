@@ -23,6 +23,23 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-27: Release workflow and docs (#924, slice 3)
+
+### Added
+- `.github/workflows/release.yml`: a manual dispatch for an existing `vX.Y.Z` tag on `main`. It
+  builds with the new `windows-clang-cl-publish` preset (`build.ps1 -Publish`, `STRAT_RELEASE=ON`)
+  uncached, runs the fast tier, the alignment check and `Test-StandaloneExe.ps1` with the exact
+  plain id, and stages a **draft** release. Staging only ever creates: a tag that already has a
+  release, draft or published, fails without writing, so the workflow never changes a release the
+  owner is reviewing or has published.
+- `Docs/Releasing.md` (maintainer procedure), a Release section in `Docs/CI.md`, and the supported
+  UCI contract and release subscription in `Docs/EngineGuide.md`. The `open-pull-request` skill
+  now labels client-visible PRs `uci-facing`.
+
+### Changed
+- The design's Python staging helper with fixtures and its re-upload path (`--clobber` on a draft)
+  were dropped in favour of inline checks and create-only staging. A retry deletes the draft first.
+
 ## 2026-10-27: Static C++ runtime, standalone exe (#924, slice 2)
 
 ### Changed

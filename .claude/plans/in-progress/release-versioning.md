@@ -261,6 +261,15 @@ PATCH version and notes pointing to it. The owner reviews the draft and publishe
 Rejected: a `push: tags` trigger, which would publish on tag creation and remove the owner's review
 step the issue approved.
 
+**Amended in slice 3 (owner-approved 2026-10-27): create-only staging, inline checks.** `stage`
+never updates a release. Any existing release for the tag, draft or published, fails the run, and a
+retry deletes the draft first. This removes the `--clobber` path and its non-atomic re-check, so I8
+holds without the publication rule. `release_stage.py` and its fixtures are dropped. The tag shape,
+version and ancestry checks are inline in `build`, and the existence check is inline in `stage`.
+`build`'s early read-token check for a published release (step 3) is dropped as well, since
+`stage` refuses one anyway. Cost: no pre-merge fixture coverage; the first `v0.8.0` dispatch is
+the evidence.
+
 ### D8: Documentation touchpoints
 
 | File | Change | Slice |
@@ -341,10 +350,8 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
 - **I6:** Catch2 and both project targets agree on the CRT in Release and Debug.
 - **I7:** A shipped exe imports only allowlisted OS DLLs, needs no adjacent file, and writes
   nothing in UCI mode without `--log-commands`.
-- **I8:** The workflow never modifies a published release, asset or tag, **provided** the owner
-  follows D7's publication rule: publish only when no run for the tag is queued or running, the
-  latest run succeeded, and the asset is present. Without that rule, a publish between the
-  re-check and the upload is unguarded.
+- **I8:** The workflow never modifies an existing release, asset or tag (create-only staging, D7
+  amendment).
 
 ## Validation
 
@@ -402,16 +409,16 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
 **Slice 3: workflow and docs** (Build tier for `release.yml`; Docs for the rest).
 
 - `Test-WorkflowTimeouts.ps1` and `Test-WorkflowCcachePaths.ps1` pass.
-- `release_stage.py --self-test` runs in the PR gate. Its fixtures cover each branch on its own: a
-  malformed tag, a tag that does not exist, a version mismatch, no release yet, an existing draft,
-  and a published release. The last must refuse without writing.
+- Local emulation of `build`'s steps on a `build.ps1 all -Publish` tree: the checks, fast tier,
+  alignment and `Test-StandaloneExe.ps1` pass, and a wrong `-ExpectedId` fails. (Replaces the
+  `release_stage.py` fixtures, D7 amendment.)
 - A workflow that is not yet on the default branch cannot be dispatched, and the provenance check
   refuses any tag outside `main` history. **There is therefore no pre-merge live run.** The live
   evidence comes after merge, in this order:
   1. The owner tags the first real `v0.8.0` on `main` and dispatches. The run must stage a draft
      whose downloaded asset reports `id name StratChess 0.8.0` and passes `Test-StandaloneExe.ps1`
      on the dev machine.
-  2. A re-dispatch of the same tag replaces only the asset and leaves the notes alone.
+  2. A re-dispatch of the same tag fails in `stage` without writing, while the draft exists.
   3. A dispatch with `v9.9.9` (no such tag) must fail before any build. Version mismatch is
      covered by the fixtures only; the owner declined a live check, which would need a junk tag.
   4. Record the job's duration (A7 draft path, A8).
@@ -458,7 +465,7 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
 | D5 measured nps and size change | `Measurements/local.md` row, headline in `Docs/Changelog.md` |
 | D6 allowlist reasons, UCI filesystem fact | `Test-StandaloneExe.ps1` help; `Docs/EngineGuide.md` → Logging and runtime files |
 | D7 dispatch, draft, retry, never-overwrite | `Docs/Releasing.md`; `release.yml` comments; `Docs/CI.md` |
-| D7 publication rule behind I8; recovery from a failed upload | `Docs/Releasing.md`; `release_stage.py` header |
+| D7 create-only staging behind I8; retry by deleting the draft | `Docs/Releasing.md`; `release.yml` header |
 | D9 supported UCI contract | `Docs/EngineGuide.md` → Versions and requirements |
 | `uci-facing` rule | `open-pull-request` skill |
 
