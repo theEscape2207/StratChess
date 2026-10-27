@@ -52,6 +52,8 @@ comparable with a Linux CI row**: different compiler, different machine, differe
 | 2026-10-19 | 719af11 (Threads=8, #850) | 719af11 (Threads=4) | 500 | 10+0.1 | 71.89 +/- 21.51 | gain |
 | 2026-10-19 | 719af11 (Threads=2, #850, re-run) | 719af11 (Threads=1) | 500 | 10+0.1 | 76.98 +/- 21.98 | gain |
 | 2026-10-21 | f7fde424 GCC/WSL, `kernelCommandLine=quiet loglevel=0 audit=0 mitigations=off vsyscall=none` (nps, #773) | same binary, default WSL kernel command line | n/a (bench) | depth 13 | n/a (ON vs OFF -0.15% / +0.05% on the clean runs) | calibration |
+| 2026-10-27 | f6df18e static CRT, `/MT` (nps, #924) | **merge-base `main` @ 98460b79** (`/MD`) | n/a (bench) | depth 13 | n/a (-1.55% [-1.73, -1.37] vs baseline arm) | regression |
+| 2026-10-27 | 0466b7f7 hybrid CRT, `/MT` + Windows UCRT (nps, #924) | **merge-base `main` @ 98460b79** (`/MD`) | n/a (bench) | depth 13 | n/a (+0.13% [-0.04, +0.31] vs baseline arm) | non-regression |
 
 ## Row detail
 
@@ -272,3 +274,21 @@ One GCC 15.2 Release build of f7fde424, benched by `Compare-BenchLinux.ps1 -Base
 | 4 | OFF | 3,169,169 / 3,292,758 / 3,273,523 | 3,245,150 | +2.33% [-0.30, +5.02] |
 
 **No measurable effect.** The two ON runs (3,302,591 and 3,309,244) bracket the clean OFF run (3,307,438). Run 4 was disturbed: its baseline arm sits 3.7% below its own two other arms, which are copies of the same binary. Do not read its mean, which would make ON look +0.9% faster. The search makes almost no syscalls, so the syscall-heavy cost reported for the default mitigations (+47% on a Go build in microsoft/WSL issue 14526) does not show up in nps. Any effect is well inside the ~1% A/A spread.
+
+### 2026-10-27 -- static and hybrid C runtime vs `/MD`, 98460b79 (#924 slice 2)
+
+Both rows are `Compare-Bench.ps1 -Control -Rounds 60 -Affinity 4` against a `build.ps1 main` of
+98460b79, on an idle machine. Nodes and best moves were identical in every run. Exe sizes:
+3,612,672 bytes (`/MD`), 3,970,560 (static), 3,741,696 (hybrid).
+
+| Candidate | vs baseline | vs geomean(baseline, control) | A/A |
+|---|---|---|---|
+| static `/MT` | -1.55% [-1.73, -1.37] | -1.58% [-1.75, -1.41] | +0.05% [-0.18, +0.29] |
+| hybrid | +0.13% [-0.04, +0.31] | +0.71% [+0.54, +0.88] | -1.14% [-1.31, -0.97] |
+
+**The static UCRT costs 1.6%, about 1% of it after placement; the hybrid costs nothing
+measurable.** Three random `/order` relinks of the static exe moved it +0.4 to +0.7%, so placement
+explains part of its loss but not all of it. A CPU profile found no CRT hot spot. The hybrid's A/A disagreed by 1.14%, so its
+geomean figure is not a speedup; read it against the baseline arm. Reference binaries built
+before this change (`elo-reference-v2`, earlier merge bases) are `/MD`, so a local Elo row against
+them also crosses the CRT boundary.
