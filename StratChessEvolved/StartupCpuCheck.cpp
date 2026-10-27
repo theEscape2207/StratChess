@@ -9,6 +9,9 @@
 //  - Call nothing that the compiler emits as shared inline code: STL, and the <stdio.h> inline
 //    wrappers (fprintf, for one). The linker may resolve such a COMDAT to an AVX2-compiled copy from
 //    another object, as it did for basic_ios::init. fputs and _Exit are plain library functions.
+// A dropped flag or a moved table entry leaves a green build, so check the linked exe: this entry
+// must sit in the linker map's __xi_a..__xi_z table (the CRT runs it before __xc_a..__xc_z), and
+// llvm-objdump of everything it reaches must show no VEX or BMI instruction.
 #include "CpuCheck.h"
 #include <cstdio>
 #include <cstdlib>

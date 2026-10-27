@@ -1,6 +1,6 @@
 // CpuCheckTests.cpp -- Catch2 [cpu] tests for the startup CPU check's decision logic: the verdict
 // over raw CPUID words, the diagnostic wording, and the host read. The pre-main hook itself cannot be
-// unit-tested; its placement is verified on the linked exe (see .claude/plans/startup-cpu-check.md).
+// unit-tested; its placement is verified on the linked exe (see StratChessEvolved/StartupCpuCheck.cpp).
 
 #include <catch2/catch_test_macros.hpp>
 #include "CpuCheck.h"
@@ -165,8 +165,8 @@ TEST_CASE("CpuCheck: PEXT is slow on AMD family 17h only", "[cpu]")
 	SECTION("Intel Haswell is not") { REQUIRE_FALSE(Assess(haswell()).slow_pext); }
 	SECTION("the extended family counts only when the base family is 0xF")
 	{
-		// Base family 6 with extended family 8 is family 6, not 0xE.
-		const uint32_t eax = 0x00800600;
+		// Base family 6 with extended family 0x11 is family 6; summing them would make 0x17.
+		const uint32_t eax = 0x01100600;
 		REQUIRE_FALSE(Assess(ryzen(eax)).slow_pext);
 	}
 }
