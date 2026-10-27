@@ -27,6 +27,10 @@ class UciHandler {
 	/// Returns false if the file could not be opened, in which case nothing is logged.
 	bool EnableCommandLog(const std::string& filename);
 
+	/// A diagnostic for the GUI (the CPU warning): sent as one 'info string' after 'uciok' on every
+	/// 'uci'. Empty, the default, sends nothing.
+	void SetStartupNotice(std::string notice) { startup_notice_ = std::move(notice); }
+
 	/// Default log path for EnableCommandLog. The process id is part of the name because a match
 	/// at -Concurrency 6 runs six engines from one working directory, and spdlog's file sink is
 	/// thread-safe but not process-safe — one shared path yields interleaved or truncated files.
@@ -82,6 +86,7 @@ class UciHandler {
 	std::unique_ptr<AIPerplex> ai_;     // never null
 	Evaluator eval_;                    // never configured, so it reports untinted scores; see Eval.h
 	std::shared_ptr<UciWriter> writer_; // never null
+	std::string startup_notice_;
 
 	// Null unless EnableCommandLog() succeeded. Owned here and nowhere else — it is deliberately
 	// not registered with spdlog (see Logger::CreateUciCommandLogger), so the file is closed when

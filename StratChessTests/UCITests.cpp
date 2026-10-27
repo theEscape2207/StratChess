@@ -310,6 +310,35 @@ TEST_CASE("cmd_uci: id name carries the engine version", "[uci]")
 	REQUIRE(lines.front() == "id name StratChess " + version);
 }
 
+TEST_CASE("cmd_uci: a startup notice is an info string after uciok, never inside the handshake", "[uci][cpu]")
+{
+	UciHandlerTestFixture fix;
+	fix.handler.SetStartupNotice("PEXT is slow on this CPU");
+	const auto lines = split_lines(fix.capture([&] { fix.uci(); }));
+
+	const auto uciok = std::ranges::find(lines, "uciok");
+	const auto notice = std::ranges::find(lines, "info string PEXT is slow on this CPU");
+	REQUIRE(uciok != lines.end());
+	REQUIRE(notice != lines.end());
+	REQUIRE(notice > uciok);
+	REQUIRE(std::ranges::count(lines, "info string PEXT is slow on this CPU") == 1);
+
+	// Everything the protocol puts before uciok is an id or option line.
+	for (auto line = lines.begin(); line != uciok; ++line)
+		REQUIRE((line->starts_with("id ") || line->starts_with("option ")));
+}
+
+TEST_CASE("cmd_uci: with no startup notice the handshake carries no extra info string", "[uci][cpu]")
+{
+	UciHandlerTestFixture fix;
+	const auto lines = split_lines(fix.capture([&] { fix.uci(); }));
+
+	const auto info_strings =
+	    std::ranges::count_if(lines, [](const std::string& line) { return line.starts_with("info "); });
+	REQUIRE(info_strings == 1); // benchcontract
+	REQUIRE(lines.back().starts_with("info string benchcontract "));
+}
+
 TEST_CASE("AIPerplex default Hash reports its packed geometry", "[uci][tt]")
 {
 	// The real default table: this test pins its geometry.

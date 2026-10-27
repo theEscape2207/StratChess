@@ -115,6 +115,7 @@ Nightly's `coverage` job publishes the same report for `main` (`Docs/CI.md` → 
 | Board public query APIs + FEN round-trip | `[board_api]` | `BoardApiTests.cpp` |
 | Time management (TimeManager + compute_budget) | `[time_mgr]` | `TimeManagerTests.cpp` |
 | Sliding-piece attack generation (PEXT) | `[magic]` | `MagicBitboardTests.cpp` |
+| Startup CPU check: verdict over raw CPUID words, message wording, the host read; the UCI notice placement is `[uci][cpu]` in `UCITests.cpp` | `[cpu]` | `CpuCheckTests.cpp` (the pre-main hook is not unit-testable: checked on the linked exe, `.claude/plans/startup-cpu-check.md` Assumptions) |
 | Bitboard helpers (set_bits/clear_bits/print_bitboard) | `[bitboard]` | `BitBoardHelperTests.cpp` |
 | UCI command loop | `[uci]` | `UCITests.cpp`, `UCIEvalTests.cpp`, `UCIPerftTests.cpp`, `UCIGoReportingTests.cpp`, `UCIGoStopTests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
 | FEN parsing (FenBatch, FENParser, Board::SetupFromFEN/Board(fen)) | `[fen]` | `FenParsingTests.cpp` |

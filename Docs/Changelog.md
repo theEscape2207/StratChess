@@ -23,6 +23,18 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-27: Startup CPU check for AVX2/BMI2 and slow PEXT (#928)
+
+### Added
+- The engine exe checks the CPU before any other code runs. Without AVX2 or BMI2 (or with an OS that
+  does not save AVX state) it prints a `Fatal:` line naming the feature on stderr and exits 1,
+  where it used to die on an illegal instruction with no message. On AMD family 17h (Zen 1/2),
+  where PEXT is microcoded, it warns on stderr and with one `info string` after `uciok`.
+- The check cannot live in `main` or in a C++ static initializer: the iostream initializers
+  already execute AVX2 code (the linker takes this repo's COMDAT copy of `basic_ios::init`). It sits
+  in the CRT's C initializer table (`.CRT$XIU`; constructor priority 101 on GCC), in two
+  translation units built with `-mno-avx -mno-avx2 -mno-bmi -mno-bmi2`.
+
 ## 2026-10-27: Release notes: Highlights and the generated PR list (#924)
 
 ### Changed

@@ -41,10 +41,14 @@ initializers run before it. Measured on the pre-change Release exe: `??__EkLmrLn
 table, `.CRT$XCU`) executes `vcvtsi2sd`/`vmovsd` before `main`. A check at the top of `main` is too
 late for any CPU without AVX.
 
-Chosen: `#pragma init_seg(compiler)` on clang-cl (`.CRT$XCC`, which the CRT runs before the user
-`.CRT$XCU` group) and `__attribute__((constructor(101)))` on GCC/clang (before every default-priority
-constructor). Rejected: top of `main` (above), and `.CRT$XI*` C initializers (undocumented
-spelling, no GCC counterpart).
+A C++ hook is too late as well, even the earliest group. `#pragma init_seg(compiler)` (`.CRT$XCC`)
+landed after the iostream initializers in the same group, and those run `std::basic_ios::init`, whose
+linked copy is the AVX2 one from this repo's objects (the linker took our COMDAT over libcpmt's).
+
+Chosen: an entry in the CRT's C initializer table, `.CRT$XIU` on clang-cl. `mainCRTStartup` calls
+`_initterm_e(__xi_a, __xi_z)` before `_initterm(__xc_a, __xc_z)`, so it precedes every C++ initializer.
+On GCC/clang, `__attribute__((constructor(101)))`, ahead of every default-priority constructor.
+Rejected: top of `main`; `init_seg(compiler)` (above).
 
 ### D2: the check lives in two translation units built with `-mno-avx -mno-avx2 -mno-bmi -mno-bmi2`
 
@@ -77,8 +81,11 @@ running them.
 - A CPU without AVX2/BMI2 behaves as the check assumes (no machine at hand; Intel SDE is not
   installed). Verified instead by: unit tests over synthetic register values, and a temporary build
   whose `ReadCpu()` reports the feature missing, run to confirm the line, exit code 1 and an empty stdout.
-- The CRT runs `.CRT$XCC` before `.CRT$XCU`. Verified from the linked exe: the position of the hook
-  in the `__xc_a`..`__xc_z` table, and an instruction scan of every initializer before it.
+- The CRT runs the C initializer table before the C++ one, and the Windows-side code before the
+  table (loader, TLS callbacks) is the OS's and libcmt's. Verified from the linked exe: the
+  `_initterm_e`/`_initterm` call order in `mainCRTStartup`, the hook's position in the `__xi` table, and an
+  instruction scan of everything reachable from `mainCRTStartup` (up to `main`) and from each earlier
+  initializer. The Linux ordering (priority 101) is documented GCC behaviour, not measured here.
 
 ## Invariants
 

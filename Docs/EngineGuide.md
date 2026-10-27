@@ -266,6 +266,12 @@ later but no VC++ Redistributable or other runtime install. It imports only `KER
 Windows API sets. `Scripts/Test-StandaloneExe.ps1` checks both
 and the files below.
 
+At startup, before any engine code runs, the engine checks the CPU for AVX2 and BMI2. Without either it
+prints one `Fatal:` line on stderr that names the missing feature and exits with code 1, instead of
+dying on an illegal instruction. On an AMD Zen 1 or Zen 2 CPU (family 17h), where PEXT is microcoded
+and the engine runs far below its normal speed, it warns once on stderr and, after `uciok`, with one
+`info string` line.
+
 Released builds are on the repository's GitHub Releases page as
 `StratChess-X.Y.Z-windows-x64.exe`. To be notified, use Watch → Custom → Releases, or subscribe to
 `https://github.com/theEscape2207/StratChess/releases.atom`. How a release is made:
