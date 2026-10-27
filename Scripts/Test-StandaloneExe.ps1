@@ -8,9 +8,8 @@
 
       1. Imports. `llvm-objdump -p` on the exe, located through vswhere under
          VC\Tools\Llvm\x64\bin (the ARM64 copy does not run on an x64 host). Every
-         `DLL Name` must be on $AllowedImports. An unlisted import fails, so a VC++
-         Redistributable DLL (MSVCP*, VCRUNTIME*) or a UCRT forwarder (api-ms-win-crt-*)
-         fails too. Zero parsed imports also fails: it means the parse broke.
+         `DLL Name` must match $AllowedImports. An unlisted import fails, so a VC++
+         Redistributable DLL (MSVCP*, VCRUNTIME*) fails too. Zero parsed imports also fails: it means the parse broke.
       2. Empty-directory UCI smoke. The exe is copied alone into a fresh temporary
          directory and started there with no arguments -- UCI mode, as a GUI launches it.
          UciDriver.ps1 drives uci, isready, position startpos, go depth -Depth, quit and
@@ -62,9 +61,8 @@ $AllowedImports = @(
     # WaitOnAddress / WakeByAddressAll, for the static STL's std::atomic::wait. A Windows API
     # set resolved by the OS loader since Windows 8, not a redistributable.
     'api-ms-win-core-synch-l1-2-0.dll'
-    # The Universal CRT. Part of Windows since Windows 10; Release links it dynamically because
-    # the static UCRT cost nps.
-    'api-ms-win-crt-*-l1-1-0.dll'
+    # The Universal CRT's API sets. Part of Windows since Windows 10, not a redistributable.
+    'api-ms-win-crt-*.dll'
 )
 
 function Get-DllImport {

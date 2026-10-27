@@ -30,7 +30,7 @@ owner-initiated, repeatable procedure.
 **This change will:**
 
 - give the binary one version identity, reported in `id name` (slice 1);
-- link the C runtime statically in every Windows configuration, validated for search equivalence
+- link the C runtime statically in every Windows configuration (Release: hybrid, D5), validated for search equivalence
   and speed (slice 2);
 - add a reusable standalone-exe check (DLL imports + empty-directory UCI smoke) (slice 2);
 - add a manual-dispatch release workflow that stages a **draft** Release, plus the maintainer and
@@ -158,8 +158,8 @@ binaries would differ.
   as they are. `/Z7` is independent of the runtime choice.
 - **Sanitizers:** no Windows configuration exists to affect. `STRAT_SANITIZE` and
   `STRAT_STDLIB_DEBUG` are refused on clang-cl (the `FATAL_ERROR`s in `CMakeLists.txt`).
-- **Coverage** inherits `/MT` through `windows-clang-cl-coverage`. Whether the profile runtime
-  links against it is unverified (A3).
+- **Coverage** inherits `/MT` through `windows-clang-cl-coverage`, and the hybrid with it. Whether
+  the profile runtime links against it is unverified (A3).
 - **ccache:** `/MT` replaces `/MD` on every compile line, so each local tree and each Windows CI
   key (`ccache-windows-clang-cl-{release,debug}`, Nightly's `-release`) misses once and then runs
   warm again. Nothing in the `/showIncludes` depfile override or the `base_dir` guard depends on the
@@ -226,7 +226,7 @@ with `cancel-in-progress: false`. Every job sets `timeout-minutes` (`Test-Workfl
    `STRAT_RELEASE` reached the build and that the tag matches the built version.
 7. Upload `StratChess-X.Y.Z-windows-x64.exe` (a renamed copy) plus a generated
    `release-notes.md` skeleton as a workflow artifact. The skeleton holds:
-   - the requirements line ("x64 Windows, CPU with AVX2 + BMI2. Single .exe, no runtime install.");
+   - the requirements line ("Windows 10+ x64, CPU with AVX2 + BMI2. Single .exe, no runtime install.");
    - the source SHA, `clang-cl --version` and the runner image;
    - empty *Integration impact*, *Strength* and *Fixes* headings for the owner to fill in.
 
@@ -265,7 +265,7 @@ step the issue approved.
 
 | File | Change | Slice |
 |---|---|---|
-| `Docs/EngineGuide.md` | New "Versions and requirements" section: `id name` format and what `+<hash>`/`+unknown` mean; AVX2 + BMI2, x64 Windows, single exe, no runtime install; UCI reads and writes nothing beside the exe, `--log-commands` paths as in D6; subscribing via Watch → Custom → Releases or `/releases.atom`; the D9 contract | 1 (identity), 2 (requirements, files), 3 (subscribe, D9 contract — moved from slice 1 in implementation so the contract lands with the release docs) |
+| `Docs/EngineGuide.md` | New "Versions and requirements" section: `id name` format and what `+<hash>`/`+unknown` mean; AVX2 + BMI2, Windows 10+ x64, single exe, no runtime install; UCI reads and writes nothing beside the exe, `--log-commands` paths as in D6; subscribing via Watch → Custom → Releases or `/releases.atom`; the D9 contract | 1 (identity), 2 (requirements, files), 3 (subscribe, D9 contract — moved from slice 1 in implementation so the contract lands with the release docs) |
 | `Docs/Releasing.md` (new) | Maintainer procedure: bump `project(VERSION)` in a PR, merge, confirm green, tag `vX.Y.Z` on that `main` commit, dispatch `release.yml`, curate notes from `uci-facing` PRs and Changelog headlines, then publish. Strength lines only with a linked measurement (reference, conditions, interval); lab GCC rows are labelled as GCC. Retry and defective-release handling as in D7 | 3 |
 | `Docs/CI.md` | New `release.yml` section and an index row; the generated-version exclusion in "Input identity" (D4) | 1, 3 |
 | `Docs/Workflow.md` | Raw-CMake preset list gains `windows-clang-cl-publish`; one line that Windows builds link the CRT statically | 2, 3 |
@@ -301,7 +301,8 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
   custom commands with `BYPRODUCTS` under Ninja, so an unchanged file recompiles nothing. Taken from
   CMake's documentation, not observed. Settled by A1's third build reporting no compile edge.
 - **A3: the coverage runtime links under `/MT`.** clang-cl's `clang_rt.profile` is assumed to link
-  against the static CRT. Settled in slice 2 by one `Get-Coverage.ps1` run.
+  against the static CRT. Settled in slice 2 by one `Get-Coverage.ps1` run, under `/MT` and again
+  under the hybrid.
 - **A4: static CRT has no meaningful nps effect.** The hot path calls little CRT code (UCRT `malloc`
   and `memcpy` are the same code either way), but placement moves. Settled by slice 2's bench (Validation):
   false for the static UCRT (−1.58%), true for the hybrid (D5 amendment).

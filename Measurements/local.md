@@ -52,8 +52,8 @@ comparable with a Linux CI row**: different compiler, different machine, differe
 | 2026-10-19 | 719af11 (Threads=8, #850) | 719af11 (Threads=4) | 500 | 10+0.1 | 71.89 +/- 21.51 | gain |
 | 2026-10-19 | 719af11 (Threads=2, #850, re-run) | 719af11 (Threads=1) | 500 | 10+0.1 | 76.98 +/- 21.98 | gain |
 | 2026-10-21 | f7fde424 GCC/WSL, `kernelCommandLine=quiet loglevel=0 audit=0 mitigations=off vsyscall=none` (nps, #773) | same binary, default WSL kernel command line | n/a (bench) | depth 13 | n/a (ON vs OFF -0.15% / +0.05% on the clean runs) | calibration |
-| 2026-10-27 | f6df18e static CRT, `/MT` (nps, #924) | **merge-base `main` @ 98460b79** (`/MD`) | n/a (bench) | depth 13 | n/a (-1.58% [-1.75, -1.41]) | regression |
-| 2026-10-27 | 0466b7f7 hybrid CRT, `/MT` + Windows UCRT (nps, #924) | **merge-base `main` @ 98460b79** (`/MD`) | n/a (bench) | depth 13 | n/a (+0.13% [-0.04, +0.31]) | non-regression |
+| 2026-10-27 | f6df18e static CRT, `/MT` (nps, #924) | **merge-base `main` @ 98460b79** (`/MD`) | n/a (bench) | depth 13 | n/a (-1.55% [-1.73, -1.37] vs baseline arm) | regression |
+| 2026-10-27 | 0466b7f7 hybrid CRT, `/MT` + Windows UCRT (nps, #924) | **merge-base `main` @ 98460b79** (`/MD`) | n/a (bench) | depth 13 | n/a (+0.13% [-0.04, +0.31] vs baseline arm) | non-regression |
 
 ## Row detail
 
@@ -286,9 +286,9 @@ Both rows are `Compare-Bench.ps1 -Control -Rounds 60 -Affinity 4` against a `bui
 | static `/MT` | -1.55% [-1.73, -1.37] | -1.58% [-1.75, -1.41] | +0.05% [-0.18, +0.29] |
 | hybrid | +0.13% [-0.04, +0.31] | +0.71% [+0.54, +0.88] | -1.14% [-1.31, -0.97] |
 
-**The static UCRT costs about 1%; the hybrid costs nothing measurable.** Three random `/order`
-relinks of the static exe moved it +0.4 to +0.7%, so placement explains part of its loss but not
-all of it. A CPU profile found no CRT hot spot. The hybrid's A/A disagreed by 1.14%, so its
+**The static UCRT costs 1.6%, about 1% of it after placement; the hybrid costs nothing
+measurable.** Three random `/order` relinks of the static exe moved it +0.4 to +0.7%, so placement
+explains part of its loss but not all of it. A CPU profile found no CRT hot spot. The hybrid's A/A disagreed by 1.14%, so its
 geomean figure is not a speedup; read it against the baseline arm. Reference binaries built
 before this change (`elo-reference-v2`, earlier merge bases) are `/MD`, so a local Elo row against
 them also crosses the CRT boundary.

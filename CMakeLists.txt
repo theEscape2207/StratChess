@@ -55,10 +55,10 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 # Ignored by every non-MSVC-frontend toolchain, so the Linux builds do not see it.
 set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
 
-# Static C runtime, so the exe needs no VC++ Redistributable (Release takes the UCRT from Windows:
-# see the /DEFAULTLIB:ucrt.lib link line). Here, not in a preset, which never reaches an existing
-# build tree. Must precede FetchContent_MakeAvailable: Catch2's runtime has to
-# agree, and a mismatch fails the link with LNK2038. Ignored by non-MSVC-ABI toolchains.
+# Static C++ runtime and vcruntime, so the exe needs no VC++ Redistributable; Release then takes the
+# UCRT from Windows (the ucrt.lib link line below). Here, not in a preset, which never reaches an
+# existing build tree. Must precede FetchContent_MakeAvailable: Catch2's runtime has to agree, and
+# a mismatch fails the link with LNK2038. Ignored by non-MSVC-ABI toolchains.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # Consumed by clangd, VS Code, Zed and coding agents. Costs nothing to emit.
@@ -334,9 +334,8 @@ function(strat_configure_target tgt)
         # Recursive search needs headroom for retained frames and compiler-dependent scratch.
         # Reserve 8 MiB for executable and worker stacks; leave initial commitment unchanged.
         target_link_options(${tgt} PRIVATE /STACK:8388608)
-        # Hybrid CRT: the C++ runtime and vcruntime stay static, the UCRT comes from Windows 10+.
-        # The fully static UCRT cost 1.6% nps; this measured even with /MD. Debug keeps libucrtd,
-        # whose DLL is no OS component.
+        # Hybrid CRT: the UCRT comes from Windows 10+, where it is an OS component. Debug keeps the
+        # static libucrtd, since the debug UCRT DLL ships with no Windows.
         target_link_options(${tgt} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:/NODEFAULTLIB:libucrt.lib>"
             "$<$<NOT:$<CONFIG:Debug>>:/DEFAULTLIB:ucrt.lib>")
     endif()

@@ -26,9 +26,9 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 ## 2026-10-27: Static C++ runtime, standalone exe (#924, slice 2)
 
 ### Changed
-- Every Windows configuration links the C runtime statically (`/MT`, `/MTd`), so the engine runs
-  without the VC++ Redistributable. Release takes the Universal CRT from Windows 10+ instead
-  (`/NODEFAULTLIB:libucrt.lib`, `ucrt.lib`): the fully static UCRT cost 1.6% nps. It imports only
+- Every Windows configuration links the C++ runtime and vcruntime statically (`/MT`, `/MTd`), so
+  the engine runs without the VC++ Redistributable. Release takes the Universal CRT from Windows
+  10+ (`/NODEFAULTLIB:libucrt.lib`, `ucrt.lib`); a fully static UCRT cost 1.6% nps. It imports only
   `KERNEL32.dll`, `api-ms-win-core-synch-l1-2-0.dll` (`WaitOnAddress`, for `std::atomic::wait`)
   and the `api-ms-win-crt-*` UCRT API sets. Set in
   `CMakeLists.txt`, not a preset, because a preset edit never reaches an existing build tree; one
@@ -40,8 +40,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   argument for it.
 
 ### Results
-- Hybrid vs `/MD`: No slowdown, +0.13% [-0.04, +0.31] nps (60-round control, node-identical).
-  The fully static build measured -1.58% [-1.75, -1.41]. Exe 3.61 MB to 3.74 MB.
+- Hybrid CRT vs `/MD`: No slowdown, +0.13% [-0.04, +0.31] nps, node-identical
+  (`Measurements/local.md`, 2026-10-27).
 
 ## 2026-10-26: Version in UCI id name (#924, slice 1)
 
