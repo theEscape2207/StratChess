@@ -40,7 +40,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   argument for it.
 
 ### Results
-- BENCH_PLACEHOLDER
+- Hybrid vs `/MD`: No slowdown, +0.13% [-0.04, +0.31] nps (60-round control, node-identical).
+  The fully static build measured -1.58% [-1.75, -1.41]. Exe 3.61 MB to 3.74 MB.
 
 ## 2026-10-26: Version in UCI id name (#924, slice 1)
 
