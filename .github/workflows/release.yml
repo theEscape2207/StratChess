@@ -34,13 +34,15 @@ jobs:
         shell: pwsh
     outputs:
       version: ${{ steps.check.outputs.version }}
+      commit: ${{ steps.check.outputs.commit }}
     env:
       # Through env, never interpolated into a script: the input is free text.
       TAG: ${{ inputs.tag }}
     steps:
       - name: Check tag shape
         run: |
-          if ($env:TAG -cnotmatch '^v\d+\.\d+\.\d+$') {
+          # \z, not $: .NET's $ also accepts a trailing newline.
+          if ($env:TAG -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+\z') {
             Write-Error "Tag '$env:TAG' is not vX.Y.Z."
             exit 1
           }
@@ -69,9 +71,11 @@ jobs:
             exit 1
           }
           "version=$version" >> $env:GITHUB_OUTPUT
+          "commit=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
 
       # Uncached, like Nightly's extended-tests: a wrong cached object must not reach
-      # the shipped binary. -Publish is the windows-clang-cl-publish preset, Release
+      # the shipped binary. build.ps1 adds no compiler cache under GITHUB_ACTIONS, and
+      # this job sets up none. -Publish is the windows-clang-cl-publish preset, Release
       # with STRAT_RELEASE=ON.
       - name: Build
         run: .\build.ps1 all -Publish
@@ -135,11 +139,22 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TAG: ${{ inputs.tag }}
       VERSION: ${{ needs.build.outputs.version }}
+      BUILT_COMMIT: ${{ needs.build.outputs.commit }}
     steps:
       - uses: actions/download-artifact@v8
         with:
           name: release
           path: dist
+
+      # The tag must still name the commit `build` compiled, or the asset would ship
+      # under a release for a different commit.
+      - name: Refuse a moved tag
+        run: |
+          tagged=$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)
+          if [ "$tagged" != "$BUILT_COMMIT" ]; then
+            echo "::error::$TAG now points at $tagged, but $BUILT_COMMIT was built."
+            exit 1
+          fi
 
       # A write token lists drafts too, which a read token cannot see.
       - name: Refuse an existing release

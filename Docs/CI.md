@@ -501,7 +501,8 @@ a tag or a release, and nothing triggers it automatically. The maintainer proced
   `-ExpectedId "StratChess X.Y.Z"`, which proves both that `STRAT_RELEASE` reached the build and
   that the binary is the tagged version. Uploads the asset and a release-notes skeleton.
 - **`stage`** (`ubuntu-26.04`, `contents: write`, 10 min). The only job with a write token, and it
-  runs no project code. It fails if any release already exists for the tag, draft or published:
+  runs no project code. It fails if the tag no longer names the commit `build` compiled, or if any
+  release already exists for the tag, draft or published:
   only a write token can see drafts. Otherwise it runs `gh release create --draft --verify-tag`.
   Because it only ever creates, nothing races the owner's publish, and no asset is ever replaced.
 

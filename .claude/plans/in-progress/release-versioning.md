@@ -268,7 +268,12 @@ holds without the publication rule. `release_stage.py` and its fixtures are drop
 version and ancestry checks are inline in `build`, and the existence check is inline in `stage`.
 `build`'s early read-token check for a published release (step 3) is dropped as well, since
 `stage` refuses one anyway. Cost: no pre-merge fixture coverage; the first `v0.8.0` dispatch is
-the evidence.
+the evidence. Where the text above names `--clobber`, `release_stage.py` or fixtures, this
+amendment supersedes it. Smaller changes made in implementation:
+- `stage` runs on `ubuntu-26.04`, the repository's pinned image, not `ubuntu-latest`.
+- The notes take the compiler version from CMake's detection (`CMAKE_CXX_COMPILER_VERSION`), since
+  `clang-cl` is not on a later step's `PATH`.
+- `build` outputs the commit it compiled, and `stage` refuses a tag that has moved since.
 
 ### D8: Documentation touchpoints
 
@@ -324,7 +329,6 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
   trace.
 - **A7: GitHub behaves as D7 assumes.** That covers four things:
   - a draft's assets stay invisible to `/releases.atom` until publication;
-  - `gh release upload --clobber` works on a draft;
   - `--verify-tag` refuses a missing tag;
   - the release page shows each asset's digest (owner amendment 4);
   - `workflow_dispatch` needs the workflow file on the default branch. This last one is taken from
@@ -420,11 +424,11 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
      on the dev machine.
   2. A re-dispatch of the same tag fails in `stage` without writing, while the draft exists.
   3. A dispatch with `v9.9.9` (no such tag) must fail before any build. Version mismatch is
-     covered by the fixtures only; the owner declined a live check, which would need a junk tag.
+     has no live check; the owner declined one, which would need a junk tag.
   4. Record the job's duration (A7 draft path, A8).
 - After the owner's first publication: a re-dispatch of `v0.8.0` must fail without writing (I8),
   and the feed and digest are checked (A7). The publication itself is the owner's act.
-- **Acceptance:** the PR merges on the fixtures plus the workflow guards. The slice closes once
+- **Acceptance:** the PR merges on the local emulation plus the workflow guards. The slice closes once
   steps 1–3 pass on `v0.8.0`. A failure there is fixed by a follow-up PR before publication.
 
 ## Cost
@@ -436,7 +440,7 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
   |---|---|---|
   | 1 | 100–150 | `CMakeLists.txt`, two `cmake/` files, `Version.h`, `UCIHandler.cpp`, one test, EngineGuide, CI.md, Changelog |
   | 2 | 180–280 | one `CMakeLists.txt` line, `Test-StandaloneExe.ps1` with its self-test, the `UciDriver.ps1` launch argument, a `Get-ChangeTier.ps1` Build entry with a self-test case, EngineGuide, Workflow.md, Measurements, Changelog |
-  | 3 | 250–380 | `release.yml`, `release_stage.py` with fixtures, a `CMakePresets.json` preset, the `build.ps1` switch, `Releasing.md`, CI.md, EngineGuide, the skill line, Changelog |
+  | 3 | 250–380 | `release.yml`, a `CMakePresets.json` preset, the `build.ps1` switch, `Releasing.md`, CI.md, EngineGuide, the skill line, Changelog |
 
 - **Blast radius:**
   - Slice 1 is Engine tier: every build gains the version step, and every commit relinks both exes.

@@ -285,8 +285,8 @@ The rules cover:
 - the `info` fields that [Interpret search output](#interpret-search-output) defines;
 - the `bestmove` line.
 
-Every other advertised option, meaning the search tuning options `LmrLogBase` … `StabilityTimeFloor`, is an **unsupported tuning
-control**. Any MINOR may rename or remove one, so a UI must not depend on it. `info string` lines
+Every other advertised option, meaning the search tuning options `LmrLogBase` …
+`StabilityTimeFloor`, is an **unsupported tuning control**. Any MINOR may rename or remove one, so a UI must not depend on it. `info string` lines
 are diagnostics and not part of the contract.
 
 ## Logging and runtime files

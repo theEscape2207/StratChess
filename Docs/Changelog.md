@@ -36,10 +36,6 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   UCI contract and release subscription in `Docs/EngineGuide.md`. The `open-pull-request` skill
   now labels client-visible PRs `uci-facing`.
 
-### Changed
-- The design's Python staging helper with fixtures and its re-upload path (`--clobber` on a draft)
-  were dropped in favour of inline checks and create-only staging. A retry deletes the draft first.
-
 ## 2026-10-27: Static C++ runtime, standalone exe (#924, slice 2)
 
 ### Changed

@@ -6,10 +6,10 @@ workflow mechanics are in [CI.md](CI.md#release-releaseyml). What a version numb
 
 ## Procedure
 
-1. **Bump the version in a PR.** Edit `project(StratChess VERSION X.Y.Z ...)` in `CMakeLists.txt`.
-   Before 1.0, a breaking change, an additive feature or a measured strength gain is MINOR, and a
-   fix is PATCH. Merge the PR once CI is green.
-2. **Tag that commit on `main`:**
+1. **Bump the version in a PR.** Edit `project(StratChess VERSION X.Y.Z ...)` in `CMakeLists.txt`,
+   choosing MINOR or PATCH by the rules in the
+   [supported UCI contract](EngineGuide.md#supported-uci-contract). Merge the PR once CI is green.
+2. **Confirm `main` is green after the merge**, then tag that commit:
    ```
    git fetch origin
    git tag vX.Y.Z origin/main

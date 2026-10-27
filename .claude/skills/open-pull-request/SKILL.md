@@ -149,7 +149,8 @@ lacks.
   Notes lists each rejected finding on its own line: the finding in a few words, then the reason.
 - **A PR a UCI client can observe** gets `gh pr edit <n> --add-label uci-facing`: any advertised
   option (tuning options included), `info` output (`info string` too), `bestmove`, the `id` lines,
-  or protocol behaviour. Release notes are curated from this label (`Docs/Releasing.md`).
+  or protocol behaviour. It is a release-notes notification (`Docs/Releasing.md`), broader than
+  the supported UCI contract that decides the version bump.
 - Include motivation, design reasoning and expected impact for anything non-trivial. Keep it short;
   detail goes in chat.
 - Update the body when a follow-up commit fulfils a "will do X later" note in it.
