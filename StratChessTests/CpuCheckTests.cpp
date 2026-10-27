@@ -35,7 +35,7 @@ namespace {
 
 	CpuidSnapshot supported_cpu(uint32_t leaf1_eax, bool amd)
 	{
-		CpuidSnapshot cpu;
+		CpuidSnapshot cpu{};
 		cpu.max_leaf = 0xD;
 		cpu.vendor_ebx = amd ? word("Auth") : word("Genu");
 		cpu.vendor_edx = amd ? word("enti") : word("ineI");
@@ -174,10 +174,10 @@ TEST_CASE("CpuCheck: PEXT is slow on AMD family 17h only", "[cpu]")
 TEST_CASE("CpuCheck: the fatal line names exactly the missing features", "[cpu]")
 {
 	const auto contains = [](const char* text, std::string_view needle) {
-		return text != nullptr && std::string_view(text).find(needle) != std::string_view::npos;
+		return text != nullptr && std::string_view(text).contains(needle);
 	};
 
-	Verdict verdict;
+	Verdict verdict{};
 	REQUIRE(FatalMessage(verdict) == nullptr);
 
 	verdict.avx2_missing = true;
@@ -196,19 +196,28 @@ TEST_CASE("CpuCheck: the fatal line names exactly the missing features", "[cpu]"
 
 TEST_CASE("CpuCheck: every message is one line, since each is sent as one", "[cpu]")
 {
-	Verdict avx2;
+	Verdict avx2{};
 	avx2.avx2_missing = true;
-	Verdict bmi2;
+	Verdict bmi2{};
 	bmi2.bmi2_missing = true;
-	Verdict both;
+	Verdict both{};
 	both.avx2_missing = both.bmi2_missing = true;
+	Verdict slow{};
+	slow.slow_pext = true;
 
-	for (const char* text : {FatalMessage(avx2), FatalMessage(bmi2), FatalMessage(both), SlowPextMessage()}) {
+	for (const char* text : {FatalMessage(avx2), FatalMessage(bmi2), FatalMessage(both), WarningMessage(slow)}) {
 		REQUIRE(text != nullptr);
 		REQUIRE(std::strlen(text) > 0);
-		REQUIRE(std::string_view(text).find('\n') == std::string_view::npos);
+		REQUIRE_FALSE(std::string_view(text).contains('\n'));
 	}
-	REQUIRE(std::string_view(SlowPextMessage()).find("PEXT") != std::string_view::npos);
+	REQUIRE(std::string_view(WarningMessage(slow)).contains("PEXT"));
+}
+
+TEST_CASE("CpuCheck: a verdict with nothing wrong has no warning", "[cpu]")
+{
+	REQUIRE(WarningMessage(Verdict{}) == nullptr);
+	REQUIRE(WarningMessage(Assess(haswell())) == nullptr);
+	REQUIRE(WarningMessage(Assess(ryzen(EAX_AMD_ZEN2_RYZEN))) != nullptr);
 }
 
 TEST_CASE("CpuCheck: the machine running the suite passes its own check", "[cpu]")

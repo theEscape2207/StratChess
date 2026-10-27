@@ -1,5 +1,7 @@
-// CpuCheck.cpp -- compiled WITHOUT -mavx2 -mbmi2; see CpuCheck.h and CMakeLists.txt before adding
-// an include or a call here.
+// CpuCheck.cpp -- compiled WITHOUT -mavx2 -mbmi2; read StartupCpuCheck.cpp before adding an include
+// or a call here. That is why this file includes CpuCheck.h and nothing else, not Common.h, and why
+// CPUID and XGETBV are inline asm: <cpuid.h> and <intrin.h> differ per compiler, and _xgetbv needs
+// -mxsave.
 #include "CpuCheck.h"
 
 namespace CpuCheck {
@@ -16,7 +18,7 @@ namespace CpuCheck {
 		constexpr uint32_t VENDOR_AMD_EDX = 0x69746E65; // "enti"
 		constexpr uint32_t VENDOR_AMD_ECX = 0x444D4163; // "cAMD"
 
-		constexpr uint32_t FAMILY_ZEN_1_2 = 0x17;
+		constexpr uint32_t FAMILY_17H = 0x17; // Zen 1, Zen+ and Zen 2
 
 		struct Regs {
 			uint32_t eax, ebx, ecx, edx;
@@ -48,7 +50,7 @@ namespace CpuCheck {
 
 	CpuidSnapshot ReadCpu() noexcept
 	{
-		CpuidSnapshot cpu;
+		CpuidSnapshot cpu{};
 		const Regs leaf0 = cpuid(0, 0);
 		cpu.max_leaf = leaf0.eax;
 		cpu.vendor_ebx = leaf0.ebx;
@@ -73,13 +75,13 @@ namespace CpuCheck {
 		    (cpu.leaf1_ecx & LEAF1_ECX_OSXSAVE) != 0 && (cpu.xcr0 & XCR0_SSE_AND_YMM) == XCR0_SSE_AND_YMM;
 		const bool cpu_has_avx = (cpu.leaf1_ecx & LEAF1_ECX_AVX) != 0;
 
-		Verdict verdict;
+		Verdict verdict{};
 		verdict.avx2_missing = !(has_leaf7 && (cpu.leaf7_ebx & LEAF7_EBX_AVX2) != 0 && cpu_has_avx && os_saves_ymm);
 		verdict.bmi2_missing = !(has_leaf7 && (cpu.leaf7_ebx & LEAF7_EBX_BMI2) != 0);
 
 		const bool amd =
 		    cpu.vendor_ebx == VENDOR_AMD_EBX && cpu.vendor_edx == VENDOR_AMD_EDX && cpu.vendor_ecx == VENDOR_AMD_ECX;
-		verdict.slow_pext = amd && family_of(cpu.leaf1_eax) == FAMILY_ZEN_1_2;
+		verdict.slow_pext = amd && family_of(cpu.leaf1_eax) == FAMILY_17H;
 		return verdict;
 	}
 
@@ -97,9 +99,11 @@ namespace CpuCheck {
 		return nullptr;
 	}
 
-	const char* SlowPextMessage() noexcept
+	const char* WarningMessage(const Verdict& verdict) noexcept
 	{
-		return "PEXT is slow on this AMD Zen 1/2 CPU (family 17h): StratChess runs correctly but at a fraction of its normal speed.";
+		if (verdict.slow_pext)
+			return "PEXT is slow on this AMD Zen 1/2 CPU (family 17h): StratChess runs correctly but at a fraction of its normal speed.";
+		return nullptr;
 	}
 
 } // namespace CpuCheck

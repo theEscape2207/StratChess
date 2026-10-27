@@ -372,16 +372,6 @@ function(strat_configure_target tgt)
 endfunction()
 
 # ---------------------------------------------------------------------------
-# Targets
-#
-# The engine is compiled into both executables. The test target compiles it with
-# its own defines, so the two sets of objects differ and cannot be shared.
-#
-# Release links the engine with LTO; losing it costs cross-TU inlining silently.
-# The test binary is deliberately left out: it is checked for correctness, not
-# speed, so LTO would only cost build time.
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
 # Startup CPU check
 #
 # These two translation units run the AVX2/BMI2 check, so they must contain neither: the
@@ -397,6 +387,16 @@ set(STRAT_CPU_CHECK_SOURCES
 set_source_files_properties(${STRAT_CPU_CHECK_SOURCES} PROPERTIES
     COMPILE_OPTIONS "-mno-avx;-mno-avx2;-mno-bmi;-mno-bmi2")
 
+# ---------------------------------------------------------------------------
+# Targets
+#
+# The engine is compiled into both executables. The test target compiles it with
+# its own defines, so the two sets of objects differ and cannot be shared.
+#
+# Release links the engine with LTO; losing it costs cross-TU inlining silently.
+# The test binary is deliberately left out: it is checked for correctness, not
+# speed, so LTO would only cost build time.
+# ---------------------------------------------------------------------------
 # StartupCpuCheck.cpp is the engine exe's alone: the test exe has its own main and no use for a
 # stderr warning on every run. CpuCheck.cpp reaches both through ENGINE_SOURCES.
 add_executable(StratChessEvolved
