@@ -23,6 +23,18 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-27: Mate band spans every searchable ply (#305)
+
+### Fixed
+- `GameValues::Mate_Threshold` is now `Mate - MAX_PLY` (29744, was 29900). A mate more than 100 plies
+  from the root scored below the old threshold, so the TT stored and probed it as an ordinary score
+  without rebasing it to the node, and a probe at another ply returned the wrong mate distance. The
+  threshold's other consumers (singular, qsearch's mate-cutoff refusal, null/reverse/frontier
+  futility, late-move pruning, iteration stop, `mate N` reporting) now see mates at root distance
+  101-254 too; a deep mate now ends deepening like a short one. Policies are unchanged.
+- A `static_assert` in `Eval.h` bounds `|Evaluate()|` below the band from the live weights, so a
+  retune that could make a static score read as a mate fails to compile.
+
 ## 2026-10-27: Release notes: Highlights and the generated PR list (#924)
 
 ### Changed

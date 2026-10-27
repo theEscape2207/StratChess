@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 
 // Bitboard index of the union of every piece.
 inline constexpr auto ALL_PIECES = 14;
@@ -85,12 +86,22 @@ enum eSquare {
 constexpr auto MAX_PLY = 256;
 
 // Named constants used inline in arithmetic, never a stored field.
+//
+// A score lives in one of three domains, told apart by this one threshold:
+//   - finite centipawns: |s| < Mate_Threshold, static eval and the scores built from it;
+//   - root-relative mate: +-(Mate - d), d plies from the root, d <= MAX_PLY - 1;
+//   - normalised storage (the TT): +-(Mate - k), k plies from the storing node, so |s| <= Mate.
+// Mate_Threshold is Mate - MAX_PLY so that the band holds every mate distance the ply-indexed arrays can
+// address; a narrower band classifies a deep mate as centipawns, and the TT then skips the ply
+// rebasing for it. Evaluate() stays below the band by construction (Eval.h).
 enum GameValues : int {
 	Draw = 0,
-	Mate_Threshold = 29900, // At or above this magnitude a score is a mate
-	Mate = 30000,           // Mate at the root; mate in n plies scores Mate - n
-	Search_Init = 50000     // Initial alpha-beta bounds, outside every real score
+	Mate = 30000,                    // Mate at the root; mate in n plies scores Mate - n
+	Mate_Threshold = Mate - MAX_PLY, // At or above this magnitude a score is a mate
+	Search_Init = 50000              // Initial alpha-beta bounds, outside every real score
 };
+static_assert(GameValues::Mate + MAX_PLY < std::numeric_limits<std::int16_t>::max(),
+              "a normalised mate score must fit the TT's int16_t value field");
 
 // One bit per square, indexed by eSquare: bit 0 is a8 and bit 63 is h1.
 using BITBOARD = std::uint64_t;
