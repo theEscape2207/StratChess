@@ -228,7 +228,9 @@ with `cancel-in-progress: false`. Every job sets `timeout-minutes` (`Test-Workfl
    `release-notes.md` skeleton as a workflow artifact. The skeleton holds:
    - the requirements line ("Windows 10+ x64, CPU with AVX2 + BMI2. Single .exe, no runtime install.");
    - the source SHA, `clang-cl --version` and the runner image;
-   - empty *Integration impact*, *Strength* and *Fixes* headings for the owner to fill in.
+   - empty *Highlights* and *Integration impact* headings for the owner to fill in. (Amended
+     after v0.8.0: *Strength* and *Fixes* were dropped as repeats of Highlights, and `stage`
+     appends GitHub's generated PR list.)
 
 **`stage`** runs on `ubuntu-latest` with `contents: write`, needs `build`, and is the only job
 holding a write token:

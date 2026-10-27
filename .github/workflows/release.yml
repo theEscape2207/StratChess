@@ -117,11 +117,9 @@ jobs:
             "Compiler: $clang"
             "Runner image: $env:ImageOS $env:ImageVersion"
             ''
+            '## Highlights'
+            ''
             '## Integration impact'
-            ''
-            '## Strength'
-            ''
-            '## Fixes'
           ) | Set-Content dist\release-notes.md
 
       - uses: actions/upload-artifact@v7
@@ -169,9 +167,11 @@ jobs:
             exit 1
           fi
 
+      # --generate-notes appends the PRs merged since the latest published release, grouped by
+      # .github/release.yml.
       - name: Create draft release
         run: >
           gh release create "$TAG" --draft --verify-tag
           --title "StratChess $VERSION"
-          --notes-file dist/release-notes.md
+          --notes-file dist/release-notes.md --generate-notes
           "dist/StratChess-$VERSION-windows-x64.exe"

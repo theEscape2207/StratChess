@@ -1,0 +1,15 @@
+# Groups the PR list that workflows/release.yml's --generate-notes appends to a draft release.
+changelog:
+  exclude:
+    labels:
+      - dependencies
+      - github_actions
+    authors:
+      - dependabot
+  categories:
+    - title: UCI-facing changes
+      labels:
+        - uci-facing
+    - title: Other changes
+      labels:
+        - "*"
