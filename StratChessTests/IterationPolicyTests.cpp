@@ -234,7 +234,7 @@ TEST_CASE("Iteration continuation applies soft-limit precedence and mate boundar
 	}
 }
 
-// #305: a mate found 150 plies from the root is a mate, so deepening stops on it; the first score
+// A mate found 150 plies from the root is a mate, so deepening stops on it; the first score
 // below the literal 29744 band is not.
 TEST_CASE("Iteration continuation stops on a deep mate and not on the first score below the band",
           "[search][iteration_policy]")

@@ -45,9 +45,8 @@ TEST_CASE("Search - checkmate node is stored as an exact ply-adjusted mate score
 	CHECK(entry->phase == SearchPhase::MAIN);
 }
 
-// #305: the mate band must cover every ply the search can reach. A terminal stored beyond root
-// distance 100 used to take the ordinary-score branch, so a probe at another ply returned the
-// writer's root-relative score unrebased.
+// The mate band covers every ply the search can reach: a terminal stored at any of them is
+// rebased to the node, so a probe at another ply gets that node's own distance.
 TEST_CASE("Search - a checkmate stored at a high ply is rebased for a probe at another ply", "[search][tt]")
 {
 	// Mated at ply p scores -30000 + p; stored from the node it is -30000, probed at ply 7: -29993.
@@ -234,8 +233,7 @@ TEST_CASE("Qsearch - a MAIN mated score does not cut off", "[search][tt][qsearch
 }
 
 // A mate far from the root is still a mate: quiescence refuses it as a cutoff exactly as it refuses
-// a near one (#305). 29850 and -29850 are root distance 150, inside the band and outside the
-// pre-#305 one.
+// a near one. 29850 and -29850 are root distance 150, beyond the first 100 plies.
 TEST_CASE("Qsearch - a deep MAIN mate score does not cut off", "[search][tt][qsearch]")
 {
 	const std::string fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";

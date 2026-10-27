@@ -92,8 +92,8 @@ constexpr auto MAX_PLY = 256;
 //   - root-relative mate: +-(Mate - d), d plies from the root, d <= MAX_PLY - 1;
 //   - normalised storage (the TT): +-(Mate - k), k plies from the storing node, so |s| <= Mate.
 // Mate_Threshold is Mate - MAX_PLY so that the band holds every mate distance the ply-indexed arrays can
-// address; a narrower band silently classifies a deep mate as centipawns, and the TT then skips the ply
-// rebasing for it (#305). Evaluate() stays below the band by construction (Eval.h).
+// address; a narrower band classifies a deep mate as centipawns, and the TT then skips the ply
+// rebasing for it. Evaluate() stays below the band by construction (Eval.h).
 enum GameValues : int {
 	Draw = 0,
 	Mate = 30000,                    // Mate at the root; mate in n plies scores Mate - n

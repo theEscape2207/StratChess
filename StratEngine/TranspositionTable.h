@@ -301,7 +301,7 @@ class TranspositionTable {
 	// Helper to check if value is a mate score
 	bool is_mate_score(int value) const noexcept
 	{
-		assert(value < GameValues::Mate + 100);
+		assert(value < GameValues::Mate + MAX_PLY);
 		return std::abs(value) >= GameValues::Mate_Threshold;
 	}
 

@@ -666,9 +666,9 @@ class Evaluator {
 	// reaches the search; see EvalContext::king_sq).
 	//
 	// Material: pawns promote, so a side's 16 men reach at most nine queens, two rooks, two bishops
-	// and two knights. The terms below are each bounded per colour over those men, with deliberately
-	// loose per-man counts: the margin to the band is thousands of centipawns, so the bound proves
-	// the claim without pretending to be tight. The endgame scale only shrinks a score.
+	// and two knights. The terms below are each bounded per colour over those men, with loose
+	// per-man counts: the margin to the band is thousands of centipawns. The endgame scale only
+	// shrinks a score.
 	static constexpr int MAX_MATERIAL_NO_KING = 9 * g_iPieceValues[QUEEN >> 1] + 2 * g_iPieceValues[ROOK >> 1] +
 	                                            2 * g_iPieceValues[BISHOP >> 1] + 2 * g_iPieceValues[KNIGHT >> 1];
 	static constexpr int MAX_PST_ENTRY = [] {
@@ -682,6 +682,7 @@ class Evaluator {
 	    std::max({MOBILITY_KNIGHT_MG, MOBILITY_KNIGHT_EG, MOBILITY_BISHOP_MG, MOBILITY_BISHOP_EG, MOBILITY_ROOK_MG,
 	              MOBILITY_ROOK_EG, MOBILITY_QUEEN_MG, MOBILITY_QUEEN_EG});
 	static constexpr int MAX_MOP_UP =
+	    // 6 is the largest centre-Manhattan distance (a corner: 3 + 3).
 	    std::max(MOPUP_CMD_WEIGHT * 6, MOPUP_KBN_CORNER_WEIGHT* MOPUP_MAX_CORNER_DISTANCE) +
 	    MOPUP_KINGDIST_WEIGHT * MOPUP_MAX_KING_DISTANCE;
 	static constexpr int MAX_TERMS_PER_COLOUR =

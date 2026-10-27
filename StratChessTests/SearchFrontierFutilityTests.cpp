@@ -130,7 +130,7 @@ TEST_CASE("Frontier futility: a mate-range alpha is never pruned", "[search][fut
 	CHECK(eligible(fix, 1, /*alpha=*/GameValues::Mate_Threshold - 1));
 }
 
-// #305: the band is literal 29744 and reaches mates the old 29900 boundary called ordinary.
+// The band is the literal 29744: a mate 150 plies out (29850) is inside it.
 TEST_CASE("Frontier futility: a deep-mate alpha is never pruned", "[search][futility]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);

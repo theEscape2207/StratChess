@@ -1524,8 +1524,8 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// re-deriving a mate the table already held. A non-PV pvs() node still cuts off on one --
 	// deliberately, since its result is a bound inside a search, not a score the root reports.
 	// The value read here is ply-denormalised, so the refusal covers every mate within MAX_PLY of the
-	// root (Mate_Threshold = Mate - MAX_PLY). Only a mate pushed past that by a transposition to a
-	// deeper ply reads as an ordinary score; no search line reaches it.
+	// root (Mate_Threshold = Mate - MAX_PLY). Only a mate pushed past that by a transposition into a
+	// deeper ply reads as an ordinary score.
 	if constexpr (kTTStatsCompiled)
 		++td.telemetry.tt.qs_probes;
 	const std::optional<TTEntry> entry = tt.probe(key, ply);

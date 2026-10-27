@@ -210,7 +210,7 @@ TEST_CASE("TT - repeated clear reports no work after the table is empty", "[tt]"
 	REQUIRE_FALSE(tt.clear());
 }
 
-// ── Mate band width (#305) ────────────────────────────────────────────────────
+// ── Mate band width ────────────────────────────────────────────────────
 // A mate d plies from the root scores Mate - d, and the search addresses plies 0..MAX_PLY - 1, so the
 // mate band must reach down to Mate - 255. Every value below is a literal worked out by hand, not
 // derived from GameValues: a test that recomputed the formula would pass with the formula wrong.
@@ -219,9 +219,8 @@ TEST_CASE("TT - the mate band is the whole supported ply range", "[tt]")
 {
 	static_assert(GameValues::Mate == 30000 && MAX_PLY == 256);
 	CHECK(static_cast<int>(GameValues::Mate_Threshold) == 29744);
-	// The deepest mate the ply arrays can address, one ply of margin above the threshold.
-	CHECK(30000 - (MAX_PLY - 1) == 29745);
-	CHECK(29745 >= GameValues::Mate_Threshold);
+	// The deepest terminal the search reaches is 254 plies out (29746), two plies inside the band.
+	CHECK(29746 >= GameValues::Mate_Threshold);
 	// The widest normalised score still fits the TT's int16_t field.
 	CHECK(30000 + MAX_PLY < std::numeric_limits<int16_t>::max());
 }
@@ -234,7 +233,7 @@ TEST_CASE("TT - a mate stored at any supported ply is rebased when probed at ano
 		int probe_ply;
 		int expected; // 30000 - probe_ply: the same mate, seen from the probing node
 	};
-	// Distances 99/100/101 straddle the old 29900 boundary; 254 and 255 are the last plies.
+	// Distances 99/100/101 straddle the 100-ply mark; 254 and 255 are the last plies.
 	// clang-format off
 	const Case cases[] = {
 	    {99, 29901, 7, 29993},    {100, 29900, 7, 29993},   {101, 29899, 7, 29993},
@@ -259,7 +258,7 @@ TEST_CASE("TT - a mate stored at any supported ply is rebased when probed at ano
 TEST_CASE("TT - a mate found deep from the root by a shallow node is rebased", "[tt]")
 {
 	// A node at ply 7 holding a mate 143 plies below it: root distance 150, score 29850. That is
-	// outside the old band yet a mate all the same, and must be stored as 30000 - 143 = 29857.
+	// beyond 100 plies yet a mate all the same, and must be stored as 30000 - 143 = 29857.
 	for (const int sign : {1, -1}) {
 		TranspositionTable tt(1);
 		INFO("sign " << sign);

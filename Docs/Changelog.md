@@ -35,7 +35,7 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 - A `static_assert` in `Eval.h` bounds `|Evaluate()|` below the band from the live weights, so a
   retune that could make a static score read as a mate fails to compile.
 
-
+## 2026-10-27: Release notes: Highlights and the generated PR list (#924)
 
 ### Changed
 - `release.yml` drafts now carry only **Highlights** and **Integration impact** (Strength and Fixes
