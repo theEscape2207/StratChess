@@ -28,6 +28,11 @@
     LLVM source-based coverage. 'tests' verb, clang-cl Release only. Scripts/Get-Coverage.ps1
     drives it: it runs the binary with a profile path and turns the profile into a report.
 
+.PARAMETER Publish
+    Build into the windows-clang-cl-publish preset: Release with STRAT_RELEASE=ON, so the
+    engine reports the plain project version. .github/workflows/release.yml drives it;
+    Docs/Releasing.md has the procedure.
+
 .PARAMETER SelfTest
     Run build-wrapper regression tests without configuring or building. Covers the
     processor-architecture fallback, the artifact-freshness verdict and the ccache
@@ -48,6 +53,7 @@
     .\build.ps1 extended-tests
     .\build.ps1 all -Config Debug
     .\build.ps1 tests -Coverage
+    .\build.ps1 all -Publish
     .\build.ps1 -SelfTest
 #>
 [CmdletBinding()]
@@ -63,6 +69,8 @@ param(
     [string]$Config = 'Release',
 
     [switch]$Coverage,
+
+    [switch]$Publish,
 
     [switch]$SelfTest
 )
@@ -82,6 +90,13 @@ if ($Coverage) {
         exit 1
     }
     $Preset += '-coverage'
+}
+if ($Publish) {
+    if ($Config -ne 'Release' -or $Coverage) {
+        Write-Error "-Publish builds the shipping configuration: Release, without -Coverage."
+        exit 1
+    }
+    $Preset += '-publish'
 }
 
 $BuildDir = Join-Path $RepoRoot "build\$Preset"

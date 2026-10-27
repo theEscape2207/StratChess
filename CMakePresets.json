@@ -44,11 +44,21 @@
       "cacheVariables": {
         "STRAT_COVERAGE": "ON"
       }
+    },
+    {
+      "name": "windows-clang-cl-publish",
+      "inherits": "windows-clang-cl",
+      "displayName": "Windows / clang-cl + Ninja (Release, published version)",
+      "description": "The shipping configuration with STRAT_RELEASE=ON, so id name reports the plain project version. Built by .github/workflows/release.yml through build.ps1 -Publish; see Docs/Releasing.md.",
+      "cacheVariables": {
+        "STRAT_RELEASE": "ON"
+      }
     }
   ],
   "buildPresets": [
     { "name": "windows-clang-cl",          "configurePreset": "windows-clang-cl" },
     { "name": "windows-clang-cl-debug",    "configurePreset": "windows-clang-cl-debug" },
-    { "name": "windows-clang-cl-coverage", "configurePreset": "windows-clang-cl-coverage" }
+    { "name": "windows-clang-cl-coverage", "configurePreset": "windows-clang-cl-coverage" },
+    { "name": "windows-clang-cl-publish",  "configurePreset": "windows-clang-cl-publish" }
   ]
 }

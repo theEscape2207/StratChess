@@ -1,0 +1,159 @@
+name: Release
+
+# Stages a DRAFT GitHub Release for an existing vX.Y.Z tag on main. The owner reviews
+# the draft, fills in its notes and publishes it by hand. Procedure: Docs/Releasing.md.
+#
+# Manual dispatch only, and the tag must already exist: no tag push triggers this, and
+# the workflow never creates, moves or deletes a tag or a release. `stage` only ever
+# creates. Any existing release for the tag, draft or published, fails the run without
+# writing; retrying means deleting the draft first. With no update path there is no
+# window in which the owner's publish can race an upload.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag on main, vX.Y.Z, matching project(VERSION) in CMakeLists.txt'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # The image the per-PR Windows leg builds on, so the shipped toolchain is the gated one.
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    env:
+      # Through env, never interpolated into a script: the input is free text.
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Check tag shape
+        run: |
+          if ($env:TAG -cnotmatch '^v\d+\.\d+\.\d+$') {
+            Write-Error "Tag '$env:TAG' is not vX.Y.Z."
+            exit 1
+          }
+
+      # Full history: the provenance check needs origin/main beside the tag.
+      # A tag that does not exist fails here, before any build.
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check version and provenance
+        id: check
+        run: |
+          $version = $env:TAG.Substring(1)
+          $declared = (Select-String -Path CMakeLists.txt -Pattern '^project\(StratChess VERSION (\d+\.\d+\.\d+)').Matches[0].Groups[1].Value
+          if ($declared -ne $version) {
+            Write-Error "Tag $env:TAG does not match project(VERSION $declared) in CMakeLists.txt."
+            exit 1
+          }
+          # The tag must sit on main's history: a tag on an unmerged branch never ships.
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Tag $env:TAG is not on origin/main."
+            exit 1
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      # Uncached, like Nightly's extended-tests: a wrong cached object must not reach
+      # the shipped binary. -Publish is the windows-clang-cl-publish preset, Release
+      # with STRAT_RELEASE=ON.
+      - name: Build
+        run: .\build.ps1 all -Publish
+
+      - name: Run fast tests
+        run: |
+          & build\windows-clang-cl-publish\StratChessTests.exe '~[slow]'
+          exit $LASTEXITCODE
+
+      - name: Hot-code alignment
+        run: pwsh -NoProfile -File Scripts/Test-CodeAlignment.ps1 -MapPath build\windows-clang-cl-publish\StratChessEvolved.map
+
+      # Checks the renamed copy, which is what ships. The exact plain id proves that
+      # STRAT_RELEASE reached the build and that the binary is the tagged version.
+      - name: Stage asset and check it runs standalone
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Path dist | Out-Null
+          $asset = "dist\StratChess-$env:VERSION-windows-x64.exe"
+          Copy-Item build\windows-clang-cl-publish\StratChessEvolved.exe $asset
+          pwsh -NoProfile -File Scripts/Test-StandaloneExe.ps1 -Exe $asset -ExpectedId "StratChess $env:VERSION"
+          exit $LASTEXITCODE
+
+      # A skeleton the owner completes on the draft before publishing.
+      - name: Write release notes
+        run: |
+          # build.ps1 imports the VS environment into its own process only, so clang-cl
+          # is not on this step's PATH; CMake recorded the version it detected.
+          $compilerFile = Get-ChildItem build\windows-clang-cl-publish\CMakeFiles -Recurse -Filter CMakeCXXCompiler.cmake | Select-Object -First 1
+          $clang = 'clang-cl ' + (Select-String -Path $compilerFile.FullName -Pattern 'set\(CMAKE_CXX_COMPILER_VERSION "([^"]+)"\)').Matches[0].Groups[1].Value
+          @(
+            'Windows 10+ x64, CPU with AVX2 + BMI2. Single .exe, no runtime install.'
+            ''
+            "Source: $(git rev-parse HEAD)"
+            "Compiler: $clang"
+            "Runner image: $env:ImageOS $env:ImageVersion"
+            ''
+            '## Integration impact'
+            ''
+            '## Strength'
+            ''
+            '## Fixes'
+          ) | Set-Content dist\release-notes.md
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: dist/
+          if-no-files-found: error
+
+  stage:
+    needs: build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    # The only job holding a write token, and it runs no project code.
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ inputs.tag }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: dist
+
+      # A write token lists drafts too, which a read token cannot see.
+      - name: Refuse an existing release
+        run: |
+          existing=$(gh release list --limit 1000 --json tagName,isDraft \
+            --jq '.[] | select(.tagName == env.TAG) | if .isDraft then "draft" else "published" end')
+          if [ -n "$existing" ]; then
+            echo "::error::A $existing release for $TAG already exists. Delete a draft before re-dispatching; a published release needs a new PATCH version."
+            exit 1
+          fi
+
+      - name: Create draft release
+        run: >
+          gh release create "$TAG" --draft --verify-tag
+          --title "StratChess $VERSION"
+          --notes-file dist/release-notes.md
+          "dist/StratChess-$VERSION-windows-x64.exe"
