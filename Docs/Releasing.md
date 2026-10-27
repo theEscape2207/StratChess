@@ -25,7 +25,9 @@ workflow mechanics are in [CI.md](CI.md#release-releaseyml). What a version numb
    - **Highlights.** Two to five bullets an engine consumer acts on or notices. Pick from any
      breaking change (UCI, command line, a dropped OS or CPU), the `uci-facing` group, a measured
      strength change, and a platform or toolchain change: a new compiler, CPU requirement or
-     supported OS. Leave internal work to the PR list.
+     supported OS. Leave internal work to the PR list. Write each in one or two sentences for a
+     UI author, naming commands and options but no engine internals, PR numbers or measurement
+     links. A caution or disclaimer goes under Integration impact.
    - **Integration impact.** What a client must change, for each breaking change and each
      `uci-facing` PR that needs action.
    - **Strength.** Write a line only with a linked measurement that names its reference,
