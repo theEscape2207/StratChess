@@ -745,7 +745,8 @@ cmake --build --preset windows-clang-cl    # build every target
 cmake --build --preset windows-clang-cl --target StratChessTests
 ```
 
-Presets: `windows-clang-cl`, `windows-clang-cl-debug`, `windows-clang-cl-coverage`. clang-cl is the
+Presets: `windows-clang-cl`, `windows-clang-cl-debug`, `windows-clang-cl-coverage` and
+`windows-clang-cl-publish` (Release with `STRAT_RELEASE=ON`, for `release.yml`). clang-cl is the
 only Windows toolchain; `CMakeLists.txt` refuses `cl.exe`. Every Windows configuration links the C++
 runtime statically (`/MT`, `/MTd`), set in `CMakeLists.txt` rather than a preset (#924). Release
 takes the UCRT from Windows (`ucrt.lib`): the static UCRT cost nps, and Debug keeps it.

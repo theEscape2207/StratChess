@@ -261,6 +261,24 @@ PATCH version and notes pointing to it. The owner reviews the draft and publishe
 Rejected: a `push: tags` trigger, which would publish on tag creation and remove the owner's review
 step the issue approved.
 
+**Amended in slice 3 (owner-approved 2026-10-27): create-only staging, inline checks.** `stage`
+never updates a release. Any existing release for the tag, draft or published, fails the run, and a
+retry deletes the draft first. This removes the `--clobber` path and its non-atomic re-check.
+`gh release create --draft` is itself two requests, though: the draft is created, then the asset
+is uploaded, and a failed upload leaves the draft behind (PR #929 review, from the `gh` source). A
+reduced publication rule therefore stays: publish only after the run finished successfully and the
+draft lists the asset. A failed upload is recovered by deleting the draft, keeping the tag, and
+re-dispatching. `release_stage.py` and its fixtures are dropped. The tag shape,
+version and ancestry checks are inline in `build`, and the existence check is inline in `stage`.
+`build`'s early read-token check for a published release (step 3) is dropped as well, since
+`stage` refuses one anyway. Cost: no pre-merge fixture coverage; the first `v0.8.0` dispatch is
+the evidence. Where the text above names `--clobber`, `release_stage.py` or fixtures, this
+amendment supersedes it. Smaller changes made in implementation:
+- `stage` runs on `ubuntu-26.04`, the repository's pinned image, not `ubuntu-latest`.
+- The notes take the compiler version from CMake's detection (`CMAKE_CXX_COMPILER_VERSION`), since
+  `clang-cl` is not on a later step's `PATH`.
+- `build` outputs the commit it compiled, and `stage` refuses a tag that has moved since.
+
 ### D8: Documentation touchpoints
 
 | File | Change | Slice |
@@ -315,7 +333,6 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
   trace.
 - **A7: GitHub behaves as D7 assumes.** That covers four things:
   - a draft's assets stay invisible to `/releases.atom` until publication;
-  - `gh release upload --clobber` works on a draft;
   - `--verify-tag` refuses a missing tag;
   - the release page shows each asset's digest (owner amendment 4);
   - `workflow_dispatch` needs the workflow file on the default branch. This last one is taken from
@@ -341,10 +358,9 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
 - **I6:** Catch2 and both project targets agree on the CRT in Release and Debug.
 - **I7:** A shipped exe imports only allowlisted OS DLLs, needs no adjacent file, and writes
   nothing in UCI mode without `--log-commands`.
-- **I8:** The workflow never modifies a published release, asset or tag, **provided** the owner
-  follows D7's publication rule: publish only when no run for the tag is queued or running, the
-  latest run succeeded, and the asset is present. Without that rule, a publish between the
-  re-check and the upload is unguarded.
+- **I8:** The workflow never modifies an existing release, asset or tag (create-only staging, D7
+  amendment). A published release is complete **provided** the owner publishes only after the run
+  succeeded and the draft lists the asset.
 
 ## Validation
 
@@ -402,22 +418,22 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
 **Slice 3: workflow and docs** (Build tier for `release.yml`; Docs for the rest).
 
 - `Test-WorkflowTimeouts.ps1` and `Test-WorkflowCcachePaths.ps1` pass.
-- `release_stage.py --self-test` runs in the PR gate. Its fixtures cover each branch on its own: a
-  malformed tag, a tag that does not exist, a version mismatch, no release yet, an existing draft,
-  and a published release. The last must refuse without writing.
+- Local emulation of `build`'s steps on a `build.ps1 all -Publish` tree: the checks, fast tier,
+  alignment and `Test-StandaloneExe.ps1` pass, and a wrong `-ExpectedId` fails. (Replaces the
+  `release_stage.py` fixtures, D7 amendment.)
 - A workflow that is not yet on the default branch cannot be dispatched, and the provenance check
   refuses any tag outside `main` history. **There is therefore no pre-merge live run.** The live
   evidence comes after merge, in this order:
   1. The owner tags the first real `v0.8.0` on `main` and dispatches. The run must stage a draft
      whose downloaded asset reports `id name StratChess 0.8.0` and passes `Test-StandaloneExe.ps1`
      on the dev machine.
-  2. A re-dispatch of the same tag replaces only the asset and leaves the notes alone.
+  2. A re-dispatch of the same tag fails in `stage` without writing, while the draft exists.
   3. A dispatch with `v9.9.9` (no such tag) must fail before any build. Version mismatch is
-     covered by the fixtures only; the owner declined a live check, which would need a junk tag.
+     has no live check; the owner declined one, which would need a junk tag.
   4. Record the job's duration (A7 draft path, A8).
 - After the owner's first publication: a re-dispatch of `v0.8.0` must fail without writing (I8),
   and the feed and digest are checked (A7). The publication itself is the owner's act.
-- **Acceptance:** the PR merges on the fixtures plus the workflow guards. The slice closes once
+- **Acceptance:** the PR merges on the local emulation plus the workflow guards. The slice closes once
   steps 1–3 pass on `v0.8.0`. A failure there is fixed by a follow-up PR before publication.
 
 ## Cost
@@ -429,7 +445,7 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
   |---|---|---|
   | 1 | 100–150 | `CMakeLists.txt`, two `cmake/` files, `Version.h`, `UCIHandler.cpp`, one test, EngineGuide, CI.md, Changelog |
   | 2 | 180–280 | one `CMakeLists.txt` line, `Test-StandaloneExe.ps1` with its self-test, the `UciDriver.ps1` launch argument, a `Get-ChangeTier.ps1` Build entry with a self-test case, EngineGuide, Workflow.md, Measurements, Changelog |
-  | 3 | 250–380 | `release.yml`, `release_stage.py` with fixtures, a `CMakePresets.json` preset, the `build.ps1` switch, `Releasing.md`, CI.md, EngineGuide, the skill line, Changelog |
+  | 3 | 250–380 | `release.yml`, a `CMakePresets.json` preset, the `build.ps1` switch, `Releasing.md`, CI.md, EngineGuide, the skill line, Changelog |
 
 - **Blast radius:**
   - Slice 1 is Engine tier: every build gains the version step, and every commit relinks both exes.
@@ -458,7 +474,7 @@ boundary on 2026-10-26. No UI should depend on the unsupported options.
 | D5 measured nps and size change | `Measurements/local.md` row, headline in `Docs/Changelog.md` |
 | D6 allowlist reasons, UCI filesystem fact | `Test-StandaloneExe.ps1` help; `Docs/EngineGuide.md` → Logging and runtime files |
 | D7 dispatch, draft, retry, never-overwrite | `Docs/Releasing.md`; `release.yml` comments; `Docs/CI.md` |
-| D7 publication rule behind I8; recovery from a failed upload | `Docs/Releasing.md`; `release_stage.py` header |
+| D7 create-only staging behind I8; retry by deleting the draft | `Docs/Releasing.md`; `release.yml` header |
 | D9 supported UCI contract | `Docs/EngineGuide.md` → Versions and requirements |
 | `uci-facing` rule | `open-pull-request` skill |
 

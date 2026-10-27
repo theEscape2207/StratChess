@@ -266,6 +266,29 @@ later but no VC++ Redistributable or other runtime install. It imports only `KER
 Windows API sets. `Scripts/Test-StandaloneExe.ps1` checks both
 and the files below.
 
+Released builds are on the repository's GitHub Releases page as
+`StratChess-X.Y.Z-windows-x64.exe`. To be notified, use Watch → Custom → Releases, or subscribe to
+`https://github.com/theEscape2207/StratChess/releases.atom`. How a release is made:
+[Releasing.md](Releasing.md).
+
+### Supported UCI contract
+
+Version numbers follow these compatibility rules. From 1.0, a breaking change is MAJOR. Before 1.0,
+a breaking change, an additive feature or a measured strength gain is MINOR, and a fix is PATCH.
+The rules cover:
+
+- the `id` lines;
+- the commands `uci`, `isready`, `ucinewgame`, `position`, `go` (with the parameters this guide
+  documents), `stop` and `quit`;
+- the `Threads` and `Hash` options: their name, type, range and default as advertised, and their
+  `setoption` behaviour;
+- the `info` fields that [Interpret search output](#interpret-search-output) defines;
+- the `bestmove` line.
+
+Every other advertised option, meaning the search tuning options `LmrLogBase` …
+`StabilityTimeFloor`, is an **unsupported tuning control**. Any MINOR may rename or remove one, so a UI must not depend on it. `info string` lines
+are diagnostics and not part of the contract.
+
 ## Logging and runtime files
 
 For a UCI command trace, launch with `uci --log-commands` or
