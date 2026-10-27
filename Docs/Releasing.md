@@ -24,16 +24,14 @@ workflow mechanics are in [CI.md](CI.md#release-releaseyml). What a version numb
    release, with `uci-facing` ones grouped first. Fill in the empty headings:
    - **Highlights.** Two to five bullets an engine consumer acts on or notices. Pick from any
      breaking change (UCI, command line, a dropped OS or CPU), the `uci-facing` group, a measured
-     strength change, and a platform or toolchain change: a new compiler, CPU requirement or
-     supported OS. Leave internal work to the PR list. Write each in one or two sentences for a
-     UI author, naming commands and options but no engine internals, PR numbers or measurement
-     links. A caution or disclaimer goes under Integration impact.
+     strength change, a fix a client would notice, and a platform or toolchain change: a new
+     compiler, CPU requirement or supported OS. Leave internal work to the PR list. Write each in
+     one or two sentences for a UI author, naming commands and options but no engine internals,
+     PR numbers or measurement links. A strength claim still needs a measurement behind it; lab
+     results come from the GCC build, not the shipped exe, so word them as approximate.
    - **Integration impact.** What a client must change, for each breaking change and each
-     `uci-facing` PR that needs action.
-   - **Strength.** Write a line only with a linked measurement that names its reference,
-     conditions and interval. Label lab rows as GCC: the lab does not build the shipped clang-cl
-     binary.
-   - **Fixes.** Take these from the `Docs/Changelog.md` headlines since the previous tag.
+     `uci-facing` PR that needs action, plus any caution or disclaimer. Delete the heading when
+     there is nothing to say, as in a first release.
 5. **Publish** the draft by hand, but only once the `release.yml` run for the tag has **finished
    successfully** and the draft lists `StratChess-X.Y.Z-windows-x64.exe`. A visible draft alone
    proves nothing: the workflow creates the draft before it uploads the asset, so a draft exists

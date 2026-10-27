@@ -120,10 +120,6 @@ jobs:
             '## Highlights'
             ''
             '## Integration impact'
-            ''
-            '## Strength'
-            ''
-            '## Fixes'
           ) | Set-Content dist\release-notes.md
 
       - uses: actions/upload-artifact@v7
