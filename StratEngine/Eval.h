@@ -668,7 +668,7 @@ class Evaluator {
 	// Material: pawns promote, so a side's 16 men reach at most nine queens, two rooks, two bishops
 	// and two knights. The terms below are each bounded per colour over those men, with loose
 	// per-man counts: the margin to the band is thousands of centipawns. The endgame scale only
-	// shrinks a score.
+	// shrinks a score; the dead-draw return (draw score, contempt capped at 100) bypasses the sum.
 	static constexpr int MAX_MATERIAL_NO_KING = 9 * g_iPieceValues[QUEEN >> 1] + 2 * g_iPieceValues[ROOK >> 1] +
 	                                            2 * g_iPieceValues[BISHOP >> 1] + 2 * g_iPieceValues[KNIGHT >> 1];
 	static constexpr int MAX_PST_ENTRY = [] {
@@ -695,6 +695,8 @@ class Evaluator {
 	    + std::max(BISHOP_PAIR_BONUS_MG, BISHOP_PAIR_BONUS_EG) +
 	    15 * std::max(std::ranges::max(OUTPOST_KNIGHT), std::ranges::max(OUTPOST_BISHOP)) // eval_outposts
 	    + std::max(CASTLING_DONE_BONUS, CASTLING_LOST_PENALTY) + MAX_MOP_UP + KING_SAFETY_MAX_PENALTY;
+	// MAX_TERMS_PER_COLOUR lists the catalogue's terms by hand: a new EvalTerm needs a bound added to it.
+	static_assert(NUM_EVAL_TERMS == 13, "extend MAX_TERMS_PER_COLOUR for the new term");
 	static_assert(MAX_MATERIAL_NO_KING + 2 * MAX_TERMS_PER_COLOUR < GameValues::Mate_Threshold,
 	              "A static score could reach the mate band -- the TT and the pruning guards would read it as a mate");
 
