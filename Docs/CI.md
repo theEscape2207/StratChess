@@ -500,7 +500,7 @@ it automatically. The maintainer procedure is
   wrong cached object must not reach the shipped binary. It runs the fast tier and the hot-code
   alignment check on that tree. It then runs `Test-StandaloneExe.ps1` on the renamed asset with
   `-ExpectedId "StratChess X.Y.Z"`, which proves both that `STRAT_RELEASE` reached the build and
-  that the binary is the tagged version. Uploads the asset and a release-notes skeleton.
+  that the binary is the tagged version. Uploads the asset and a release-notes skeleton; `stage` appends the PRs merged since the previous tag, grouped by `.github/release.yml`.
 - **`stage`** (`ubuntu-26.04`, `contents: write`, 10 min). The only job with a write token, and it
   runs no project code. It fails if the tag no longer names the commit `build` compiled, or if any
   release already exists for the tag, draft or published:

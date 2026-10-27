@@ -372,6 +372,7 @@ logs/aiperplex.log
 /.github/*
 !/.github/pull_request_template.md
 !/.github/dependabot.yml
+!/.github/release.yml
 !/.github/workflows/
 !/.github/workflows/*.yml
 !/.github/scripts/

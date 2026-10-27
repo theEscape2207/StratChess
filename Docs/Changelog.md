@@ -23,6 +23,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-27: Release notes: Highlights and the generated PR list (#924)
+
+### Changed
+- `release.yml` drafts now open with an empty **Highlights** heading and end with the PRs merged
+  since the previous tag (`--generate-notes`), grouped by the new `.github/release.yml` with
+  `uci-facing` first and Dependabot left out. `Docs/Releasing.md` says how to pick the 2-5
+  highlights.
+
 ## 2026-10-27: Build with Visual Studio's clang-cl on the runners (#924)
 
 ### Fixed
