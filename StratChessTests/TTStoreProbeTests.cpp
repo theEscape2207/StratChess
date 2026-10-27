@@ -5,6 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include "TTTestFixture.h"
+#include <limits>
 
 TEST_CASE("TT - store and probe preserve all Move encoding bits", "[tt]")
 {
@@ -21,7 +22,7 @@ TEST_CASE("TT - store and probe preserve all Move encoding bits", "[tt]")
 
 TEST_CASE("TT - the static eval round-trips through store and probe", "[tt]")
 {
-	for (const int16_t eval : {int16_t{0}, int16_t{1}, int16_t{-1}, int16_t{-29899}, int16_t{29899}, kNoStaticEval}) {
+	for (const int16_t eval : {int16_t{0}, int16_t{1}, int16_t{-1}, int16_t{-29743}, int16_t{29743}, kNoStaticEval}) {
 		TranspositionTable tt(0);
 		tt.store(KEY_A, -250, 6, 0, no_move(), BoundType::UPPER, NodeType::ALL_NODE, SearchPhase::MAIN, eval);
 		const auto result = tt.probe(KEY_A, 0);
@@ -207,4 +208,88 @@ TEST_CASE("TT - repeated clear reports no work after the table is empty", "[tt]"
 
 	REQUIRE(tt.clear());
 	REQUIRE_FALSE(tt.clear());
+}
+
+// ── Mate band width (#305) ────────────────────────────────────────────────────
+// A mate d plies from the root scores Mate - d, and the search addresses plies 0..MAX_PLY - 1, so the
+// mate band must reach down to Mate - 255. Every value below is a literal worked out by hand, not
+// derived from GameValues: a test that recomputed the formula would pass with the formula wrong.
+
+TEST_CASE("TT - the mate band is the whole supported ply range", "[tt]")
+{
+	static_assert(GameValues::Mate == 30000 && MAX_PLY == 256);
+	CHECK(static_cast<int>(GameValues::Mate_Threshold) == 29744);
+	// The deepest mate the ply arrays can address, one ply of margin above the threshold.
+	CHECK(30000 - (MAX_PLY - 1) == 29745);
+	CHECK(29745 >= GameValues::Mate_Threshold);
+	// The widest normalised score still fits the TT's int16_t field.
+	CHECK(30000 + MAX_PLY < std::numeric_limits<int16_t>::max());
+}
+
+TEST_CASE("TT - a mate stored at any supported ply is rebased when probed at another", "[tt]")
+{
+	struct Case {
+		int store_ply;
+		int stored_value; // root-relative: 30000 - store_ply, the mate being found at the node itself
+		int probe_ply;
+		int expected; // 30000 - probe_ply: the same mate, seen from the probing node
+	};
+	// Distances 99/100/101 straddle the old 29900 boundary; 254 and 255 are the last plies.
+	// clang-format off
+	const Case cases[] = {
+	    {99, 29901, 7, 29993},    {100, 29900, 7, 29993},   {101, 29899, 7, 29993},
+	    {200, 29800, 7, 29993},   {254, 29746, 7, 29993},   {255, 29745, 7, 29993},
+	    {99, 29901, 0, 30000},    {101, 29899, 0, 30000},   {255, 29745, 0, 30000},
+	    {101, 29899, 101, 29899}, {255, 29745, 255, 29745}, // same ply
+	    {101, 29899, 254, 29746}, {7, 29993, 254, 29746},   // probed deeper than stored
+	};
+	// clang-format on
+	for (const int sign : {1, -1}) {
+		for (const auto& c : cases) {
+			TranspositionTable tt(1);
+			INFO("sign " << sign << " store_ply " << c.store_ply << " probe_ply " << c.probe_ply);
+			do_store(tt, KEY_A, static_cast<int16_t>(sign * c.stored_value), 5, static_cast<int16_t>(c.store_ply));
+			const auto result = tt.probe(KEY_A, c.probe_ply);
+			REQUIRE(result.has_value());
+			CHECK(result->value == sign * c.expected);
+		}
+	}
+}
+
+TEST_CASE("TT - a mate found deep from the root by a shallow node is rebased", "[tt]")
+{
+	// A node at ply 7 holding a mate 143 plies below it: root distance 150, score 29850. That is
+	// outside the old band yet a mate all the same, and must be stored as 30000 - 143 = 29857.
+	for (const int sign : {1, -1}) {
+		TranspositionTable tt(1);
+		INFO("sign " << sign);
+		do_store(tt, KEY_A, static_cast<int16_t>(sign * 29850), 5, /*ply=*/7);
+		CHECK(tt.probe(KEY_A, 7)->value == sign * 29850);
+		CHECK(tt.probe(KEY_A, 100)->value == sign * 29757);
+		CHECK(tt.probe(KEY_A, 0)->value == sign * 29857);
+	}
+}
+
+TEST_CASE("TT - a centipawn score just outside the mate band keeps its value", "[tt]")
+{
+	// 29743 is the largest finite score; 29744 is the first mate (distance 256 from the root).
+	for (const int sign : {1, -1}) {
+		TranspositionTable tt(1);
+		INFO("sign " << sign);
+		do_store(tt, KEY_A, static_cast<int16_t>(sign * 29743), 5, /*ply=*/150);
+		do_store(tt, KEY_B, static_cast<int16_t>(sign * 29744), 5, /*ply=*/150);
+		CHECK(tt.probe(KEY_A, 3)->value == sign * 29743);
+		CHECK(tt.probe(KEY_A, 254)->value == sign * 29743);
+		CHECK(tt.probe(KEY_B, 3)->value == sign * 29891); // 29744 + 150 - 3
+	}
+}
+
+TEST_CASE("TT - short mates keep their distance across plies", "[tt]")
+{
+	TranspositionTable tt(1);
+	do_store(tt, KEY_A, 29997, 5, /*ply=*/3); // mate 3 plies from the root, found at ply 3
+	do_store(tt, KEY_B, -29990, 5, /*ply=*/10);
+	CHECK(tt.probe(KEY_A, 1)->value == 29999);
+	CHECK(tt.probe(KEY_A, 9)->value == 29991);
+	CHECK(tt.probe(KEY_B, 4)->value == -29996);
 }

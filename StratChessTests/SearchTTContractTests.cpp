@@ -45,6 +45,30 @@ TEST_CASE("Search - checkmate node is stored as an exact ply-adjusted mate score
 	CHECK(entry->phase == SearchPhase::MAIN);
 }
 
+// #305: the mate band must cover every ply the search can reach. A terminal stored beyond root
+// distance 100 used to take the ordinary-score branch, so a probe at another ply returned the
+// writer's root-relative score unrebased.
+TEST_CASE("Search - a checkmate stored at a high ply is rebased for a probe at another ply", "[search][tt]")
+{
+	// Mated at ply p scores -30000 + p; stored from the node it is -30000, probed at ply 7: -29993.
+	const int ply = GENERATE(99, 100, 101, 200, 254);
+	AIPerlexTestFixture fix("R5k1/5ppp/8/8/8/8/8/6K1 b - - 0 1");
+	REQUIRE(fix.count_legal_moves() == 0);
+	INFO("terminal ply = " << ply);
+
+	REQUIRE(fix.search_node(/*depth=*/3, ply) == -30000 + ply);
+
+	const auto from_seven = fix.probe_tt(7);
+	REQUIRE(from_seven.has_value());
+	CHECK(from_seven->value == -29993);
+	const auto from_node = fix.probe_tt(ply);
+	REQUIRE(from_node.has_value());
+	CHECK(from_node->value == -30000 + ply);
+	const auto from_root = fix.probe_tt(0);
+	REQUIRE(from_root.has_value());
+	CHECK(from_root->value == -30000);
+}
+
 TEST_CASE("Search - stalemate node is stored as an exact draw score", "[search][tt]")
 {
 	// White to move and stalemated: Qf2 covers g1/g2/h2 without giving check.
@@ -202,6 +226,32 @@ TEST_CASE("Qsearch - a MAIN mated score does not cut off", "[search][tt][qsearch
 
 	AIPerlexTestFixture seeded(fen);
 	seeded.store_main_entry(stored, /*depth=*/1, /*ply=*/0, BoundType::UPPER);
+	const int with_entry = seeded.quiesce_node(/*alpha=*/-50, /*beta=*/50, AIPerlexTestFixture::QSEARCH_BUDGET,
+	                                           /*ply=*/0);
+
+	CHECK(with_entry != stored);
+	CHECK(with_entry == without_entry);
+}
+
+// A mate far from the root is still a mate: quiescence refuses it as a cutoff exactly as it refuses
+// a near one (#305). 29850 and -29850 are root distance 150, inside the band and outside the
+// pre-#305 one.
+TEST_CASE("Qsearch - a deep MAIN mate score does not cut off", "[search][tt][qsearch]")
+{
+	const std::string fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
+	AIPerlexTestFixture clean(fen);
+	const int without_entry = clean.quiesce_node(/*alpha=*/-50, /*beta=*/50, AIPerlexTestFixture::QSEARCH_BUDGET,
+	                                             /*ply=*/0);
+
+	const auto [stored, bound] = GENERATE(std::pair<int16_t, BoundType>{29850, BoundType::LOWER},
+	                                      std::pair<int16_t, BoundType>{-29850, BoundType::UPPER},
+	                                      std::pair<int16_t, BoundType>{29745, BoundType::LOWER},
+	                                      std::pair<int16_t, BoundType>{-29745, BoundType::UPPER});
+	INFO("stored " << stored);
+
+	AIPerlexTestFixture seeded(fen);
+	seeded.store_main_entry(stored, /*depth=*/1, /*ply=*/0, bound);
 	const int with_entry = seeded.quiesce_node(/*alpha=*/-50, /*beta=*/50, AIPerlexTestFixture::QSEARCH_BUDGET,
 	                                           /*ply=*/0);
 

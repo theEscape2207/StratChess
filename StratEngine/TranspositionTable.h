@@ -305,7 +305,8 @@ class TranspositionTable {
 		return std::abs(value) >= GameValues::Mate_Threshold;
 	}
 
-	// Storage: normalize mate scores. Mate +/- MAX_PLY fits in int16_t.
+	// Storage: normalize mate scores to a distance from this node. The band is Mate - MAX_PLY and up, so
+	// every mate within the searchable plies is rebased; Mate +/- MAX_PLY fits in int16_t (defines.h).
 	int16_t normalize_for_storage(int16_t value, int ply) const noexcept
 	{
 		if (value >= GameValues::Mate_Threshold) {

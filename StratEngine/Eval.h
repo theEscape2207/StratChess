@@ -658,6 +658,45 @@ class Evaluator {
 	static constexpr short OPPOSITE_BISHOPS_ONE_PAWN_SCALE = 4;
 	static constexpr short OPPOSITE_BISHOPS_TWO_PAWNS_SCALE = 8;
 
+	// A static score never reaches the mate band (GameValues::Mate_Threshold, defines.h): the TT and
+	// every pruning guard read |score| >= Mate_Threshold as "mate", and store() asserts it of its
+	// static_eval. This bounds the CODE, not typical positions, so a retune that outgrows it fails to
+	// compile. A white-POV score is (material + terms) of one colour minus the other's; the kings'
+	// 10000 cancels, which is why this covers positions with both kings (a kingless board never
+	// reaches the search; see EvalContext::king_sq).
+	//
+	// Material: pawns promote, so a side's 16 men reach at most nine queens, two rooks, two bishops
+	// and two knights. The terms below are each bounded per colour over those men, with deliberately
+	// loose per-man counts: the margin to the band is thousands of centipawns, so the bound proves
+	// the claim without pretending to be tight. The endgame scale only shrinks a score.
+	static constexpr int MAX_MATERIAL_NO_KING = 9 * g_iPieceValues[QUEEN >> 1] + 2 * g_iPieceValues[ROOK >> 1] +
+	                                            2 * g_iPieceValues[BISHOP >> 1] + 2 * g_iPieceValues[KNIGHT >> 1];
+	static constexpr int MAX_PST_ENTRY = [] {
+		int largest = 0;
+		for (const auto& table : g_Eval_Bitboards)
+			for (const int entry : table)
+				largest = std::max(largest, entry < 0 ? -entry : entry);
+		return largest;
+	}();
+	static constexpr int MAX_MOBILITY_WEIGHT =
+	    std::max({MOBILITY_KNIGHT_MG, MOBILITY_KNIGHT_EG, MOBILITY_BISHOP_MG, MOBILITY_BISHOP_EG, MOBILITY_ROOK_MG,
+	              MOBILITY_ROOK_EG, MOBILITY_QUEEN_MG, MOBILITY_QUEEN_EG});
+	static constexpr int MAX_MOP_UP =
+	    std::max(MOPUP_CMD_WEIGHT * 6, MOPUP_KBN_CORNER_WEIGHT* MOPUP_MAX_CORNER_DISTANCE) +
+	    MOPUP_KINGDIST_WEIGHT * MOPUP_MAX_KING_DISTANCE;
+	static constexpr int MAX_TERMS_PER_COLOUR =
+	    16 * MAX_PST_ENTRY              // eval_pst, every man (king included)
+	    + 15 * 27 * MAX_MOBILITY_WEIGHT // eval_mobility: <= 27 squares per piece, either sign
+	    + 8 * (DOUBLED_PAWN_PENALTY + ISOLATED_PAWN_PENALTY + BACKWARDS_PAWN_PENALTY +
+	           std::max(PASSED_PAWN_BONUS, PASSED_PAWN_BONUS_EG) * std::ranges::max(PASSED_PAWN_RANK_SCALE) / 16) +
+	    10 * (OPEN_FILE + ROOK_ON_7TH_BONUS)                                // eval_rooks: ten rooks at most
+	    + 45 * std::max(CONNECTED_ROOKS_BONUS_MG, CONNECTED_ROOKS_BONUS_EG) // every pair of them connected
+	    + std::max(BISHOP_PAIR_BONUS_MG, BISHOP_PAIR_BONUS_EG) +
+	    15 * std::max(std::ranges::max(OUTPOST_KNIGHT), std::ranges::max(OUTPOST_BISHOP)) // eval_outposts
+	    + std::max(CASTLING_DONE_BONUS, CASTLING_LOST_PENALTY) + MAX_MOP_UP + KING_SAFETY_MAX_PENALTY;
+	static_assert(MAX_MATERIAL_NO_KING + 2 * MAX_TERMS_PER_COLOUR < GameValues::Mate_Threshold,
+	              "A static score could reach the mate band -- the TT and the pruning guards would read it as a mate");
+
 	// Distance helpers for mop-up scoring — plain grid math, orientation-independent
 	// (works the same whether the square belongs to White or Black).
 	static constexpr int CenterAxisDistance(int coord) noexcept { return (coord <= 3) ? (3 - coord) : (coord - 4); }
