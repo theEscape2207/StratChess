@@ -444,8 +444,8 @@ if ($currentBlameIgnoreRevs -ne '.git-blame-ignore-revs') {
 # Developer environment
 #
 # vcvars64.bat is the only supported way to get the compiler's INCLUDE/LIB and
-# the Windows SDK onto the environment. It also puts cmake, ninja, clang-cl,
-# lld-link and llvm-rc on PATH, so nothing below needs an absolute tool path.
+# the Windows SDK onto the environment. It also puts cmake and ninja on PATH;
+# VS's LLVM directory (clang-cl, lld-link, llvm-rc) is moved to the front below.
 # ---------------------------------------------------------------------------
 function Import-VsDevEnvironment {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -494,7 +494,7 @@ function Import-VsDevEnvironment {
     # clang-cl otherwise surfaces as a configure error about a broken compiler,
     # which does not say which VS component to install.
     $clangCl = Get-Command clang-cl -ErrorAction SilentlyContinue
-    if (-not $clangCl -or -not $clangCl.Source.StartsWith($vsLlvmBin, [StringComparison]::OrdinalIgnoreCase)) {
+    if (-not $clangCl -or (Split-Path $clangCl.Source -Parent) -ine $vsLlvmBin) {
         Write-Error "clang-cl not found in $vsLlvmBin. Install the 'C++ Clang tools for Windows' VS component."
         exit 1
     }
