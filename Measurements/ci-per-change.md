@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-28 | b5231a2, `StabilityTimeFloor=30`: the stability floor cut further, against explicit 50 (#904; no PR, option-only run on `main`, run `40593727213`, 2 of 18 shards favour it, zero forfeits) | b5231a2 (same commit, floor 50) | 26640 | 10+0.1 | **-10.20 +/- 3.01** | regression; fails the ship rule, default stays 50 |
 | 2026-10-26 | a6063d2, `StabilityTimeFloor=50` at **30+0.3**: harm check for #103's default (#920; option-only run on `main`, reference `StabilityTimeFloor=100`, run `40242553786`, **19 of 20 shards**, pooled locally, 9 of 19 favour it, zero forfeits) | a6063d2 (same commit, floor 100) | 9500 | 30+0.3 | **+3.22 +/- 4.89** | inconclusive @ 9500; no harm shown, default stays 50 |
 | 2026-10-25 | ea91b0b, `SoftTimePercent=78`: every clock search's soft stop cut to 78% on top of floor 50, run A (#908; PR #910, never merged, run `40184736357`, 5 of 18 shards favour it, zero forfeits) | f562abc | 26640 | 10+0.1 | **-2.92 +/- 3.02** | park: upper bound +0.10 below +3; default stays 100 |
 | 2026-10-25 | 79cc6c3, uniform soft-limit cut at matched time, `StabilityTimeFloor=100 UniformSoftPercent=55`: the control for #103's floor 50 (#905; no PR, throwaway branch `lab-905-uniform-soft`, never merged, run `40142881571`, 11 of 20 shards favour it, zero forfeits) | 79cc6c3 (same commit, defaults: floor 50) | 33200 | 10+0.1 | **+0.92 +/- 2.72** | allocation carries the gain; signal adds nothing measurable |
@@ -111,6 +112,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-28 -- b5231a2, `StabilityTimeFloor=30` vs 50 (#904) (26640 games)
+
+**Fails the ship rule declared in #904 before dispatch (promote only if Elo minus its error bar is above 0; the interval is [-13.21, -7.19]), so the default stays 50 and the portability checks are not run.** [Run `40593727213`](https://github.com/theEscape2207/StratChess/actions/runs/40593727213), about 3 h 47 min, 18 shards x 740 pairs, Threads=1, concurrency 3, both sides `main` `b5231a2` (identical binary), candidate options `StabilityTimeFloor=30`, reference `StabilityTimeFloor=50`; resolved comparison: [`strength-40593727213-comparison`](https://github.com/theEscape2207/StratChess/actions/runs/40593727213/artifacts/12775093053). All 21 jobs are green and the PGNs carry 26,640 games ending only by adjudication or normally, so no time loss, illegal move or disconnect. Pooled Ptnml(0-2) [1054, 3311, 5176, 2921, 858], score 48.53%. **The option reached the candidate:** its mean time per move over moves 9-40 is 0.85x the reference's (0.82x over 9-20, 0.86x over 21-30, 0.90x over 31-40). Against #908's uniform cut to 0.90x at -2.92, a further ~15% cut through the stability schedule costs about 10 Elo, consistent with #908: floor 50 already holds the time gain.
 
 ### 2026-10-26 -- a6063d2, `StabilityTimeFloor=50` at 30+0.3 (#920) (9500 games)
 
