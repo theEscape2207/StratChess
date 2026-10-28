@@ -15,6 +15,7 @@ repeats the aborted-frame tripwire; change both together.
 | `pvs()`, `quiescence()`, `Sort.cpp`, pruning, contempt | [Search internals](#search-internals) |
 | `game_settings.json`, `SearchTuning` or its consumers | [Configuration](#configuration) |
 | telemetry producers, UCI output or diagnostic parsers | [Telemetry and output](#telemetry-and-output) |
+| `CpuCheck.*`, `StartupCpuCheck.cpp`, or the ISA flags in `CMakeLists.txt` | [Startup CPU check](#startup-cpu-check) |
 
 ---
 
@@ -168,6 +169,19 @@ Usage, working-directory requirements and JSON examples live in
 - **UCI stdout is the protocol channel.** General console logging stays disabled in UCI mode;
   command tracing uses the dedicated file-only logger, not the default spdlog logger. See
   [Logger.h](../StratEngine/Utils/Logger.h) and the [logging guide](EngineGuide.md#logging-and-runtime-files).
+
+## Startup CPU check
+
+- **No AVX2 or BMI2 instruction may run before the check.** The build is compiled with
+  `-mavx2 -mbmi2`, so `CpuCheck.cpp` and `StartupCpuCheck.cpp` carry per-source
+  `-mno-avx -mno-avx2 -mno-bmi -mno-bmi2`, include no STL and no `Common.h`, and call only plain
+  library functions: a COMDAT they instantiate may link to an AVX2 copy from another object. The
+  hook is an entry in the CRT's C initializer table (`.CRT$XIU`; constructor priority 101 on GCC),
+  because `main` and the C++ initializers, `std::cerr`'s among them, already execute AVX2 code.
+- **A dropped flag or a moved entry fails silently**: the build stays green and the engine runs on
+  every CPU that has the features. After touching any of it, check the linked exe as the comment in
+  [StartupCpuCheck.cpp](../StratChessEvolved/StartupCpuCheck.cpp) says.
+- **The fatal line is stderr only**: no `uci` has been received yet. Tests: `CpuCheckTests.cpp`.
 
 ## Maintaining these contracts
 

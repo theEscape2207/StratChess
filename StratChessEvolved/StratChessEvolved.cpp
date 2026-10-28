@@ -336,7 +336,7 @@ int main(int argc, char** argv)
 		}
 		if (argc > 1 && std::string(argv[1]) == "unittest") {
 			// Unit tests have migrated to StratChessTests.exe (Catch2 v3).
-			// Run:             x64\Release\StratChessTests.exe
+			// Run:             build/<preset>/StratChessTests.exe
 			// Filter by tag:   StratChessTests.exe [repetition]
 			std::cout << "Unit tests have moved to StratChessTests.exe\n";
 			return 0;

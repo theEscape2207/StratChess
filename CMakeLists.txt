@@ -372,6 +372,22 @@ function(strat_configure_target tgt)
 endfunction()
 
 # ---------------------------------------------------------------------------
+# Startup CPU check
+#
+# These two translation units run the AVX2/BMI2 check, so they must contain neither: the
+# per-source options are appended after the target's -mavx2 -mbmi2 and win. -mno-avx is as
+# necessary as -mno-avx2 (AVX2 implies AVX, and VEX encodings fault on a pre-Sandy-Bridge CPU),
+# and -mno-bmi as -mno-bmi2. A flag clang-cl drops leaves a green build, so check the emitted
+# object (llvm-objdump -d), not the exit code. Why the check is a pre-main hook:
+# StratChessEvolved/StartupCpuCheck.cpp.
+# ---------------------------------------------------------------------------
+set(STRAT_CPU_CHECK_SOURCES
+    ${CMAKE_SOURCE_DIR}/StratEngine/CpuCheck.cpp
+    ${CMAKE_SOURCE_DIR}/StratChessEvolved/StartupCpuCheck.cpp)
+set_source_files_properties(${STRAT_CPU_CHECK_SOURCES} PROPERTIES
+    COMPILE_OPTIONS "-mno-avx;-mno-avx2;-mno-bmi;-mno-bmi2")
+
+# ---------------------------------------------------------------------------
 # Targets
 #
 # The engine is compiled into both executables. The test target compiles it with
@@ -381,8 +397,11 @@ endfunction()
 # The test binary is deliberately left out: it is checked for correctness, not
 # speed, so LTO would only cost build time.
 # ---------------------------------------------------------------------------
+# StartupCpuCheck.cpp is the engine exe's alone: the test exe has its own main and tests the
+# decision logic directly. CpuCheck.cpp reaches both through ENGINE_SOURCES.
 add_executable(StratChessEvolved
     ${ENGINE_SOURCES}
+    ${CMAKE_SOURCE_DIR}/StratChessEvolved/StartupCpuCheck.cpp
     ${CMAKE_SOURCE_DIR}/StratChessEvolved/StratChessEvolved.cpp)
 strat_configure_target(StratChessEvolved)
 
