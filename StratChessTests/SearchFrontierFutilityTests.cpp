@@ -130,6 +130,20 @@ TEST_CASE("Frontier futility: a mate-range alpha is never pruned", "[search][fut
 	CHECK(eligible(fix, 1, /*alpha=*/GameValues::Mate_Threshold - 1));
 }
 
+// The band is the literal 29744: a mate 150 plies out (29850) is inside it.
+TEST_CASE("Frontier futility: a deep-mate alpha is never pruned", "[search][futility]")
+{
+	AIPerlexTestFixture fix(kBaselineFen);
+	fix.set_frontier_futility(true);
+
+	for (const int sign : {1, -1}) {
+		CHECK_FALSE(eligible(fix, 1, /*alpha=*/sign * 29850));
+		CHECK_FALSE(eligible(fix, 1, /*alpha=*/sign * 29745));
+		CHECK_FALSE(eligible(fix, 1, /*alpha=*/sign * 29744));
+		CHECK(eligible(fix, 1, /*alpha=*/sign * 29743));
+	}
+}
+
 // ============================================================================
 // The node-level guards as pvs() wires them
 // ============================================================================

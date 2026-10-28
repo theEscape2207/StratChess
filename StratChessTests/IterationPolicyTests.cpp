@@ -234,6 +234,22 @@ TEST_CASE("Iteration continuation applies soft-limit precedence and mate boundar
 	}
 }
 
+// A mate found 150 plies from the root is a mate, so deepening stops on it; the first score
+// below the literal 29744 band is not.
+TEST_CASE("Iteration continuation stops on a deep mate and not on the first score below the band",
+          "[search][iteration_policy]")
+{
+	const auto first = assess(sample(1, kMove, 0, 400, 1));
+	for (const int score : {29850, -29850, 29745, -29745, 29744, -29744}) {
+		const auto mate = assess(sample(2, kOtherMove, score, 400, 2), first.next_state);
+		CHECK(continue_iteration(mate, false).stop_reason == IterationStopReason::MATE);
+	}
+	for (const int score : {29743, -29743}) {
+		const auto near = assess(sample(2, kOtherMove, score, 400, 2), first.next_state);
+		CHECK(continue_iteration(near, false).stop_reason == IterationStopReason::NONE);
+	}
+}
+
 TEST_CASE("Iteration policy counts the move run on completed depths only", "[search][iteration_policy]")
 {
 	const auto first = assess(sample(1, kMove, 10, 400, 1));
