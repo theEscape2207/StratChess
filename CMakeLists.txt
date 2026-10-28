@@ -397,8 +397,8 @@ set_source_files_properties(${STRAT_CPU_CHECK_SOURCES} PROPERTIES
 # The test binary is deliberately left out: it is checked for correctness, not
 # speed, so LTO would only cost build time.
 # ---------------------------------------------------------------------------
-# StartupCpuCheck.cpp is the engine exe's alone: the test exe has its own main and no use for a
-# stderr warning on every run. CpuCheck.cpp reaches both through ENGINE_SOURCES.
+# StartupCpuCheck.cpp is the engine exe's alone: the test exe has its own main and tests the
+# decision logic directly. CpuCheck.cpp reaches both through ENGINE_SOURCES.
 add_executable(StratChessEvolved
     ${ENGINE_SOURCES}
     ${CMAKE_SOURCE_DIR}/StratChessEvolved/StartupCpuCheck.cpp

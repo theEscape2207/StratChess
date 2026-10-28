@@ -181,9 +181,7 @@ Usage, working-directory requirements and JSON examples live in
 - **A dropped flag or a moved entry fails silently**: the build stays green and the engine runs on
   every CPU that has the features. After touching any of it, check the linked exe as the comment in
   [StartupCpuCheck.cpp](../StratChessEvolved/StartupCpuCheck.cpp) says.
-- **The warning reaches a GUI only as `info string` after `uciok`** (`UciHandler::SetStartupNotice`),
-  never as a line inside or before the handshake. The fatal line is stderr only: nothing has been
-  received yet. Tests: `CpuCheckTests.cpp` and `[uci][cpu]` in `UCITests.cpp`.
+- **The fatal line is stderr only**: no `uci` has been received yet. Tests: `CpuCheckTests.cpp`.
 
 ## Maintaining these contracts
 

@@ -1,4 +1,4 @@
-// StartupCpuCheck.cpp -- refuses to run on a CPU the build cannot run on, and warns about slow PEXT.
+// StartupCpuCheck.cpp -- refuses to run on a CPU the build cannot run on.
 //
 // Compiled WITHOUT -mavx2 -mbmi2 (CMakeLists.txt, "Startup CPU check"). Rules that keep it safe:
 //  - Run before any code compiled WITH them. main() is too late: static initializers run first, and
@@ -20,24 +20,15 @@
 namespace {
 	// stderr: stdout is the UCI channel, and before 'uci' arrives there is no handshake to put a
 	// diagnostic in.
-	void report(const char* prefix, const char* message) noexcept
-	{
-		std::fputs(prefix, stderr);
-		std::fputs(message, stderr);
-		std::fputs("\n", stderr);
-	}
-
 	void run_startup_cpu_check() noexcept
 	{
-		const CpuCheck::Verdict verdict = CpuCheck::Assess(CpuCheck::ReadCpu());
-
 		// _Exit, not exit: no destructor or atexit handler has anything to do yet.
-		if (const char* fatal = CpuCheck::FatalMessage(verdict)) {
-			report("Fatal: ", fatal);
+		if (const char* fatal = CpuCheck::FatalMessage(CpuCheck::Assess(CpuCheck::ReadCpu()))) {
+			std::fputs("Fatal: ", stderr);
+			std::fputs(fatal, stderr);
+			std::fputs("\n", stderr);
 			std::_Exit(1);
 		}
-		if (const char* warning = CpuCheck::WarningMessage(verdict))
-			report("Warning: ", warning);
 	}
 } // namespace
 

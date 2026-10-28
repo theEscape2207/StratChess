@@ -175,8 +175,6 @@ void UciHandler::cmd_uci()
 	// and an 'info' line among them is out of spec even though GUIs tolerate it.
 	send("uciok");
 	send("info string benchcontract " + std::to_string(MEASUREMENT_CONTRACT));
-	if (!startup_notice_.empty())
-		send("info string " + startup_notice_);
 }
 
 void UciHandler::cmd_isready() { send("readyok"); }

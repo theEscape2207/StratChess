@@ -5,7 +5,6 @@
 #include "Game.h"
 #include "Board.h"
 #include "UCIHandler.h"
-#include "CpuCheck.h"
 #include <Tools/Perft.h>
 #include <Tools/TacticalTestRunner.h>
 #include "Eval.h"
@@ -352,11 +351,6 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			UciHandler handler;
-			// The unsupported-CPU exit has already happened (StartupCpuCheck.cpp). The slow-PEXT
-			// warning went to stderr, which a GUI rarely shows, so the handshake repeats it.
-			if (const char* warning = CpuCheck::WarningMessage(CpuCheck::Assess(CpuCheck::ReadCpu()))) {
-				handler.SetStartupNotice(warning);
-			}
 			// Fatal rather than a warning: the log was asked for explicitly, and running on
 			// without it produces an empty answer to whatever question it was enabled for.
 			if (log_path && !handler.EnableCommandLog(*log_path)) {
