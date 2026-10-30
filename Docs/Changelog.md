@@ -23,6 +23,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-30: Refresh Matt Pocock skills to v1.3.2
+
+### Changed
+- Updated the existing Codex skill set to upstream v1.3.2: fresh-context subagents, stronger review
+  and test guidance, dated chief-of-staff wiki memory, and wizard input / dotenv fixes. Refreshed
+  GitHub tracker guidance while preserving body-file writes, script-mediated PRs and project labels.
+  Provenance and integration impact: [skills upstream](agents/skills-upstream.md).
+
 ## 2026-10-28: Startup CPU check for AVX2/BMI2 (#928)
 
 ### Added
