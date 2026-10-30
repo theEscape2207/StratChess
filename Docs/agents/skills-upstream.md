@@ -25,6 +25,17 @@ paths, implement Skill-tool calls, and to-tickets parent links), so those files 
 `ask-matt` and `implement-spec` remain outside this repo's selected Codex set. Project-owned
 adapters and canonical skills under `.claude/skills/` were retained.
 
+### Known wizard limitations
+
+The upstream `write_env` encodes an apostrophe using shell quoting: `KEY='a'\''b'`. This
+round-trips through Bash and `_existing`, but Node's `util.parseEnv` reads the value as `a`.
+When generating a wizard, verify its output with the application's actual dotenv consumer before
+relying on values containing apostrophes; use that consumer's encoding if needed. The vendored
+template remains the upstream release, including this limitation.
+
+Writing through the existing file preserves symlinks and modes, at the cost of atomic replacement:
+an interrupted write can leave partial content. This update creates no generated wizard or `.env`.
+
 At this refresh, `Docs/agents/domain.md` correctly points to the existing `CONTEXT.md`. A glossary
 rename is a separate migration; the setup skill's new offer does not require renaming it now.
 
