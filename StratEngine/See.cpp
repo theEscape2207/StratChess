@@ -48,7 +48,7 @@ namespace {
 // omission: modelling pins means legality checking inside the swap loop, and it rarely pays.
 bool See::see_ge(const Board& board, const Move& move, int threshold) noexcept
 {
-	assert(MoveHelper::IsCapture(move) || MoveHelper::IsPromote(move));
+	assert(!MoveHelper::IsCastle(move));
 
 	const auto boards = board.GetBitBoards();
 	const BITBOARD* bb = boards.data();

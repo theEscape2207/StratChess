@@ -14,6 +14,7 @@
 #include "MoveHelper.h"
 #include "PlayerFactory.h"
 #include "SearchPlayer.h"
+#include "See.h"
 #include "Sort.h"
 #include "ThreadData.h"
 #include "TranspositionTable.h"
@@ -269,6 +270,80 @@ class AIPerlexTestFixture {
 	bool late_move_pruning_enabled() const { return ai->tuning_.late_move_pruning_enabled; }
 	void set_late_move_pruning_min_index(int index) const { ai->tuning_.late_move_pruning_min_index = index; }
 	int64_t lmp_skips() const { return ai->td_.telemetry.lmp.skips; }
+
+	// --- Quiet SEE pruning pokes ---
+	void set_quiet_see_pruning(bool enabled, int min_depth = 1, int max_depth = 3, int margin = 20) const
+	{
+		ai->tuning_.quiet_see_pruning_enabled = enabled;
+		ai->tuning_.quiet_see_pruning_min_depth = min_depth;
+		ai->tuning_.quiet_see_pruning_max_depth = max_depth;
+		ai->tuning_.quiet_see_pruning_margin = margin;
+	}
+	int64_t quiet_see_skips() const { return ai->td_.telemetry.quiet_see.skips; }
+
+	// What the guard should do at this node, worked out independently of the search: `candidates` must
+	// equal its skip count, and each other field is a SEE-losing move an exemption keeps searched.
+	struct QuietSeeTally {
+		int candidates = 0;
+		int losing_first = 0;
+		int losing_captures = 0;
+		int losing_promotions = 0;
+		int losing_killers = 0;
+		int losing_checks = 0;
+		int losing_draws = 0;
+	};
+
+	QuietSeeTally tally_quiet_see(int ply, int threshold) const
+	{
+		Board copy = board_;
+		MoveList list;
+		MoveGenerator::ComputeLegalMoves(copy, list);
+
+		const Move k0 = ai->td_.killers[ply][0];
+		const Move k1 = ai->td_.killers[ply][1];
+		ScoredMoves scored{};
+		const int n = static_cast<int>(list.size());
+		MoveSorter::ScoreMoves(list, n, {copy, k0, k1, ai->td_.history, {}}, Move::EmptyMove(), scored);
+
+		QuietSeeTally tally;
+		int legal_index = 0;
+		for (int i = 0; i < n; ++i) {
+			const Move move = list[scored[i].second];
+			const bool castle = MoveHelper::IsCastle(move);
+			const bool losing = !castle && !See::see_ge(copy, move, threshold);
+			if (!copy.DoMove(move))
+				continue;
+			const bool gives_check = copy.InCheck();
+			const bool draws = copy.is_repetition(ply + 1) || copy.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT;
+			copy.UndoMove(move);
+
+			const bool first = legal_index++ == 0;
+			if (!losing)
+				continue;
+
+			if (MoveHelper::IsCapture(move))
+				++tally.losing_captures;
+			else if (MoveHelper::IsPromote(move))
+				++tally.losing_promotions;
+			else if (move == k0 || move == k1)
+				++tally.losing_killers;
+			else if (first)
+				++tally.losing_first;
+			else if (gives_check)
+				++tally.losing_checks;
+			else if (draws)
+				++tally.losing_draws;
+			else
+				++tally.candidates;
+		}
+		return tally;
+	}
+
+	bool quiet_see_pruning_eligible(int depth, int alpha, bool is_pv_node, bool in_check, bool is_exclusion_frame,
+	                                bool zugzwang_safe) const
+	{
+		return ai->quiet_see_pruning_eligible(depth, alpha, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe);
+	}
 	const LmrStats& lmr_profile() const { return ai->td_.telemetry.lmr; }
 	bool late_move_pruning_eligible(int depth, int alpha, int beta, bool is_pv_node, bool in_check,
 	                                bool is_exclusion_frame) const

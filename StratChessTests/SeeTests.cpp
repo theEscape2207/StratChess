@@ -37,6 +37,44 @@ namespace {
 
 } // namespace
 
+TEST_CASE("See - a quiet move onto a square a pawn attacks loses the piece", "[see]")
+{
+	// Nc3-d5 hangs the knight to c6xd5, and nothing recaptures.
+	const Board board("4k3/8/2p5/8/8/2N5/8/4K3 w - - 0 1");
+	RequireSeeExactly(board, FindMove(board, c3, d5), -300);
+}
+
+TEST_CASE("See - an attacked quiet destination can be tactically safe", "[see]")
+{
+	// Rd8xd5 would lose the rook to e4xd5, so Black declines and the knight stands.
+	const Board board("3rk3/8/8/8/4P3/2N5/8/4K3 w - - 0 1");
+	RequireSeeExactly(board, FindMove(board, c3, d5), 0);
+}
+
+TEST_CASE("See - a quiet interposition is scored on its destination", "[see]")
+{
+	// In check from the e8 rook. Ne4 hangs the knight; on e2 the king recaptures, so the rook declines.
+	const Board board("4r2k/8/8/8/8/2N5/8/4K3 w - - 0 1");
+	RequireSeeExactly(board, FindMove(board, c3, e4), -300);
+	RequireSeeExactly(board, FindMove(board, c3, e2), 0);
+}
+
+TEST_CASE("See - pins are not modelled for a quiet move", "[see]")
+{
+	SECTION("a pinned attacker still counts: the true answer is 0")
+	{
+		// c6 is pinned to the king by the c1 rook, so c6xd5 is illegal.
+		const Board board("2k5/8/2p5/8/1N6/8/8/2R1K3 w - - 0 1");
+		RequireSeeExactly(board, FindMove(board, b4, d5), -300);
+	}
+	SECTION("a pinned defender still counts: the true answer is -300")
+	{
+		// Rd8xd5 wins the knight, because e4xd5 would expose the king to the e8 rook.
+		const Board board("3rr1k1/8/8/8/4P3/2N5/8/4K3 w - - 0 1");
+		RequireSeeExactly(board, FindMove(board, c3, d5), 0);
+	}
+}
+
 TEST_CASE("See - a capture nothing defends is worth the victim", "[see]")
 {
 	// Rd1xd5 takes an undefended queen.

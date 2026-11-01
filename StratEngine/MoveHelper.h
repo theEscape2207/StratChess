@@ -45,6 +45,12 @@ namespace MoveHelper {
 
 	[[nodiscard]] inline bool IsEnPassant(const Move& move) noexcept { return AsType(move) == MoveType::EP_CAPTURE; }
 
+	[[nodiscard]] inline bool IsCastle(const Move& move) noexcept
+	{
+		const MoveType type = AsType(move);
+		return type == MoveType::KING_CASTLE || type == MoveType::QUEEN_CASTLE;
+	}
+
 	[[nodiscard]] inline eSquare GetEnPassantSquare(const Move& move, ePiece movPiece) noexcept
 	{
 		if (AsType(move) != MoveType::DOUBLE_PAWN_PUSH)

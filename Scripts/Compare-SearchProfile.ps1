@@ -123,6 +123,7 @@ $ProfileSchema = [ordered]@{
     treenodes  = @{ Required = $true;  Fields = [ordered]@{ main = 1; qs = 1 } }
     frontier   = @{ Required = $false; Fields = [ordered]@{ skips = 1 } }
     lmp        = @{ Required = $false; Fields = [ordered]@{ skips = 1 } }
+    quietsee   = @{ Required = $false; Fields = [ordered]@{ skips = 1 } }
     aspiration = @{ Required = $false; Fields = [ordered]@{ iterations = 1; faillow = 1; failhigh = 1; fullwindow = 1; failnodes = 1 } }
     ordering   = @{ Required = $true;  Fields = [ordered]@{ cuts = 1; index = 5; latecut = 4; hashnodes = 1; hashcuts = 1; latenodes = 1; latebands = 3 } }
     lmr        = @{ Required = $false; Fields = [ordered]@{ reduced = 1; reducednodes = 1; researched = 1; confirmed = 1; researchnodes = 1 } }
@@ -352,6 +353,7 @@ function Get-ScopeRows {
     Add-Row 'frontier floor binds' 'count' $pr.floorbinds
     Add-Row 'frontier skips' 'count' $sum.frontier.skips
     Add-Row 'lmp skips' 'count' $sum.lmp.skips
+    Add-Row 'quietsee skips' 'count' $sum.quietsee.skips
 
     Add-Row 'qs roots' 'count' $q.roots
     Add-Row 'qs nodes per root' 'abs' $(if ($q.roots -gt 0) { $t.qs / $q.roots } else { $null })

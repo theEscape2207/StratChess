@@ -148,6 +148,13 @@ class UciHandlerTestFixture {
 	// the option reaches the search service.
 	unsigned ai_threads() const { return AIPerlexTestFixture::configured_threads(*handler.ai_); }
 
+	void set_quiet_see_pruning(bool enabled) const
+	{
+		auto tuning = ai_tuning();
+		tuning.quiet_see_pruning_enabled = enabled;
+		REQUIRE_FALSE(set_tuning(tuning).has_value());
+	}
+
 	void set_late_move_pruning(bool enabled) const
 	{
 		auto tuning = ai_tuning();

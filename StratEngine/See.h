@@ -13,7 +13,12 @@ namespace See {
 	// lets the swap loop stop the moment the answer is decided instead of unwinding the whole
 	// list. An int-valued see() can be added beside this if a consumer for it ever appears.
 	//
-	// `move` must be a capture or a promotion, and must not yet have been applied to the board.
+	// `move` must not yet have been applied to the board, and must not be castling: from and to are
+	// the king's, and the rook's move is invisible to the swap list.
+	//
+	// For a quiet move, gain is 0 and the answer is whether the opponent can profitably take the piece
+	// on move.to(). Two approximations carry over: a pinned attacker or defender still counts, and a
+	// double push's en-passant recapture is not seen, because it does not land on move.to().
 	//
 	// A *non-capturing* promotion can return false here — a queen promotion onto a defended square
 	// is see_ge(m, 0) == false — so a caller that must not prune or demote promotions has to

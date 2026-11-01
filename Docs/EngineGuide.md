@@ -141,6 +141,7 @@ These payloads follow `info string`; zero-only categories can be absent:
 | `singular multicut N` | Non-PV nodes that returned `beta` because the singular verification failed high at or above `beta` |
 | `frontier skips N` | Moves skipped by frontier futility |
 | `lmp skips N` | Moves skipped by late move pruning |
+| `quietsee skips N` | Moves skipped by quiet SEE pruning (`QuietSeePruning`, off by default) |
 | `aspiration iterations N faillow N failhigh N fullwindow N failnodes N` | Iterations, failed windows, full-window fallbacks and nodes spent in failed windows |
 
 For node units and comparisons across revisions, see [Workflow](Workflow.md#speed-and-nps).

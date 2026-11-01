@@ -101,6 +101,13 @@ TUNING_FIELD(int,     frontier_futility_margin,  200,  0,     1000, true, "Front
 TUNING_FLAG(late_move_pruning_enabled,   true, false, true, true, "LateMovePruning",         true)
 TUNING_FIELD(int,     late_move_pruning_min_index, 8,    1,     64,   true, "LateMovePruningMinIndex", true)
 
+// Quiet SEE pruning: a quiet move whose SEE falls below -margin * depth * depth is skipped. Off pending
+// the strength lab (#399); the result ends in a default flip or in deleting these four.
+TUNING_FLAG(quiet_see_pruning_enabled,   false, false, true, true, "QuietSeePruning",         true)
+TUNING_FIELD(int,     quiet_see_pruning_min_depth, 1,  1,     MAX_PLY, true, "QuietSeePruningMinDepth", true)
+TUNING_FIELD(int,     quiet_see_pruning_max_depth, 3,  1,     MAX_PLY, true, "QuietSeePruningMaxDepth", true)
+TUNING_FIELD(int,     quiet_see_pruning_margin,    20, 0,     1000,    true, "QuietSeePruningMargin",   true)
+
 // Internal iterative reduction: a non-PV node with no hash move searches one ply shallower, and the
 // entry it stores orders the next visit. The floor of 2 keeps the reduced node above the quiescence
 // hand-off pvs() has already passed. A reduced depth-4 node lands at 3, inside reverse futility's

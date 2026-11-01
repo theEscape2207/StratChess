@@ -172,6 +172,10 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuning", "[config]")
                 "frontier_futility_enabled": false,
                 "frontier_futility_margin": 250,
                 "late_move_pruning_enabled": false,
+                "quiet_see_pruning_enabled": true,
+                "quiet_see_pruning_min_depth": 2,
+                "quiet_see_pruning_max_depth": 4,
+                "quiet_see_pruning_margin": 50,
                 "iir_enabled": false,
                 "iir_min_depth": 6,
                 "contempt": 25
@@ -207,6 +211,10 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuning", "[config]")
 	CHECK_FALSE(tuning->frontier_futility_enabled);
 	CHECK(tuning->frontier_futility_margin == 250);
 	CHECK_FALSE(tuning->late_move_pruning_enabled);
+	CHECK(tuning->quiet_see_pruning_enabled);
+	CHECK(tuning->quiet_see_pruning_min_depth == 2);
+	CHECK(tuning->quiet_see_pruning_max_depth == 4);
+	CHECK(tuning->quiet_see_pruning_margin == 50);
 	CHECK_FALSE(tuning->iir_enabled);
 	CHECK(tuning->iir_min_depth == 6);
 	CHECK(tuning->contempt == 25);
