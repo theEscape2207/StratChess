@@ -321,14 +321,14 @@ class AIPerlexTestFixture {
 			if (!losing)
 				continue;
 
-			if (MoveHelper::IsCapture(move))
+			if (first)
+				++tally.losing_first;
+			else if (MoveHelper::IsCapture(move))
 				++tally.losing_captures;
 			else if (MoveHelper::IsPromote(move))
 				++tally.losing_promotions;
 			else if (move == k0 || move == k1)
 				++tally.losing_killers;
-			else if (first)
-				++tally.losing_first;
 			else if (gives_check)
 				++tally.losing_checks;
 			else if (draws)

@@ -5,6 +5,9 @@
 // position puts a SEE-losing move behind the exemption under test, so removing that guard shows up
 // as extra skips. Each fixture narrows the band to one depth, so nested frames add no skips.
 //
+// The legal-count term backs up the mated-score term, which also holds before any child has returned:
+// the first-move case fails only with both removed.
+//
 // Three terms have no case here. The hash move sorts first, so the legal-count term already covers it.
 // The frontier and late-move exclusions only save a SEE call: those guards skip the same move under
 // the same post-move gates. Castling cannot change the count, since a legal castle's destination is
@@ -24,8 +27,11 @@ namespace {
 	// One half-move from the fifty-move limit, so every piece move draws on the spot.
 	constexpr const char* kFiftyMoveFen = "6k1/8/2p1p3/8/8/2N5/8/5BK1 w - - 99 1";
 
-	// Qxe6 loses the queen for a pawn, and sorts as a capture among the searched moves.
-	constexpr const char* kLosingCaptureFen = "6k1/5p2/4p3/8/8/2N5/8/4QBK1 w - - 0 1";
+	// Qxe6 loses the queen for a pawn. Nxb5 wins a pawn and sorts first, which leaves Qxe6 late.
+	constexpr const char* kLosingCaptureFen = "6k1/5p2/4p3/1p6/8/2N5/8/4QBK1 w - - 0 1";
+
+	// kQuietFen plus a pawn to win: Nxa4 sorts first, ahead of both killers.
+	constexpr const char* kCaptureThenQuietsFen = "6k1/8/2p1p3/8/p7/2N5/8/5BK1 w - - 0 1";
 
 	// b8=Q and the other pushes lose to Rxb8 and give no check; bxa8 sorts first.
 	constexpr const char* kLosingPromotionFen = "r7/1P5k/8/8/8/2N5/8/5BK1 w - - 0 1";
@@ -252,7 +258,7 @@ TEST_CASE("Quiet SEE pruning: losing captures and promotions are searched", "[se
 
 TEST_CASE("Quiet SEE pruning: both killer slots are searched", "[search][quietsee]")
 {
-	auto fix = enabled_fixture(kQuietFen, 1);
+	auto fix = enabled_fixture(kCaptureThenQuietsFen, 1);
 	fix.store_killer_uci(/*ply=*/1, "c3b5");
 	fix.store_killer_uci(/*ply=*/1, "c3d5");
 

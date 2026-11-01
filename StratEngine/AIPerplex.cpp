@@ -1071,7 +1071,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// so it runs last. The hash move sorts first, so its exemption is defence in depth behind the
 		// legal count. A frontier or late-move candidate skips under the same post-move gates, so its SEE
 		// call would be wasted. Once a searched move has returned a mated score the only rescue is often a
-		// sacrificial block, which is exactly what SEE calls losing.
+		// sacrificial block, which is exactly what SEE calls losing. best_value starts below that bound, so
+		// that term alone also keeps the first legal move; the legal count states the rule outright.
 		const bool quiet_see_candidate =
 		    quiet_see_node && !frontier_candidate && !lmp_candidate && legal_moves_searched >= 1 &&
 		    best_value > -GameValues::Mate_Threshold && !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) &&
