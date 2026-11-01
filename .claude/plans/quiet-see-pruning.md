@@ -27,7 +27,7 @@ The screen's result ends in a one-line default flip or in deleting the guard.
 - allow quiet moves in `See::see_ge`, except castling;
 - add the guard to `pvs()` behind `QuietSeePruning` (default off) with min depth, max depth and
   margin knobs, plus a skip counter;
-- add SEE cases and a falsified test per guard.
+- add SEE cases and a falsified test per behavioural guard.
 
 **This change will not:**
 
@@ -118,8 +118,12 @@ that falls on the guard's whole result and that the arms could not separate from
 The stored claim is the one the node already returns to its parent, that the value is at most alpha.
 It is selective, and so is null move's stored bound and frontier's (`AIPerplex.cpp`, comment above
 the floor). It is also tighter than frontier's: the threshold grows with depth and SEE depends only on
-the position, so a move skipped at depth d is also SEE-losing at every shallower depth an entry can
-answer. Only killers and the first legal move differ.
+the position, so within the eligible band a move skipped at depth d is also SEE-losing at every shallower depth.
+Only killers and the first legal move differ.
+
+Two consumers lie outside that argument and are accepted under Assumption 3, because they are existing
+TT policy: a MAIN UPPER also answers a probe below the band (depth 1 under arm B, where no guard would
+run), and it answers quiescence, which has no quiet-SEE guard.
 
 Dropping the stores would also starve IIR, a lab-gated feature. A fail-low stores a non-null best move,
 and that move is what stops a depth-4+ visit from reducing again.
@@ -158,9 +162,11 @@ They differ in one variable.
    use it. Margin 50, which changes only depths 2-3 and so addresses depth 2's high beat-alpha rate, is
    the owner's option before deleting.
 
+The intervals are arm-wise screens, not a family-wise guarantee: with two independent zero-effect
+arms, this sequence accepts a positive result about 4.9% of the time, against 2.5% for one.
+
 Rejected: B first (the re-triage), which could park the idea with its largest band untried. Also
-rejected: both arms at once, which costs a second run when A wins and adds selection bias, since tied
-arms lose about 0.6-0.85 sigma on confirmation.
+rejected: both arms at once, which costs a second run when A wins and offers a winner to pick.
 
 No deeper arm. Depths 4-6 at this threshold shape hold only 0.56% of the tree for 21M SEE calls, with
 1.4-2 nodes per prune, so the larger subtrees expected there are not on this tree. A deletion records
@@ -197,13 +203,18 @@ Engine tier. No Elo gate for the PR itself, since the flag is off. The PR is the
   nodes and best moves at `Threads=1`.
 - **SEE:** hand-computed bracketed cases for a hanging quiet, an attacked-but-safe destination, a quiet
   interposition, and the pinned-defender limitation, pinned as today's answer.
-- **Guards:** one test per node-level and move-level gate, in a new `SearchQuietSeePruningTests.cpp`,
-  each falsified by removing the gate and watching it fail. The hash-move term is the one exception
-  and is stated as such, as in LMP's tests: it sorts first, so it never reaches `legal_moves_searched >= 1`.
+- **Guards:** one test per behavioural gate, in a new `SearchQuietSeePruningTests.cpp`, each falsified
+  by removing the gate and watching it fail. Three terms have no behavioural test, and the source says
+  why: the hash move sorts first, so `legal_moves_searched >= 1` already covers it, and the
+  `frontier_candidate` and `lmp_candidate` exclusions only save a SEE call, since those guards skip the
+  same move under the same post-move gates.
 - **Return rule:** a skipped fail-low returns alpha and stores UPPER at alpha; a cutoff after a skip
   stores LOWER; a node where LMP also skipped stores nothing; an aborted search unwinds to the root board.
-- **Speed:** `Run-Bench.ps1` under `measure-strength`'s rules: nps with the flag off against the merge
-  base (the added branch), and wall time to fixed depth with the flag on against off, for each arm.
+- **Speed:** under `measure-strength`'s rules. `Run-Bench.ps1` gives nps with the flag off against the
+  merge base (the added branch). It cannot set UCI options, so wall time to fixed depth, flag on against
+  off for each arm, uses a throwaway Python UCI driver kept with the probe record below. The driver
+  sets all four options and keeps their values with the timings, and a non-zero `quietsee skips` proves
+  they applied.
 - **Strength:** the D4 sequence at 10+0.1, `Threads=1`, one binary, `QuietSeePruning` on against off.
   Owner's call. Option delivery is proved by the PGN or `quietsee skips` line, since a ~0 result may
   mean the option never applied.
@@ -211,8 +222,19 @@ Engine tier. No Elo gate for the PR itself, since the flag is off. The PR is the
 **Probe setup, for every table:** throwaway diff from the issue's 2026-10-11 comment, ported to
 `aad46d8c`, clang-cl Release, `Threads=1`, `go depth 12`, `ucinewgame` before each of the 200 positions
 in `Tests/profile-screen.fen`. Every move was still searched. One run each; node counts at `Threads=1`
-are deterministic. The D3 table was counted before D2's two gates, which remove under 2% of the
-would-prunes.
+are deterministic.
+
+The diffs, drivers and raw output are kept in
+`StratChessSupport\DesignRecords\399 - quiet-see-pruning.probe\`:
+
+| Probe | Feeds | What its counters count |
+|---|---|---|
+| `probe1-arms` | margin 20/50 totals, 11.35% before the gates | calls after the post-move gates; prunes per move; nodes per outermost would-prune subtree |
+| `probe2-faillow-stores` | D3's table | completed fail-low frames, non-PV, depths 1-3, alpha outside mate; a skip means margin 20 |
+| `probe3-split` | D2's table, D4's table, depths 4-6 | SEE calls at the call site, with the frontier/LMP exclusions; prunes per move; nodes per outermost subtree across depths 1-6 |
+
+D3's table is a pre-gate observation: `probe2` predates D2's two gates, which remove under 2% of
+would-prunes, and its per-depth store-loss rates were not re-counted with them.
 
 ## Cost
 
