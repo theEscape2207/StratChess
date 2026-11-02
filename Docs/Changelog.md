@@ -23,6 +23,20 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-02: Quiet SEE pruning in main search, default off (#399)
+
+### Added
+- `QuietSeePruning` (default false) skips a late quiet move at a non-PV node when SEE says it loses more
+  than `QuietSeePruningMargin * depth^2` (20) within `QuietSeePruningMinDepth..MaxDepth` (1..3). With the
+  flag off the search is unchanged. The lab decides the default; `quietsee skips N` counts the skips.
+- `See::see_ge` now accepts quiet moves. Castling stays a precondition, because the swap list cannot see
+  the rook's move.
+
+### Risks accepted
+- A fail-low after a skip returns alpha and stores UPPER at alpha, where late move pruning stores
+  nothing. Copying LMP would newly drop 97.0% of depth-3 fail-low stores, as this guard fires from the
+  second legal move. The UPPER bound rests on moves that were skipped, not searched.
+
 ## 2026-10-30: Refresh Matt Pocock skills to v1.3.2
 
 ### Changed
