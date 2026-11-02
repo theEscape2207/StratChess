@@ -119,6 +119,11 @@ repeats the aborted-frame tripwire; change both together.
   within each. Moving the losing tier below the quiets is the tempting change and costs tens of
   percent in nodes: captures are never LMR-reduced, so it only lowers the move number of every quiet
   it steps over.
+- **`See::see_ge` takes quiet moves but not castling.** A quiet's gain is 0, so the answer is whether
+  the opponent can profitably take the piece on `to`. Castling is a precondition, because the rook's
+  move is invisible to the swap list. Quiet SEE pruning excludes it, and its fail-low stores UPPER at
+  alpha where late move pruning stores nothing, because it fires from the second legal move: see the
+  comment at the floor in `pvs()`.
 - **`pvs()` orders its move list lazily.** `MoveSorter::ScoreMovesBestFirst` orders only
   `scored_idx[0]`; the loop calls `OrderRemaining(…, 1, n)` at the top of its body when `si == 1`,
   before any `continue`. Until then nothing may read `scored_idx[i]` for `i ≥ 1` — a new reader before

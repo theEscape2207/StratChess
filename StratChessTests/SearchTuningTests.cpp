@@ -46,6 +46,9 @@ namespace {
 		int reverse_futility_margin;
 		int frontier_futility_margin;
 		int late_move_pruning_min_index;
+		int quiet_see_pruning_min_depth;
+		int quiet_see_pruning_max_depth;
+		int quiet_see_pruning_margin;
 		int iir_min_depth;
 		int continuation_history_plies;
 		int contempt;
@@ -59,6 +62,7 @@ namespace {
 		bool reverse_futility_enabled;
 		bool frontier_futility_enabled;
 		bool late_move_pruning_enabled;
+		bool quiet_see_pruning_enabled;
 		bool iir_enabled;
 		bool staged_generation_enabled;
 	};
@@ -96,6 +100,10 @@ namespace {
 	SAME_MEMBER(frontier_futility_margin)
 	SAME_MEMBER(late_move_pruning_enabled)
 	SAME_MEMBER(late_move_pruning_min_index)
+	SAME_MEMBER(quiet_see_pruning_enabled)
+	SAME_MEMBER(quiet_see_pruning_min_depth)
+	SAME_MEMBER(quiet_see_pruning_max_depth)
+	SAME_MEMBER(quiet_see_pruning_margin)
 	SAME_MEMBER(iir_enabled)
 	SAME_MEMBER(iir_min_depth)
 	SAME_MEMBER(staged_generation_enabled)
@@ -158,6 +166,10 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.frontier_futility_margin == 200);
 	CHECK(tuning.late_move_pruning_enabled);
 	CHECK(tuning.late_move_pruning_min_index == 8);
+	CHECK_FALSE(tuning.quiet_see_pruning_enabled);
+	CHECK(tuning.quiet_see_pruning_min_depth == 1);
+	CHECK(tuning.quiet_see_pruning_max_depth == 3);
+	CHECK(tuning.quiet_see_pruning_margin == 20);
 	CHECK(tuning.iir_enabled);
 	CHECK(tuning.iir_min_depth == 4);
 	CHECK(tuning.staged_generation_enabled);
@@ -410,6 +422,29 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(uci_rejection("LateMovePruningMinIndex", "65") == Code::OutOfRange);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("QuietSeePruning", "true", tuning));
+	expected.quiet_see_pruning_enabled = true;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("QuietSeePruningMinDepth", "2", tuning));
+	expected.quiet_see_pruning_min_depth = 2;
+	CHECK(tuning == expected);
+	CHECK(uci_rejection("QuietSeePruningMinDepth", "0") == Code::OutOfRange);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("QuietSeePruningMaxDepth", "4", tuning));
+	expected.quiet_see_pruning_max_depth = 4;
+	CHECK(tuning == expected);
+	CHECK(uci_rejection("QuietSeePruningMaxDepth", "0") == Code::OutOfRange);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("QuietSeePruningMargin", "50", tuning));
+	expected.quiet_see_pruning_margin = 50;
+	CHECK(tuning == expected);
+	CHECK(uci_rejection("QuietSeePruningMargin", "1001") == Code::OutOfRange);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("InternalIterativeReduction", "false", tuning));
 	expected.iir_enabled = false;
 	CHECK(tuning == expected);
@@ -563,6 +598,10 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
 	    "option name LateMovePruning type check default true",
 	    "option name LateMovePruningMinIndex type spin default 8 min 1 max 64",
+	    "option name QuietSeePruning type check default false",
+	    "option name QuietSeePruningMinDepth type spin default 1 min 1 max 256",
+	    "option name QuietSeePruningMaxDepth type spin default 3 min 1 max 256",
+	    "option name QuietSeePruningMargin type spin default 20 min 0 max 1000",
 	    "option name InternalIterativeReduction type check default true",
 	    "option name IirMinDepth type spin default 4 min 2 max 256",
 	    // No negative half: SearchTuningSchema's read_uci() accepts unsigned decimal digits only,

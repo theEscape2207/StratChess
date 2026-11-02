@@ -43,12 +43,12 @@ namespace {
 // it uncovers the piece behind — rook behind rook, queen behind bishop. Skipping that would be
 // cheaper and wrong in exactly the battery positions where an exchange that looks losing wins.
 //
-// Pins are ignored. A pinned defender is counted as a defender even though it could not legally
-// recapture, so an exchange can be reported as losing when it is not. This is the standard
-// omission: modelling pins means legality checking inside the swap loop, and it rarely pays.
+// Pins are ignored. A pinned piece counts as able to recapture even when it could not legally, so an
+// exchange can be misjudged either way. This is the standard omission: modelling pins means legality
+// checking inside the swap loop, and it rarely pays.
 bool See::see_ge(const Board& board, const Move& move, int threshold) noexcept
 {
-	assert(MoveHelper::IsCapture(move) || MoveHelper::IsPromote(move));
+	assert(!MoveHelper::IsCastle(move));
 
 	const auto boards = board.GetBitBoards();
 	const BITBOARD* bb = boards.data();

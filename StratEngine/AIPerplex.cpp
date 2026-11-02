@@ -794,9 +794,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	if (iir_eligible(depth, is_pv_node, in_check, is_exclusion_frame, hash_move))
 		--depth;
 
-	// The zugzwang floor both pruning guards below rest on, established once per node rather than
+	// The zugzwang floor the pruning guards below rest on, established once per node rather than
 	// once per guard. The two preconditions lead only as an ordering optimisation, so a PV node or
-	// one in check never pays for the popcount; both guards still test them for themselves. A node
+	// one in check never pays for the popcount; each guard still tests them for itself. A node
 	// that clears those two but bails on a later guard -- an exclusion frame, a mate-range beta, a
 	// null-move child -- still pays the popcount.
 	const bool zugzwang_safe = !is_pv_node && !in_check && has_two_non_pawn_pieces(td.board);
@@ -997,6 +997,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const bool lmp_node = late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
 	bool lmp_skipped = false;
 
+	// Quiet SEE pruning: a shallow non-PV quiet move that loses material on its destination is skipped.
+	const bool quiet_see_node =
+	    quiet_see_pruning_eligible(depth, alpha, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe);
+	bool quiet_see_skipped = false;
+
 	// Search profile: a late cut's cost is the nodes spent since the loop began up to the cutting
 	// move, minus the late-cut nodes already counted by nodes nested in that span.
 	const int64_t profile_loop_nodes = td.nodes_searched + td.qnodes_searched;
@@ -1041,7 +1046,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			continue;
 
 		// Ahead of the frontier guards so their work overlaps the child's bucket miss; a quiet move
-		// that futility or late-move pruning then skips wastes the prefetch.
+		// that a pruning guard then skips wastes the prefetch.
 		td.board.PrefetchChild(move);
 
 		// The pre-move half of the frontier guards, tested while td.board still holds this node,
@@ -1061,6 +1066,18 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		const bool lmp_candidate = lmp_node && legal_moves_searched >= tuning_.late_move_pruning_min_index &&
 		                           !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) &&
 		                           move != td.killers[ply][0] && move != td.killers[ply][1] && move != hash_move;
+
+		// The pre-move half of the quiet-SEE guards; SEE needs the unmade board and is the costliest term,
+		// so it runs last. The hash move sorts first, so its exemption is defence in depth behind the
+		// legal count. A frontier or late-move candidate skips under the same post-move gates, so its SEE
+		// call would be wasted. While every searched move has returned a mated score the only rescue is often
+		// a sacrificial block, which is exactly what SEE calls losing. best_value starts below that bound, so
+		// that term alone also keeps the first legal move; the legal count states the rule outright.
+		const bool quiet_see_candidate =
+		    quiet_see_node && !frontier_candidate && !lmp_candidate && legal_moves_searched >= 1 &&
+		    best_value > -GameValues::Mate_Threshold && ThreadData::is_quiet(move) && !MoveHelper::IsCastle(move) &&
+		    move != td.killers[ply][0] && move != td.killers[ply][1] && move != hash_move &&
+		    !See::see_ge(td.board, move, -tuning_.quiet_see_pruning_margin * depth * depth);
 
 		// In check the list is ComputeEvasions(), legal by construction, so DoMove() never rejects
 		// there. DoMove() tests legality regardless: on the few moves of an in-check node that costs too
@@ -1088,6 +1105,14 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				td.board.UndoMove(move);
 				td.telemetry.lmp.skips++;
 				lmp_skipped = true;
+				continue;
+			}
+
+			// The post-move half, again the same: no checking move and no immediate draw.
+			if (quiet_see_candidate && !td.check_draws(ply + 1) && !td.board.InCheck()) {
+				td.board.UndoMove(move);
+				td.telemetry.quiet_see.skips++;
+				quiet_see_skipped = true;
 				continue;
 			}
 
@@ -1252,6 +1277,17 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				td.telemetry.pruning.floor_binds++;
 		best_value = std::max(best_value, frontier_floor);
 	}
+
+	// A skipped move was judged to lose material, which bounds no score, so the searched subset proves
+	// nothing below alpha: the node claims alpha itself. Unlike late move pruning's return below, it
+	// still stores UPPER. This guard fires from the second legal move, so withholding the store would
+	// cost most shallow fail-lows their entry, and the best move in it that IIR relies on. The claim
+	// is selective like null move's. Within the band the threshold only widens with depth, so a move
+	// skipped here is also SEE-losing at any shallower eligible depth; a probe below the band and
+	// quiescence reuse the bound without that argument. A node late move pruning also skipped still
+	// takes that return, since this leaves it at or below alpha.
+	if (quiet_see_skipped)
+		best_value = std::max(best_value, original_alpha);
 
 	// Terminal node: no legal move could be played, so this position is checkmate or
 	// stalemate and best_value is still the -Search_Init sentinel. Resolve the true
@@ -1961,6 +1997,25 @@ bool AIPerplex::late_move_pruning_eligible(int depth, int alpha, int beta, bool 
 	if (beta != alpha + 1)
 		return false;
 	return std::abs(alpha) < GameValues::Mate_Threshold && std::abs(beta) < GameValues::Mate_Threshold;
+}
+
+bool AIPerplex::quiet_see_pruning_eligible(int depth, int alpha, bool is_pv_node, bool in_check,
+                                           bool is_exclusion_frame, bool zugzwang_safe) const
+{
+	if (!tuning_.quiet_see_pruning_enabled)
+		return false;
+	// A verification search's fail-low grants a singular extension, so it must come from a search.
+	if (is_exclusion_frame)
+		return false;
+	if (is_pv_node || in_check)
+		return false;
+	if (depth < tuning_.quiet_see_pruning_min_depth || depth > tuning_.quiet_see_pruning_max_depth)
+		return false;
+	// With few pieces the key move is often a SEE-negative push or deflection, and no eval margin or
+	// late index stands behind this guard to catch it.
+	if (!zugzwang_safe)
+		return false;
+	return std::abs(alpha) < GameValues::Mate_Threshold;
 }
 
 // No hash move also covers a MAIN entry stored without one, such as a fail-low, and a quiescence

@@ -16,7 +16,7 @@
     they reached it, and for a refactor the path is exactly what is under test.
 
     Every 'info string' line the search emits is compared too — the node split and
-    the trigger counters (frontier, lmp, singular, ttstats, aspiration) — so a change that
+    the trigger counters (frontier, lmp, quietsee, singular, ttstats, aspiration) — so a change that
     rewords, drops or adds one fails the gate. The exceptions are compared only when
     BOTH builds emit them, and a one-sided line is reported rather than counted as a
     difference:

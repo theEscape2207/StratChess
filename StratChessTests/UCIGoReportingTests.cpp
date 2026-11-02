@@ -530,6 +530,35 @@ TEST_CASE("cmd_go: 'nodes' equals the reported main/quiescence split", "[uci][no
 	CHECK(info_lines.back().nodes == main_nodes + qs_nodes);
 }
 
+TEST_CASE("cmd_go: 'quietsee skips' is reported only when quiet SEE pruning skipped a move", "[uci][quietsee]")
+{
+	// The screen proves the option reached the engine by this exact spelling.
+	const std::regex quiet_see_line(R"(^info string quietsee skips [1-9]\d*$)");
+	const bool enabled = GENERATE(true, false);
+
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+	fix.set_quiet_see_pruning(enabled);
+	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	const std::string output = fix.capture([&] {
+		fix.dispatch("go depth 6");
+		fix.join_search();
+	});
+
+	int matching = 0;
+	int any = 0;
+	for (const std::string& line : split_lines(output)) {
+		if (std::regex_match(line, quiet_see_line))
+			++matching;
+		if (line.starts_with("info string quietsee"))
+			++any;
+	}
+	CAPTURE(enabled);
+	CHECK(any == matching);
+	CHECK(matching == (enabled ? 1 : 0));
+}
+
 TEST_CASE("cmd_go: 'lmp skips' is reported only when late move pruning skipped a move", "[uci][lmp]")
 {
 	// The timing screen and the strength lab read this exact spelling.

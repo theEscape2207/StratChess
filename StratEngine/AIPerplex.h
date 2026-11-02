@@ -271,6 +271,10 @@ class AIPerplex final {
 	// guards live in the move loop.
 	bool late_move_pruning_eligible(int depth, int alpha, int beta, bool is_pv_node, bool in_check,
 	                                bool is_exclusion_frame) const;
+	// The node-level quiet-SEE-pruning guards, runtime flag included. The move-level ones live in the
+	// move loop.
+	bool quiet_see_pruning_eligible(int depth, int alpha, bool is_pv_node, bool in_check, bool is_exclusion_frame,
+	                                bool zugzwang_safe) const;
 	// Whether pvs() searches this node one ply shallower for want of a hash move, runtime flag included.
 	bool iir_eligible(int depth, bool is_pv_node, bool in_check, bool is_exclusion_frame, const Move& hash_move) const;
 	// Whether pvs() generates captures first and quiets only when its loop reaches them. Bounded so the
