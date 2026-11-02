@@ -794,9 +794,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	if (iir_eligible(depth, is_pv_node, in_check, is_exclusion_frame, hash_move))
 		--depth;
 
-	// The zugzwang floor both pruning guards below rest on, established once per node rather than
+	// The zugzwang floor the pruning guards below rest on, established once per node rather than
 	// once per guard. The two preconditions lead only as an ordering optimisation, so a PV node or
-	// one in check never pays for the popcount; both guards still test them for themselves. A node
+	// one in check never pays for the popcount; each guard still tests them for itself. A node
 	// that clears those two but bails on a later guard -- an exclusion frame, a mate-range beta, a
 	// null-move child -- still pays the popcount.
 	const bool zugzwang_safe = !is_pv_node && !in_check && has_two_non_pawn_pieces(td.board);
@@ -1046,7 +1046,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			continue;
 
 		// Ahead of the frontier guards so their work overlaps the child's bucket miss; a quiet move
-		// that futility or late-move pruning then skips wastes the prefetch.
+		// that a pruning guard then skips wastes the prefetch.
 		td.board.PrefetchChild(move);
 
 		// The pre-move half of the frontier guards, tested while td.board still holds this node,
@@ -1070,14 +1070,14 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// The pre-move half of the quiet-SEE guards; SEE needs the unmade board and is the costliest term,
 		// so it runs last. The hash move sorts first, so its exemption is defence in depth behind the
 		// legal count. A frontier or late-move candidate skips under the same post-move gates, so its SEE
-		// call would be wasted. Once a searched move has returned a mated score the only rescue is often a
-		// sacrificial block, which is exactly what SEE calls losing. best_value starts below that bound, so
+		// call would be wasted. While every searched move has returned a mated score the only rescue is often
+		// a sacrificial block, which is exactly what SEE calls losing. best_value starts below that bound, so
 		// that term alone also keeps the first legal move; the legal count states the rule outright.
 		const bool quiet_see_candidate =
 		    quiet_see_node && !frontier_candidate && !lmp_candidate && legal_moves_searched >= 1 &&
-		    best_value > -GameValues::Mate_Threshold && !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) &&
-		    !MoveHelper::IsCastle(move) && move != td.killers[ply][0] && move != td.killers[ply][1] &&
-		    move != hash_move && !See::see_ge(td.board, move, -tuning_.quiet_see_pruning_margin * depth * depth);
+		    best_value > -GameValues::Mate_Threshold && ThreadData::is_quiet(move) && !MoveHelper::IsCastle(move) &&
+		    move != td.killers[ply][0] && move != td.killers[ply][1] && move != hash_move &&
+		    !See::see_ge(td.board, move, -tuning_.quiet_see_pruning_margin * depth * depth);
 
 		// In check the list is ComputeEvasions(), legal by construction, so DoMove() never rejects
 		// there. DoMove() tests legality regardless: on the few moves of an in-check node that costs too
@@ -1281,7 +1281,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// A skipped move was judged to lose material, which bounds no score, so the searched subset proves
 	// nothing below alpha: the node claims alpha itself. Unlike late move pruning's return below, it
 	// still stores UPPER. This guard fires from the second legal move, so withholding the store would
-	// cost 97% of depth-3 fail-lows their entry, and the best move in it that IIR relies on. The claim
+	// cost most shallow fail-lows their entry, and the best move in it that IIR relies on. The claim
 	// is selective like null move's. Within the band the threshold only widens with depth, so a move
 	// skipped here is also SEE-losing at any shallower eligible depth; a probe below the band and
 	// quiescence reuse the bound without that argument. A node late move pruning also skipped still

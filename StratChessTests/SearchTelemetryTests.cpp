@@ -182,7 +182,7 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	                               "nullmove tried 1 cutoffs 2 failed 3 failnodes 4",
 	                               "pruning rfp 1/2/3/4/5/6 floorbinds 7", "qsearch roots 1 delta 2 see 3 maxdepth 4"});
 
-	// Singular, frontier and lmp stay silent when they did not fire; ttstats prints whenever compiled.
+	// Singular, frontier, lmp and quietsee stay silent when they did not fire; ttstats prints whenever compiled.
 	const std::string zero_tt = "ttstats mainprobes 0 mainhits 0 maincutoffs 0 qsprobes 0 qshits 0 qscutoffs 0 "
 	                            "stores 0 declined 0 filled 0 refreshed 0 evictstale 0 evictcurrent 0 "
 	                            "evalserved 0 evalcomputed 0";

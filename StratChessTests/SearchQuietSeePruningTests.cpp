@@ -5,6 +5,9 @@
 // position puts a SEE-losing move behind the exemption under test, so removing that guard shows up
 // as extra skips. Each fixture narrows the band to one depth, so nested frames add no skips.
 //
+// The PV and in-check guards are the exception: zugzwang_safe also excludes both nodes, so their node
+// cases hold with the guard removed, and only the direct eligibility test falsifies it.
+//
 // The legal-count term backs up the mated-score term, which also holds before any child has returned:
 // the first-move case fails only with both removed.
 //
@@ -165,6 +168,7 @@ TEST_CASE("Quiet SEE pruning: an ineligible node skips nothing", "[search][quiet
 		fix.set_quiet_see_pruning(true, 2, 2);
 		fix.set_late_move_pruning(false);
 		fix.set_frontier_futility(false);
+		REQUIRE(tally_at(fix, 2).candidates > 0);
 		fix.search_node_excluding(/*depth=*/2, /*ply=*/1, "c3a4", kHighAlpha, kHighAlpha + 1);
 		CHECK(fix.quiet_see_skips() == 0);
 	}

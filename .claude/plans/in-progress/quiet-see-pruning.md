@@ -190,8 +190,8 @@ that depth 4+ was counted but never lab-tested, and that a shallower threshold w
 - `QuietSeePruning=false` is node-identical to the merge base.
 - A skip never leaves a node without a searched move, so it cannot fabricate mate or stalemate.
 - Captures, promotions, castling, killers, the hash move, checking moves and immediate draws are never
-  skipped, nor is any move at a node without two non-pawn pieces or after a searched move returned a
-  mated score.
+  skipped, nor is any move at a node without two non-pawn pieces or while every searched move has
+  returned a mated score.
 - An aborted frame keeps no results: the skip runs no child search and precedes every persistent write.
 - `see_ge`'s results for captures and promotions do not change.
 
@@ -204,7 +204,8 @@ Engine tier. No Elo gate for the PR itself, since the flag is off. The PR is the
 - **SEE:** hand-computed bracketed cases for a hanging quiet, an attacked-but-safe destination, a quiet
   interposition, and the pinned-defender limitation, pinned as today's answer.
 - **Guards:** one test per behavioural gate, in a new `SearchQuietSeePruningTests.cpp`, each falsified
-  by removing the gate and watching it fail. Three terms have no behavioural test, and the source says
+  by removing the gate and watching it fail. Castling cannot change the skip count, so see_ge's Debug
+  assert enforces it. Three terms have no behavioural test, and the source says
   why: the hash move sorts first, so `legal_moves_searched >= 1` already covers it, and the
   `frontier_candidate` and `lmp_candidate` exclusions only save a SEE call, since those guards skip the
   same move under the same post-move gates.

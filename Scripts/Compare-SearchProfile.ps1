@@ -41,7 +41,7 @@
       - A malformed line: every present line must match its exact field list and histogram
         lengths. Output definitions: Docs/EngineGuide.md; compatibility: Docs/EngineContracts.md.
       - A search that did not reach -Depth or print bestmove.
-    The optional lines aspiration, lmr, nullmove, pruning, frontier skips and lmp skips print only
+    The optional lines aspiration, lmr, nullmove, pruning, frontier, lmp and quietsee skips print only
     when their first field is non-zero ('pruning' on either field), so their absence reads as zero.
     'lmrhistory' prints whenever 'lmr' does, so its absence means a build older than it: its rows
     then show '-' and their deltas n/a, never a zero reach.
@@ -749,6 +749,7 @@ if ($SelfTest) {
         'info string treenodes main 83904 qs 110589'
         'info string frontier skips 43487'
         'info string lmp skips 23941'
+        'info string quietsee skips 777'
         'info string aspiration iterations 7 faillow 1 failhigh 0 fullwindow 0 failnodes 1813'
         'info string ordering cuts 7713 index 7412/126/103/52/20 latecut 0/260/21/20 hashnodes 3249 hashcuts 3229 latenodes 15403 latebands 12329/3074/0'
         'info string lmr reduced 26106 reducednodes 8560 researched 1 confirmed 1 researchnodes 78'
@@ -788,9 +789,10 @@ if ($SelfTest) {
     Assert-Case 'a pair with a mate score is excluded from the swing' ([math]::Abs((Row $rows 'score swing, mean cp') - 95 / 5) -lt 1e-9)
 
     # Optional lines: absent reads as zero.
-    $silent = $kiwi -replace "info string (nullmove|pruning|lmr|aspiration|frontier|lmp) [^\n]*\n", ''
+    Assert-Case 'quietsee skips are parsed' ((Row (Get-ScopeRows @(Parse $kiwi)) 'quietsee skips') -eq 777)
+    $silent = $kiwi -replace "info string (nullmove|pruning|lmr|aspiration|frontier|lmp|quietsee) [^\n]*\n", ''
     $rows = Get-ScopeRows @(Parse $silent)
-    Assert-Case 'absent optional lines read as zeros' ((Row $rows 'null move tried') -eq 0 -and (Row $rows 'lmr reduced') -eq 0 -and (Row $rows 'lmp skips') -eq 0 -and $null -eq (Row $rows 'null cutoffs, % of tried'))
+    Assert-Case 'absent optional lines read as zeros' ((Row $rows 'null move tried') -eq 0 -and (Row $rows 'lmr reduced') -eq 0 -and (Row $rows 'lmp skips') -eq 0 -and (Row $rows 'quietsee skips') -eq 0 -and $null -eq (Row $rows 'null cutoffs, % of tried'))
 
     # lmrhistory: rates over reduced; absent is unknown, not zero, and poisons a pooled scope.
     $rows = Get-ScopeRows @($r)

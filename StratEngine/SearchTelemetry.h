@@ -427,13 +427,14 @@ struct SearchTelemetry {
 
 	void reset() noexcept
 	{
-		quiet_see = QuietSeePruningStats{};
 		if constexpr (SingularStats::compiled)
 			singular = SingularStats{};
 		if constexpr (FrontierFutilityStats::compiled)
 			frontier = FrontierFutilityStats{};
 		if constexpr (LateMovePruningStats::compiled)
 			lmp = LateMovePruningStats{};
+		if constexpr (QuietSeePruningStats::compiled)
+			quiet_see = QuietSeePruningStats{};
 		if constexpr (TTStats::compiled)
 			tt = TTStats{};
 		if constexpr (AspirationStats::compiled)
@@ -454,13 +455,14 @@ struct SearchTelemetry {
 
 	void add(const SearchTelemetry& other) noexcept
 	{
-		quiet_see.add(other.quiet_see);
 		if constexpr (SingularStats::compiled)
 			singular.add(other.singular);
 		if constexpr (FrontierFutilityStats::compiled)
 			frontier.add(other.frontier);
 		if constexpr (LateMovePruningStats::compiled)
 			lmp.add(other.lmp);
+		if constexpr (QuietSeePruningStats::compiled)
+			quiet_see.add(other.quiet_see);
 		if constexpr (TTStats::compiled)
 			tt.add(other.tt);
 		if constexpr (AspirationStats::compiled)
@@ -488,7 +490,8 @@ struct SearchTelemetry {
 			frontier.append_info(sink);
 		if constexpr (LateMovePruningStats::compiled)
 			lmp.append_info(sink);
-		quiet_see.append_info(sink);
+		if constexpr (QuietSeePruningStats::compiled)
+			quiet_see.append_info(sink);
 		if constexpr (TTStats::compiled)
 			tt.append_info(sink);
 		if constexpr (AspirationStats::compiled)
