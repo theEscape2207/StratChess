@@ -99,12 +99,12 @@ namespace {
 // Eligibility
 // ============================================================================
 
-TEST_CASE("Quiet SEE pruning: the runtime flag starts off, and on makes a node eligible", "[search][quietsee]")
+TEST_CASE("Quiet SEE pruning: the runtime flag starts on, and off makes a node ineligible", "[search][quietsee]")
 {
 	AIPerlexTestFixture fix(kQuietFen);
-	CHECK_FALSE(eligible(fix));
-	fix.set_quiet_see_pruning(true);
 	CHECK(eligible(fix));
+	fix.set_quiet_see_pruning(false);
+	CHECK_FALSE(eligible(fix));
 }
 
 TEST_CASE("Quiet SEE pruning: the depth band is inclusive at both ends", "[search][quietsee]")

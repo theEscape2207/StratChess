@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-11-02 | 352954f, `QuietSeePruning=true`, arm A, depths 1-3 at margin 20: skips a late quiet move SEE says loses more than 20*depth^2 (#399; PR #941 merged default-off, option-only run on `main`, run `41434576766`, 16 of 18 shards favour it, zero forfeits) | 352954f (same commit, flag off) | 26640 | 10+0.1 | **+8.84 +/- 3.02** | gain; passes the ship rule, default changed to true |
 | 2026-10-28 | b5231a2, `StabilityTimeFloor=30`: the stability floor cut further, against explicit 50 (#904; no PR, option-only run on `main`, run `40593727213`, 2 of 18 shards favour it, zero forfeits) | b5231a2 (same commit, floor 50) | 26640 | 10+0.1 | **-10.20 +/- 3.01** | regression; fails the ship rule, default stays 50 |
 | 2026-10-26 | a6063d2, `StabilityTimeFloor=50` at **30+0.3**: harm check for #103's default (#920; option-only run on `main`, reference `StabilityTimeFloor=100`, run `40242553786`, **19 of 20 shards**, pooled locally, 9 of 19 favour it, zero forfeits) | a6063d2 (same commit, floor 100) | 9500 | 30+0.3 | **+3.22 +/- 4.89** | inconclusive @ 9500; no harm shown, default stays 50 |
 | 2026-10-25 | ea91b0b, `SoftTimePercent=78`: every clock search's soft stop cut to 78% on top of floor 50, run A (#908; PR #910, never merged, run `40184736357`, 5 of 18 shards favour it, zero forfeits) | f562abc | 26640 | 10+0.1 | **-2.92 +/- 3.02** | park: upper bound +0.10 below +3; default stays 100 |
@@ -112,6 +113,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-11-02 -- 352954f, `QuietSeePruning=true`, arm A (#399) (26640 games)
+
+**Passes rule 1 declared in [#399](https://github.com/theEscape2207/StratChess/issues/399) before dispatch (Elo minus its error bar above 0; the interval is [+5.82, +11.87]), so the default flips and arm B (depths 2-3) is not run.** [Run `41434576766`](https://github.com/theEscape2207/StratChess/actions/runs/41434576766), about 4 h, 18 shards x 740 pairs, Threads=1, concurrency 3, both sides `main` `352954f`; resolved comparison: [`strength-41434576766-comparison`](https://github.com/theEscape2207/StratChess/actions/runs/41434576766/artifacts/13136436049). All 21 jobs are green, so no shard hit a time loss, illegal move or disconnect. Pooled Ptnml(0-2) [883, 2960, 5125, 3300, 1052], score 51.27%. **The option reached the candidate:** the staged binaries are byte-identical and only `QuietSeePruning` differs, so nothing else can move the interval off zero. A screen arm chosen before dispatch and run first, so no selection across arms shrinks it. Not settled: Threads=1 at 10+0.1 only; margin 50, depth 4+ and whether the UPPER store at alpha helps more than it harms were never lab-tested.
 
 ### 2026-10-28 -- b5231a2, `StabilityTimeFloor=30` vs 50 (#904) (26640 games)
 
