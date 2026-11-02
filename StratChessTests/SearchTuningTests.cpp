@@ -166,7 +166,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.frontier_futility_margin == 200);
 	CHECK(tuning.late_move_pruning_enabled);
 	CHECK(tuning.late_move_pruning_min_index == 8);
-	CHECK_FALSE(tuning.quiet_see_pruning_enabled);
+	CHECK(tuning.quiet_see_pruning_enabled);
 	CHECK(tuning.quiet_see_pruning_min_depth == 1);
 	CHECK(tuning.quiet_see_pruning_max_depth == 3);
 	CHECK(tuning.quiet_see_pruning_margin == 20);
@@ -422,8 +422,8 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(uci_rejection("LateMovePruningMinIndex", "65") == Code::OutOfRange);
 
 	expected = SearchTuning{};
-	REQUIRE_FALSE(parse_uci("QuietSeePruning", "true", tuning));
-	expected.quiet_see_pruning_enabled = true;
+	REQUIRE_FALSE(parse_uci("QuietSeePruning", "false", tuning));
+	expected.quiet_see_pruning_enabled = false;
 	CHECK(tuning == expected);
 
 	expected = SearchTuning{};
@@ -598,7 +598,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
 	    "option name LateMovePruning type check default true",
 	    "option name LateMovePruningMinIndex type spin default 8 min 1 max 64",
-	    "option name QuietSeePruning type check default false",
+	    "option name QuietSeePruning type check default true",
 	    "option name QuietSeePruningMinDepth type spin default 1 min 1 max 256",
 	    "option name QuietSeePruningMaxDepth type spin default 3 min 1 max 256",
 	    "option name QuietSeePruningMargin type spin default 20 min 0 max 1000",

@@ -23,6 +23,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-02: Quiet SEE pruning on by default (#399)
+
+### Changed
+- `QuietSeePruning` now defaults to true, at depths 1-3 and margin 20.
+
+### Results
+- Lab +8.84 ±3.02 against the flag off (ci-per-change); Threads=1 only.
+
 ## 2026-11-02: Quiet SEE pruning in main search, default off (#399)
 
 ### Added
