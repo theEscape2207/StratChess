@@ -140,7 +140,7 @@ These payloads follow `info string`; zero-only categories can be absent:
 | `singular eligible N verified N extended N verifynodes N` | Eligible singular candidates, verification searches, granted extensions and work inside verification searches |
 | `singular multicut N` | Non-PV nodes that returned `beta` because the singular verification failed high at or above `beta` |
 | `frontier skips N` | Moves skipped by frontier futility |
-| `lmp skips N` | Moves skipped by late move pruning |
+| `lmp skips N` | Moves skipped by late move pruning, at depth 2 and, with `LateMovePruningDepth3`, depth 3. It takes precedence over quiet SEE pruning, so turning depth 3 on moves most depth-3 skips here from `quietsee skips` |
 | `quietsee skips N` | Moves skipped by quiet SEE pruning (`QuietSeePruning`, on by default; `QuietSeePruningMinDepth`, `QuietSeePruningMaxDepth` and `QuietSeePruningMargin` shape it) |
 | `aspiration iterations N faillow N failhigh N fullwindow N failnodes N` | Iterations, failed windows, full-window fallbacks and nodes spent in failed windows |
 
