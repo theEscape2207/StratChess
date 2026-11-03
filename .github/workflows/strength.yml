@@ -42,9 +42,9 @@ on:
         default: "0"
       games:
         description: "Total games across all shards (2 per opening pair; rounded down to fit the shards evenly)"
-        default: "20000"
+        default: "20088"
       shards:
-        description: "Parallel match jobs. 18x1110 games is ~3 h wall-clock and leaves 2 of the 20 concurrent-job slots free, so other PRs still move; 20 consumes the whole allowance. Below ~16 a shard can exceed the job timeout"
+        description: "Parallel match jobs. 18x1116 games is ~3 h wall-clock and leaves 2 of the 20 concurrent-job slots free, so other PRs still move; 20 consumes the whole allowance. Below ~16 a shard can exceed the job timeout"
         default: "18"
       candidate_tc:
         description: "Candidate time control, seconds+increment"

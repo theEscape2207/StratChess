@@ -380,8 +380,8 @@ layout as well as the Python helpers: a misplaced retained book must fail locall
 | `candidate_arms` | Optional multi-arm screen: `;`-separated candidate option sets, each in `candidate_uci_options` syntax. Shard *i* plays arm *i* mod K, and each arm is pooled on its own shards against the shared reference, so an arm is a smaller batch: K arms of a 20k-game run get about √K times the full run's error bar each. `setup` rejects empty, malformed or duplicate arms, a `shards` count not divisible by K, and use together with `candidate_uci_options`; `build` checks every arm against the candidate as above. Routing lives in `.github/scripts/plan_arms.py`, which `setup` self-tests. One failed shard still discards every arm |
 | `calibration` | Boolean, default false. Required for an intentionally identical arm. Declaring it on a known-sign control labels the report; different time controls already permit that comparison. It bypasses only the identical-comparison refusal |
 | `opening_offset` | Openings to skip before shard 0, default 0. A multi-run experiment gives each run its own range, so a confirmation never replays the openings a screen selected its winner on. The book-size check counts it, and a non-zero offset is recorded in the run summary |
-| `games` | Total games across all shards, two per opening pair. Rounded down so each shard gets whole pairs |
-| `shards` | Parallel match jobs, default 18. 18×1110 games is ~3 h and leaves 2 of the 20 concurrent-job slots free, so a run no longer blocks every other PR; 20 consumes the whole allowance for the duration. Below ~16 a shard can exceed the 340-minute job timeout |
+| `games` | Total games across all shards, two per opening pair, default 20088. Rounded down so each shard gets whole pairs. Standard sizes: `measure-strength` → `reference/strength-lab.md` |
+| `shards` | Parallel match jobs, default 18. 18×1116 games is ~3 h and leaves 2 of the 20 concurrent-job slots free, so a run no longer blocks every other PR; 20 consumes the whole allowance for the duration. Below ~16 a shard can exceed the 340-minute job timeout |
 | `candidate_tc` / `reference_tc` | Per-side time control, finite decimal `seconds+increment`, base > 0 and increment >= 0; normalized so spelling cannot create a difference. Halve the **base** for a handicap run — an increment under 0.1 s makes the engine play near-instantly at the bottom of its clock |
 | `concurrency` | Concurrent games **per shard**. Validated at 3; raising it causes contention, adding shards does not |
 | `threads` | UCI `Threads` on **both** engines, default 1. `setup` refuses `threads` × `concurrency` above the runner's 4 vCPU, so `Threads=4` needs `concurrency` 1 — a third of the game rate, so cut `games` to keep a shard inside the job timeout. Unvalidated for time losses above 1 |
@@ -451,6 +451,7 @@ same rule as `Run-EloMatch.ps1`, and on a shared runner a time loss most likely 
 oversubscribed, which invalidates the whole batch rather than the one game. **A failed shard
 discards the whole batch**, not just itself: the survivors are the ones that happened to avoid
 whatever went wrong, so pooling them would be a biased subset wearing a full batch's error bar.
+An infrastructure loss is replayed by a repair run and pooled with `pool_repaired_batch.py`: `measure-strength` → `reference/strength-lab.md`.
 Numbers land in `Measurements/ci-per-change.md` or `ci-anchor.md`, which must never be compared
 against the local clang-cl rows. **Ratios transfer between the two instruments; absolute values
 do not.**
