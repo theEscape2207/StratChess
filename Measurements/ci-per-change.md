@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-11-03 | 2d9cce2, `QuietSeePruningMargin=10`: depth 3 threshold -90 cp instead of -180, so quiet moves losing a pawn are also pruned (#946; no PR, option-only run on `main`, run `41541183202`, 7 of 18 shards favour it, zero forfeits) | 2d9cce2 (same commit, margin 20) | 26640 | 10+0.1 | **-0.00 +/- 3.02** | inconclusive @ 26640; fails the rule, default stays 20 |
 | 2026-11-02 | 2eb52f6, `QuietSeePruningMaxDepth=4`: quiet SEE pruning extended to depth 4, threshold -320 cp (#943; no PR, option-only run on `main`, run `41486305457`, 9 of 18 shards favour it, zero forfeits) | 2eb52f6 (same commit, `MaxDepth=3`) | 26640 | 10+0.1 | **+0.64 +/- 3.02** | inconclusive @ 26640; fails the rule, default stays 3 |
 | 2026-11-02 | 352954f, `QuietSeePruning=true`, arm A, depths 1-3 at margin 20: skips a late quiet move SEE says loses more than 20*depth^2 (#399; PR #941 merged default-off, option-only run on `main`, run `41434576766`, 16 of 18 shards favour it, zero forfeits) | 352954f (same commit, flag off) | 26640 | 10+0.1 | **+8.84 +/- 3.02** | gain; passes the ship rule, default changed to true |
 | 2026-10-28 | b5231a2, `StabilityTimeFloor=30`: the stability floor cut further, against explicit 50 (#904; no PR, option-only run on `main`, run `40593727213`, 2 of 18 shards favour it, zero forfeits) | b5231a2 (same commit, floor 50) | 26640 | 10+0.1 | **-10.20 +/- 3.01** | regression; fails the ship rule, default stays 50 |
@@ -114,6 +115,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-11-03 -- 2d9cce2, `QuietSeePruningMargin=10` (#946) (26640 games)
+
+**Fails the rule declared in [#946](https://github.com/theEscape2207/StratChess/issues/946) before dispatch (Elo minus its error bar above 0; the interval is [-3.02, +3.02]), so the default stays 20.** [Run `41541183202`](https://github.com/theEscape2207/StratChess/actions/runs/41541183202), about 4 h, 18 shards x 740 pairs, Threads=1, concurrency 3, opening offset 0, both sides `main` `2d9cce2`; resolved comparison: [`strength-41541183202-comparison`](https://github.com/theEscape2207/StratChess/actions/runs/41541183202/artifacts/13186931750). All 21 jobs are green, so no shard hit a time loss, illegal move or disconnect; the 3145 PV-compliance warnings across the 18 shards are reported-PV only (#310). Pooled Ptnml(0-2) [952, 3169, 5077, 3171, 951], score 50.00%; shards split 7 candidate, 11 reference. **The option changes the search:** the staged binaries are byte-identical, shard 0's environment carries the override (the other shards were not read), and #946's local probe at depth 14 counted 21% more `quietsee skips` than margin 20. So a zero here is not a failure to apply it, though neither PGN scores nor a protocol trace were read to prove `setoption` took effect. Not settled: Threads=1 at 10+0.1 only, and a gain smaller than the interval. `QuietSeePruningMargin=50` was dropped without a run, as #946 declared.
 
 ### 2026-11-02 -- 2eb52f6, `QuietSeePruningMaxDepth=4` (#943) (26640 games)
 
