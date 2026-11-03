@@ -1,4 +1,4 @@
-// SearchLateMovePruningTests.cpp — depth-two late move pruning.
+// SearchLateMovePruningTests.cpp — late move pruning at depth two, and at depth three behind its flag.
 //
 // The eligibility tests move one node-level guard at a time off a passing baseline. The node tests
 // hold the engine's skip count against the fixture's independent tally, after requiring that the
@@ -83,6 +83,24 @@ namespace {
 		fix.set_late_move_pruning_min_index(kFixtureIndex);
 		fix.arm_clock();
 		return fix;
+	}
+
+	// One depth-3 frame on its own. Index 64 keeps the depth-2 children from adding to lmp_skips(). With
+	// quiet SEE pruning off, its floor cannot stand in for the one under test, and a move LMP takes over
+	// still reaches LMR in the flag-off arm.
+	AIPerlexTestFixture depth3_fixture(const char* fen)
+	{
+		auto fix = enabled_fixture(fen);
+		fix.set_late_move_pruning_depth3(true);
+		fix.set_late_move_pruning_depth3_min_index(kFixtureIndex);
+		fix.set_late_move_pruning_min_index(64);
+		fix.set_quiet_see_pruning(false);
+		return fix;
+	}
+
+	int search_depth3(const AIPerlexTestFixture& fix, int alpha)
+	{
+		return fix.search_node(/*depth=*/3, /*ply=*/1, alpha, alpha + 1, /*is_pv_node=*/false);
 	}
 } // namespace
 
@@ -424,4 +442,142 @@ TEST_CASE("Late move pruning: the search result reports the skip count", "[searc
 
 	REQUIRE(fix.lmp_skips() > 0);
 	CHECK(result.telemetry.lmp.skips == fix.lmp_skips());
+}
+
+// ============================================================================
+// Depth 3, behind LateMovePruningDepth3
+// ============================================================================
+
+TEST_CASE("Late move pruning depth 3: eligible only behind both flags", "[search][lmp]")
+{
+	AIPerlexTestFixture fix(kBaselineFen);
+	fix.set_late_move_pruning(true);
+
+	fix.set_late_move_pruning_depth3(false);
+	CHECK(eligible(fix, /*depth=*/2));
+	CHECK_FALSE(eligible(fix, /*depth=*/3));
+	CHECK_FALSE(eligible(fix, /*depth=*/4));
+
+	fix.set_late_move_pruning_depth3(true);
+	CHECK_FALSE(eligible(fix, /*depth=*/1));
+	CHECK(eligible(fix, /*depth=*/2));
+	CHECK(eligible(fix, /*depth=*/3));
+	CHECK_FALSE(eligible(fix, /*depth=*/4));
+	CHECK_FALSE(eligible(fix, 3, 0, 1, /*is_pv_node=*/true));
+
+	fix.set_late_move_pruning(false);
+	CHECK_FALSE(eligible(fix, /*depth=*/2));
+	CHECK_FALSE(eligible(fix, /*depth=*/3));
+}
+
+TEST_CASE("Late move pruning depth 3: each index moves only its own depth", "[search][lmp]")
+{
+	SECTION("a depth-3 frame reads the depth-3 index")
+	{
+		auto fix = depth3_fixture(kMixedFen);
+		fix.set_late_move_pruning_depth3_min_index(8);
+		const Tally tally = fix.tally_late_moves(/*ply=*/1, 8);
+		REQUIRE(tally.candidates > late_moves(fix).candidates);
+
+		search_depth3(fix, kHighAlpha);
+
+		CHECK(fix.lmp_skips() == tally.candidates);
+		CHECK(fix.search_board_restored());
+	}
+	SECTION("a depth-2 frame reads the depth-2 index")
+	{
+		auto fix = enabled_fixture(kMixedFen);
+		fix.set_late_move_pruning_depth3(true);
+		fix.set_late_move_pruning_depth3_min_index(64);
+		const Tally tally = late_moves(fix);
+		REQUIRE(tally.candidates > 0);
+
+		search_depth2(fix, kHighAlpha);
+
+		CHECK(fix.lmp_skips() == tally.candidates);
+	}
+}
+
+TEST_CASE("Late move pruning depth 3: a no-hash depth-4 frame is pruned at its reduced depth", "[search][lmp][tt]")
+{
+	auto fix = depth3_fixture(kMixedFen);
+	fix.set_iir(true, 4);
+	const Tally tally = late_moves(fix);
+	REQUIRE(tally.candidates > 0);
+
+	fix.search_node(/*depth=*/4, /*ply=*/1, kHighAlpha, kHighAlpha + 1, /*is_pv_node=*/false);
+
+	CHECK(fix.lmp_skips() == tally.candidates);
+	const auto entry = fix.probe_tt(/*ply=*/1);
+	REQUIRE(entry.has_value());
+	CHECK(entry->depth == 3);
+}
+
+TEST_CASE("Late move pruning depth 3: a skipped fail-low returns alpha and stores UPPER at alpha", "[search][lmp][tt]")
+{
+	// Every searched move draws, below alpha; the two late pawn pushes would have failed high.
+	constexpr int kAlpha = 100;
+
+	auto fix = depth3_fixture(kFiftyMoveEdgeFen);
+	// White stands far above beta, so either would return before the move loop.
+	fix.set_reverse_futility(false);
+	fix.set_null_move_enabled(false);
+	for (const char* uci : kFiftyMoveEdgeEarlyMoves)
+		fix.seed_history(uci, 1);
+	// Shallower than the node, so it supplies no cutoff and the store replaces it.
+	fix.store_main_entry(1234, /*depth=*/1, /*ply=*/1, BoundType::EXACT);
+
+	const Tally tally = late_moves(fix);
+	REQUIRE(tally.candidates == 2);
+
+	const int score = search_depth3(fix, kAlpha);
+
+	REQUIRE(fix.lmp_skips() == tally.candidates);
+	CHECK(score == kAlpha);
+	const auto entry = fix.probe_tt(/*ply=*/1);
+	REQUIRE(entry.has_value());
+	CHECK(entry->depth == 3);
+	CHECK(entry->bound == BoundType::UPPER);
+	CHECK(entry->value == kAlpha);
+	CHECK_FALSE(entry->best_move.is_null());
+	CHECK(fix.search_board_restored());
+}
+
+TEST_CASE("Late move pruning depth 3: a searched cutoff after a skip stores LOWER", "[search][lmp][tt]")
+{
+	constexpr int kAlpha = -300;
+
+	auto fix = depth3_fixture(kPawnsThenDrawFen);
+	const Tally tally = late_moves(fix);
+	REQUIRE(tally.candidates == 4);
+	REQUIRE(tally.late_draws == 2);
+
+	const int score = search_depth3(fix, kAlpha);
+
+	REQUIRE(fix.lmp_skips() == tally.candidates);
+	CHECK(score == GameValues::Draw);
+	const auto entry = fix.probe_tt(/*ply=*/1);
+	REQUIRE(entry.has_value());
+	CHECK(entry->depth == 3);
+	CHECK(entry->bound == BoundType::LOWER);
+	CHECK(entry->value == GameValues::Draw);
+}
+
+TEST_CASE("Late move pruning depth 3: a skipped move is not reduced", "[search][lmp]")
+{
+	// lmr.capped is written on every reach at depth 3 and on none below it, so the two arms differ by
+	// exactly the moves that left before LMR. Both fail low, so both visit every move.
+	auto on = depth3_fixture(kMixedFen);
+	const Tally tally = late_moves(on);
+	REQUIRE(tally.candidates > 0);
+	CHECK(search_depth3(on, kHighAlpha) == kHighAlpha);
+	REQUIRE(on.lmp_skips() == tally.candidates);
+
+	auto off = depth3_fixture(kMixedFen);
+	off.set_late_move_pruning_depth3(false);
+	CHECK(search_depth3(off, kHighAlpha) <= kHighAlpha);
+	REQUIRE(off.lmp_skips() == 0);
+
+	CHECK(off.lmr_profile().capped - on.lmr_profile().capped == on.lmp_skips());
+	CHECK(on.lmr_profile().capped > 0);
 }
