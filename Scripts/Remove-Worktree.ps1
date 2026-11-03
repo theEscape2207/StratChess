@@ -22,7 +22,7 @@
     2. **Merge verification, not name-trust.** Before deleting anything it checks the
        branch is actually an ancestor of `origin/main` (`git merge-base --is-ancestor`).
        A branch whose commits were squash-merged is NOT an ancestor, so that case is
-       reported explicitly with a content-diff hint rather than silently blocked or
+       reported explicitly with a merged-PR check rather than silently blocked or
        silently deleted.
     3. **Locked worktrees** are unlocked first, otherwise removal fails with a message
        that does not name the lock as the cause.
@@ -52,11 +52,13 @@
 
 .PARAMETER AcceptUnmerged
     Delete the branch even though it is not an ancestor of origin/main, as after a
-    squash merge. Uncommitted changes still block removal.
+    squash merge. Modified and untracked files still block removal; git does not
+    protect ignored files.
 
 .PARAMETER DiscardChanges
-    Pass --force to `git worktree remove`, discarding uncommitted changes in that
-    worktree. The branch must still be merged, unless -AcceptUnmerged is also given.
+    Pass --force to `git worktree remove`, discarding modified and untracked files in
+    that worktree. A resolved branch must still be merged, unless -AcceptUnmerged is
+    also given. A detached worktree with no resolved branch has no merge check.
 
 .PARAMETER KeepRemote
     Leave the remote branch alone.
@@ -357,7 +359,8 @@ if ($SelfTest) {
         }
 
         # The two overrides are independent: accepting a squash merge never discards dirty
-        # files, and discarding dirty files never accepts an unmerged branch.
+        # files, and discarding dirty files never accepts an unmerged branch. These cases
+        # reuse the loop's last fixture, the Claude layout.
         $squashedPath = Join-Path $fixtureMain '.claude/worktrees/squashed'
         $squashedDirty = Join-Path $squashedPath 'dirty.tmp'
         & git -C $fixtureMain worktree add -b codex/squashed $squashedPath main | Out-Null
@@ -367,6 +370,7 @@ if ($SelfTest) {
         & git -C $squashedPath commit -m squashed | Out-Null
         & git -C $fixtureMain merge --squash codex/squashed | Out-Null
         & git -C $fixtureMain commit -m 'squash merge' | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit squash merge." }
         & git -C $fixtureMain push origin main codex/squashed | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Could not publish squash merge." }
         & git -C $fixtureMain merge-base --is-ancestor codex/squashed origin/main
@@ -401,6 +405,18 @@ if ($SelfTest) {
             & pwsh -ExecutionPolicy Bypass -File $fixtureScript -Name discard -DiscardChanges 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "-DiscardChanges refused a dirty merged worktree." }
             if (Test-Path -LiteralPath $discardPath) { throw "-DiscardChanges left the worktree directory." }
+
+            $unregisteredDir = Join-Path $fixtureMain '.claude/worktrees/unregistered'
+            $unregisteredFile = Join-Path $unregisteredDir 'work.txt'
+            $null = New-Item -ItemType Directory -Path $unregisteredDir -Force
+            Set-Content -LiteralPath $unregisteredFile -Value 'keep'
+            & git -C $fixtureMain branch codex/unregistered main | Out-Null
+            $unregisteredOutput = (& pwsh -ExecutionPolicy Bypass -File $fixtureScript -Name unregistered -Branch codex/unregistered 2>&1) -join ' '
+            if ($LASTEXITCODE -ne 0) { throw "Unregistered directory cleanup failed." }
+            if (-not (Test-Path -LiteralPath $unregisteredFile)) { throw "Unregistered directory lost a file." }
+            if ($unregisteredOutput -like '*now empty*' -or $unregisteredOutput -notlike '*still holds files*') {
+                throw "Unregistered directory holding files was not reported as such."
+            }
         } finally {
             Pop-Location
         }
@@ -526,7 +542,7 @@ if ($resolvedBranch -and -not $AcceptUnmerged) {
         Write-Host "      If the PR was SQUASH-merged this is expected; confirm it merged at this tip:" -ForegroundColor Yellow
         Write-Host "        gh pr list --head $resolvedBranch --state merged --json number,headRefOid" -ForegroundColor Yellow
         Write-Host "        git rev-parse $resolvedBranch     # must equal headRefOid" -ForegroundColor Yellow
-        Write-Host "      Then re-run with -AcceptUnmerged. Uncommitted changes stay protected." -ForegroundColor Yellow
+        Write-Host "      Then re-run with -AcceptUnmerged. Modified and untracked files stay protected." -ForegroundColor Yellow
         exit 1
     }
     Write-Host "PASS: '$resolvedBranch' is contained in origin/main." -ForegroundColor Green
@@ -555,8 +571,8 @@ if (Test-Path $TargetPath) {
         # Visual Studio, an indexer). That is a cosmetic leftover, NOT a reason to stop:
         # the branch cleanup below is the part that actually matters, and bailing here
         # is how orphaned branches accumulate. Deregister and carry on.
-        Write-Host "WARNING: could not delete the directory (a process is holding it open)." -ForegroundColor Yellow
-        Write-Host "         Deregistering it and continuing with branch cleanup." -ForegroundColor Yellow
+        Write-Host "WARNING: could not delete the directory (a process holds it open, or it is not a worktree)." -ForegroundColor Yellow
+        Write-Host "         It is not registered; continuing with branch cleanup." -ForegroundColor Yellow
         $script:DirLeftBehind = $true
     } else {
         Write-Host "PASS: worktree removed." -ForegroundColor Green
@@ -595,9 +611,16 @@ if ($SyncMaster) {
 }
 
 if ($script:DirLeftBehind) {
-    Write-Host "`nCleanup complete, except the (now empty, deregistered) directory:" -ForegroundColor Yellow
-    Write-Host "  $TargetPath" -ForegroundColor Yellow
-    Write-Host "It is harmless -- delete it once whatever is holding it open has exited." -ForegroundColor Yellow
+    $leftoverItems = @(Get-ChildItem -LiteralPath $TargetPath -Force -ErrorAction SilentlyContinue)
+    if ($leftoverItems.Count -gt 0) {
+        Write-Host "`nCleanup complete, except this directory, which still holds files:" -ForegroundColor Yellow
+        Write-Host "  $TargetPath" -ForegroundColor Yellow
+        Write-Host "Check its contents before deleting it." -ForegroundColor Yellow
+    } else {
+        Write-Host "`nCleanup complete, except the (now empty, deregistered) directory:" -ForegroundColor Yellow
+        Write-Host "  $TargetPath" -ForegroundColor Yellow
+        Write-Host "It is harmless -- delete it once whatever is holding it open has exited." -ForegroundColor Yellow
+    }
 } else {
     Write-Host "`nCleanup complete." -ForegroundColor Green
 }
