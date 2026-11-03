@@ -111,8 +111,9 @@ This does not isolate the pruning completely, and the lab row is read that way:
   depth-3 fail-lows. Elsewhere the bound's basis weakens from moves judged losing to moves judged by
   list position.
 
-**Order with #940:** the two lab runs stay serial. If #940 ships first, the depth-2 return is gone and
-the floor's condition drops to `lmp_skipped`; its result does not transfer to depth 3, in either
+**Order with #940:** the two lab runs stay serial. If #940's default-off code lands first, this change
+reconciles with its gate without turning its behaviour on. If #940 ships, the depth-2 return is gone and
+the floor's condition drops to `lmp_skipped`. Its result does not transfer to depth 3, in either
 direction.
 
 ### D4: Same guards as depth 2, nothing added
@@ -174,8 +175,11 @@ exclude them. `lmp skips` stays one counter.
 - **Equivalence:** `Compare-SearchEquivalence.ps1` against the merge base with the flag off: identical
   nodes and best moves.
 - **Speed:** one `Compare-Bench.ps1` with the flag off. The on-against-off lab run uses one binary, so
-  it cannot charge the new branch. Node equivalence says nothing about nps (#555), and a slowdown
-  beyond the series' spread needs a stated benefit, or a code-layout explanation, in the PR.
+  it cannot charge the new branch. Node equivalence says nothing about nps (#555). A slowdown beyond
+  the series' spread follows `measure-strength/reference/regression-check.md`, including its relink for
+  placement and its deferral of escalation until the lab has decided. If a material cost remains once
+  the gate is staying, remove it or measure the enabled change against its merge base before claiming
+  a net gain. An explanation alone does not waive it; deleting the gate after a miss removes it.
 - **Tests, each falsified by mutation** (`[search][lmp]`, `SearchTuningTests.cpp`):
   - Eligibility: depth 3 only with the flag on, depth 4 never, depth 2 either way, and none with
     `LateMovePruning=false`.
@@ -183,10 +187,13 @@ exclude them. `lmp skips` stays one counter.
   - Depth-3 fail-low with a skip: returns alpha and replaces a shallower planted entry with UPPER at
     alpha at depth 3, carrying a searched best move. Depth 2's store-nothing test stays unchanged.
   - Depth-3 searched cutoff after a skip stores LOWER.
-  - A skipped move is not reduced: at a depth-3 fail-low node with `QuietSeePruning=false`, flag on
-    against off, `lmr.capped` (written on every depth-3 reach) falls by exactly `lmp_skips()`. SEE must
-    be off, because a move LMP takes over from SEE reaches no LMR in the off arm either. Test builds
-    always compile the search-profile counters, so a skip moved below `record_lmr_reach` fails this.
+  - A skipped move is not reduced: at a depth-3 node that fails low in both arms, flag on against off,
+    `lmr.capped` (written on every depth-3 reach) falls by exactly `lmp_skips()`, and that count matches
+    an independent tally of the parent's candidates. Two settings isolate the parent:
+    `QuietSeePruning=false`, because a move LMP takes over from SEE reaches no LMR in the off arm
+    either; and `LateMovePruningMinIndex=64`, because `lmp_skips()` also counts skips in depth-2
+    children, so the off arm must show 0. Test builds always compile the search-profile counters, so a
+    skip moved below `record_lmr_reach` fails this.
   - Option parse, range (0 and 65 rejected) and the UCI catalogue lines.
 - **Option applied:** a local `go depth 12` with the flag on shows higher `lmp skips` than off, and
   different nodes.
