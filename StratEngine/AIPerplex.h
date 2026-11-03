@@ -57,9 +57,10 @@ using CompletionHandler = std::function<void(const SearchResult&)>;
 
 inline constexpr unsigned DEFAULT_AIPERPLEX_HASH_MB = 192;
 
-// Late move pruning's parent depth, deliberately not tunable: exactly two. The move index is
-// SearchTuning::late_move_pruning_min_index.
+// Late move pruning's parent depths, deliberately not tunable: two always, three behind
+// SearchTuning::late_move_pruning_depth3_enabled. Each has its own move index, *_min_index.
 inline constexpr int kLateMovePruningDepth = 2;
+inline constexpr int kLateMovePruningDepth3 = 3;
 
 // ln(i) for i in [1, MAX_PLY); slot 0 is unused. It covers every move number (MoveList::MAX_MOVES <
 // MAX_PLY) and every search depth, which resolve_limits() clamps to MAX_PLY - 1. Cached so the log

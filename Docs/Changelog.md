@@ -33,6 +33,17 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   stopped working as soon as `main` moved on.
 - An unregistered directory that still holds files is reported as such, no longer as empty and harmless.
 
+## 2026-11-03: Late move pruning at depth 3, default off (#895)
+
+### Added
+- `LateMovePruningDepth3` (default false) extends late move pruning to parent depth 3, read after IIR's
+  decrement, from `LateMovePruningDepth3MinIndex` (8). `LateMovePruning=false` turns off both depths. With
+  the flag off the search is unchanged. The lab decides the default.
+- A depth-3 fail-low that skipped a late move returns alpha and stores UPPER at alpha, unlike depth 2,
+  which stores nothing: LMP takes over most of quiet SEE pruning's depth-3 skips, and those frames rely
+  on the entry and its best move. Depth-1 frames and quiescence reuse a bound whose skips they would not
+  repeat, the class #399 accepted, so the lab row measures the pruning and this bound together.
+
 ## 2026-11-02: Quiet SEE pruning on by default (#399)
 
 ### Changed

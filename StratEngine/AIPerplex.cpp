@@ -993,8 +993,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const bool frontier_node = frontier_futility_eligible(depth, alpha, is_pv_node, in_check, is_exclusion_frame);
 	bool frontier_skipped = false;
 
-	// Late move pruning: at a depth-2 null-window node, a late quiet move is skipped outright.
+	// Late move pruning: at a depth-2 null-window node, or depth 3 behind its flag, a late quiet move is
+	// skipped outright. Depth is read after IIR's decrement, so a no-hash depth-4 frame searched at 3 counts.
 	const bool lmp_node = late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
+	const int lmp_min_index = depth == kLateMovePruningDepth3 ? tuning_.late_move_pruning_depth3_min_index
+	                                                          : tuning_.late_move_pruning_min_index;
 	bool lmp_skipped = false;
 
 	// Quiet SEE pruning: a shallow non-PV quiet move that loses material on its destination is skipped.
@@ -1062,10 +1065,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// The pre-move half of the late-move guards. legal_moves_searched is the index this move takes
 		// if DoMove() accepts it: every legal move counts, exempt and skipped ones included, and a
 		// rejected pseudo-legal move does not. The hash move sorts first, so its exemption is defence
-		// in depth.
-		const bool lmp_candidate = lmp_node && legal_moves_searched >= tuning_.late_move_pruning_min_index &&
-		                           !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) &&
-		                           move != td.killers[ply][0] && move != td.killers[ply][1] && move != hash_move;
+		// in depth. Depth 3 deliberately takes no mated or two-non-pawn guard from quiet SEE pruning: late
+		// moves in those frames were not measured to beat alpha markedly more often than the rest.
+		const bool lmp_candidate = lmp_node && legal_moves_searched >= lmp_min_index && !MoveHelper::IsCapture(move) &&
+		                           !MoveHelper::IsPromote(move) && move != td.killers[ply][0] &&
+		                           move != td.killers[ply][1] && move != hash_move;
 
 		// The pre-move half of the quiet-SEE guards; SEE needs the unmade board and is the costliest term,
 		// so it runs last. The hash move sorts first, so its exemption is defence in depth behind the
@@ -1279,14 +1283,19 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	}
 
 	// A skipped move was judged to lose material, which bounds no score, so the searched subset proves
-	// nothing below alpha: the node claims alpha itself. Unlike late move pruning's return below, it
-	// still stores UPPER. This guard fires from the second legal move, so withholding the store would
+	// nothing below alpha: the node claims alpha itself. Unlike depth-2 late move pruning's return below,
+	// it still stores UPPER. This guard fires from the second legal move, so withholding the store would
 	// cost most shallow fail-lows their entry, and the best move in it that IIR relies on. The claim
 	// is selective like null move's. Within the band the threshold only widens with depth, so a move
 	// skipped here is also SEE-losing at any shallower eligible depth; a probe below the band and
-	// quiescence reuse the bound without that argument. A node late move pruning also skipped still
-	// takes that return, since this leaves it at or below alpha.
-	if (quiet_see_skipped)
+	// quiescence reuse the bound without that argument. A depth-2 node late move pruning also skipped
+	// still takes that return, since this leaves it at or below alpha.
+	//
+	// A depth-3 late-move skip claims alpha and stores the same way: quiet SEE pruning already gives most
+	// depth-3 fail-lows this entry, and LMP takes over its skips there, so returning without a store
+	// would remove the entry and the IIR-blocking best move from nearly all of them. A depth-1 frame or
+	// quiescence reuses the bound without a matching skip, the same exposure as quiet SEE pruning's.
+	if (quiet_see_skipped || (lmp_skipped && depth == kLateMovePruningDepth3))
 		best_value = std::max(best_value, original_alpha);
 
 	// Terminal node: no legal move could be played, so this position is checkmate or
@@ -1320,11 +1329,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		return terminal_value;
 	}
 
-	// A completed fail-low that skipped a late move returns entry alpha and stores nothing. Fail-hard,
-	// because the searched subset proves no fail-soft value below alpha; no UPPER, because the bound
-	// would rest on moves never searched. This is a selective result, not a proof. A searched cutoff
-	// after a skip falls through and stores LOWER as usual. An aborted frame returned in the loop.
-	if (lmp_skipped && best_value <= original_alpha) {
+	// A completed depth-2 fail-low that skipped a late move returns entry alpha and stores nothing.
+	// Fail-hard, because the searched subset proves no fail-soft value below alpha; no UPPER, because
+	// the bound would rest on moves never searched. This is a selective result, not a proof. Depth 3
+	// stores instead, for the reason at the floor above. A searched cutoff after a skip falls through
+	// and stores LOWER as usual. An aborted frame returned in the loop.
+	if (lmp_skipped && depth == kLateMovePruningDepth && best_value <= original_alpha) {
 		if constexpr (kSearchProfileCompiled)
 			td.telemetry.nodetypes.record_fail_low(ply, is_pv_node, depth);
 		return adjust_score_for_game_state(td, move_found, ply, original_alpha);
@@ -1991,7 +2001,8 @@ bool AIPerplex::late_move_pruning_eligible(int depth, int alpha, int beta, bool 
 		return false;
 	if (is_pv_node || in_check)
 		return false;
-	if (depth != kLateMovePruningDepth)
+	if (depth != kLateMovePruningDepth &&
+	    !(depth == kLateMovePruningDepth3 && tuning_.late_move_pruning_depth3_enabled))
 		return false;
 	// Required explicitly: the fail-low return assumes no score lies strictly inside the window.
 	if (beta != alpha + 1)
