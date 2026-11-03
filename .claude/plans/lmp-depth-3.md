@@ -76,8 +76,7 @@ support at depth 2.
 
 Rejected: one arm at 12, the conservative choice, which keeps about 83% of the savings. It stays the
 next step on a miss (Validation). Rejected: a two-arm screen and confirm, as #96 did, because it
-costs about 4 h more lab and a confirm run. The arm count spends lab budget, so it is **the owner's
-call at approval**.
+costs about 4 h more lab and a confirm run. **The owner chose one arm at 8 at approval (2026-11-03).**
 
 ### D3: A depth-3 skip stores UPPER at alpha
 
