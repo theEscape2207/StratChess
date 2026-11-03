@@ -263,6 +263,7 @@ TEST_CASE("TT - concurrent probes return only the probed key's payload", "[tt][s
 	INFO("probes " << total.probes << ", hits " << total.hits << ", wrong payloads " << total.wrong);
 	CHECK(total.wrong == 0);
 	// Only proves the probes hit at all. Other threads evict the entry just stored, so the rate depends on
-	// scheduling, and it levels off near 6.5% when they always win that race: a higher floor is flaky.
+	// scheduling: if they always win that race, the 4 slots hold 4 of the 64 keys, about 6%, and a torn pair
+	// stuck in a slot lowers that further. A floor near that level is flaky.
 	CHECK(total.hits * 100 >= total.probes);
 }
