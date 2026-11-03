@@ -129,6 +129,7 @@ TEST_CASE("Late move pruning: with the depth-3 flag off, only depth 2 is pruned"
 {
 	AIPerlexTestFixture fix(kBaselineFen);
 	fix.set_late_move_pruning(true);
+	fix.set_late_move_pruning_depth3(false);
 
 	CHECK_FALSE(eligible(fix, /*depth=*/1));
 	CHECK(eligible(fix, /*depth=*/2));

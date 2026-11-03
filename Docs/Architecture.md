@@ -134,7 +134,7 @@ the implementation and [search contracts](EngineContracts.md#search-internals).
 | Singular extension | `pvs` verification search | `singular_*`; TT evidence and excluded move |
 | Singular multi-cut | `singular_multicut_eligible`, `pvs` after the verification | `singular_multicut_enabled`; fail-hard `beta`, no TT store |
 | Frontier futility | `frontier_futility_eligible`, `pvs` | `frontier_futility_*` |
-| Late move pruning | `late_move_pruning_eligible`, `pvs` | `late_move_pruning_enabled`, `late_move_pruning_min_index`, `late_move_pruning_depth3_enabled` (default off), `late_move_pruning_depth3_min_index`; depths in [AIPerplex.h](../StratEngine/AIPerplex.h) |
+| Late move pruning | `late_move_pruning_eligible`, `pvs` | `late_move_pruning_enabled`, `late_move_pruning_min_index`, `late_move_pruning_depth3_enabled`, `late_move_pruning_depth3_min_index`; depths in [AIPerplex.h](../StratEngine/AIPerplex.h) |
 | Quiet SEE pruning | `quiet_see_pruning_eligible`, `pvs` | `quiet_see_pruning_*`; `See::see_ge`, UPPER at alpha on a fail-low |
 | Internal iterative reduction | `iir_eligible`, `pvs` | `iir_enabled`, `iir_min_depth` |
 | Late move reduction | `pvs` reduced search and re-search; `lmr_reduction` in [AIPerplex.h](../StratEngine/AIPerplex.h) | `lmr_*`, including history adjustment through `lmr_history_divisor`; move classification and ordering |

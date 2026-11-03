@@ -23,6 +23,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-03: Late move pruning at depth 3 on by default (#895)
+
+### Changed
+- `LateMovePruningDepth3` now defaults to true, from index 8, as the lab rule declared before dispatch.
+
+### Results
+- Lab +12.47 ±3.02 against the flag off (ci-per-change); Threads=1 only.
+
 ## 2026-11-03: Remove-Worktree separates its two overrides
 
 ### Changed
