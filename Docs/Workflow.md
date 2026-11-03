@@ -780,13 +780,14 @@ All three are handled by `Remove-Worktree.ps1`; they still apply when doing it b
 
 `Remove-Worktree.ps1` verifies the branch is an ancestor of `origin/main` before deleting anything,
 so a **squash-merged** PR is reported rather than deleted — its commits are not ancestors even
-though the content landed. Confirm with `git diff origin/main <branch> --stat` (empty means safe)
-and re-run with `-Force`.
+though the content landed. Confirm the merged PR's `headRefOid` equals the branch tip and re-run with
+`-AcceptUnmerged`. Dirty files still block removal; only `-DiscardChanges` deletes them.
 
 `Get-Worktrees.ps1` also reports directories under `.claude\worktrees` that are absent from
 `git worktree list` — the residue of a half-succeeded removal, which no other cleanup path can see.
-For such a directory, `Remove-Worktree.ps1 -Name <directory> -Branch <branch>` removes the
-directory and branch after verifying the merge. If both the registration and directory are
+For such a directory, `Remove-Worktree.ps1 -Name <directory> -Branch <branch>` deletes the branch
+after verifying the merge. Git cannot remove an unregistered directory, so the script reports it;
+check its contents, then delete it. If both the registration and directory are
 already gone, `Remove-Worktree.ps1` refuses the name, even with `-Branch`; use
 `Remove-MergedBranches.ps1` for the remaining branch. This keeps worktree cleanup tied to a
 worktree target.
