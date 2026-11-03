@@ -23,6 +23,16 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-03: Remove-Worktree separates its two overrides
+
+### Changed
+- `Remove-Worktree.ps1 -Force` is gone. `-AcceptUnmerged` skips the ancestry check and keeps dirty files
+  protected; `-DiscardChanges` passes `--force` and still requires a merged branch. Accepting a squash
+  merge previously discarded uncommitted work, and the refusal message recommended exactly that.
+- The squash hint now compares the merged PR's `headRefOid` with the branch tip. The old empty-diff check
+  stopped working as soon as `main` moved on.
+- An unregistered directory that still holds files is reported as such, no longer as empty and harmless.
+
 ## 2026-11-03: Late move pruning at depth 3, default off (#895)
 
 ### Added
