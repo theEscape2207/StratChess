@@ -64,7 +64,7 @@ namespace {
 		return fix.late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
 	}
 
-	// One depth-2 null-window node at ply 1, the only shape the guard applies to.
+	// One depth-2 null-window node at ply 1.
 	int search_depth2(const AIPerlexTestFixture& fix, int alpha)
 	{
 		return fix.search_node(/*depth=*/2, /*ply=*/1, alpha, alpha + 1, /*is_pv_node=*/false);
@@ -125,7 +125,7 @@ TEST_CASE("Late move pruning: baseline node is eligible", "[search][lmp]")
 	CHECK(eligible(fix));
 }
 
-TEST_CASE("Late move pruning: only depth 2 is pruned", "[search][lmp]")
+TEST_CASE("Late move pruning: with the depth-3 flag off, only depth 2 is pruned", "[search][lmp]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);
 	fix.set_late_move_pruning(true);
@@ -133,6 +133,7 @@ TEST_CASE("Late move pruning: only depth 2 is pruned", "[search][lmp]")
 	CHECK_FALSE(eligible(fix, /*depth=*/1));
 	CHECK(eligible(fix, /*depth=*/2));
 	CHECK_FALSE(eligible(fix, /*depth=*/3));
+	CHECK_FALSE(eligible(fix, /*depth=*/4));
 }
 
 TEST_CASE("Late move pruning: PV nodes and wider windows are never pruned", "[search][lmp]")
@@ -452,13 +453,8 @@ TEST_CASE("Late move pruning depth 3: eligible only behind both flags", "[search
 {
 	AIPerlexTestFixture fix(kBaselineFen);
 	fix.set_late_move_pruning(true);
-
-	fix.set_late_move_pruning_depth3(false);
-	CHECK(eligible(fix, /*depth=*/2));
-	CHECK_FALSE(eligible(fix, /*depth=*/3));
-	CHECK_FALSE(eligible(fix, /*depth=*/4));
-
 	fix.set_late_move_pruning_depth3(true);
+
 	CHECK_FALSE(eligible(fix, /*depth=*/1));
 	CHECK(eligible(fix, /*depth=*/2));
 	CHECK(eligible(fix, /*depth=*/3));
@@ -539,7 +535,11 @@ TEST_CASE("Late move pruning depth 3: a skipped fail-low returns alpha and store
 	CHECK(entry->depth == 3);
 	CHECK(entry->bound == BoundType::UPPER);
 	CHECK(entry->value == kAlpha);
+	// A searched move, never one of the skipped pawn pushes.
 	CHECK_FALSE(entry->best_move.is_null());
+	const std::string best_move = MoveFormatter::ToUCI(entry->best_move);
+	CHECK(best_move != "a2a3");
+	CHECK(best_move != "a2a4");
 	CHECK(fix.search_board_restored());
 }
 
