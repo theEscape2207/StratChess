@@ -443,7 +443,7 @@ census of nodes visited, and the gaps are unmeasured; see `MEASUREMENT_CONTRACT`
 
 **Use the right instrument for the size of the effect.** From this project's own data — the clang-cl
 migration measured +23.32% nps → +40.28 Elo at 10+0.1 — roughly **1% nps ≈ 1.7 Elo**. That is
-*below* the ±4 Elo the 20,000-game strength lab resolves, so:
+*below* the ±3.5 Elo the 20,088-game strength lab resolves, so:
 
 | Effect size | Instrument |
 |---|---|

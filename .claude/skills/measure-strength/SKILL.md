@@ -28,7 +28,7 @@ series against the merge base, and the baseline build that silently skews it:
 
 | Question | Instrument | Cost | Gives you |
 |---|---|---|---|
-| Is this worth shipping? | **CI strength lab** (`strength.yml`) | ~3 h, 18 of 20 CI slots | **±4 Elo** — a number, decisive |
+| Is this worth shipping? | **CI strength lab** (`strength.yml`) | ~3 h, 18 of 20 CI slots | **±3.5 Elo** — a number, decisive |
 
 **The lab is the gate for anything meant to gain Elo.** A local SPRT's floor is ±10 Elo and most
 eval terms are worth 5-25, so it returns inconclusive more often than not: the ledgers run 15

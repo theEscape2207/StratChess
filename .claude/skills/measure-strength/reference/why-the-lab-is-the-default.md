@@ -16,8 +16,8 @@ Counting every row ever recorded:
 
 A local SPRT runs ~12 games/min on one box, so a night is ~2,500 games and **±10 Elo is its
 floor**. Most eval terms are worth 5-25 Elo, i.e. inside that floor, and `NonRegression`'s `[-5, 0]`
-region is narrower still. The lab plays 20,000 games in parallel and pools pentanomially, so it
-resolves ±4.
+region is narrower still. The lab plays 20,088 games in parallel and pools pentanomially, so it
+resolves ±3.5.
 
 ## Cost is not the tie-breaker people assume
 

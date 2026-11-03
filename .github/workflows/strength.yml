@@ -42,9 +42,9 @@ on:
         default: "0"
       games:
         description: "Total games across all shards (2 per opening pair; rounded down to fit the shards evenly)"
-        default: "20000"
+        default: "20088"
       shards:
-        description: "Parallel match jobs. 18x1110 games is ~3 h wall-clock and leaves 2 of the 20 concurrent-job slots free, so other PRs still move; 20 consumes the whole allowance. Below ~16 a shard can exceed the job timeout"
+        description: "Parallel match jobs. 18x1116 games is ~3 h wall-clock and leaves 2 of the 20 concurrent-job slots free, so other PRs still move; 20 consumes the whole allowance. Below ~16 a shard can exceed the job timeout"
         default: "18"
       candidate_tc:
         description: "Candidate time control, seconds+increment"
@@ -605,7 +605,7 @@ jobs:
           # defective. fastchess plays the game on from `bestmove`, so the
           # result stands and the batch stays measurable. Reported rather than
           # fatal: a PV that does not replay is worthless as evidence, but that
-          # is no reason to discard 1110 sound games.
+          # is no reason to discard 1116 sound games.
           pv_warn_re='Warning; (Illegal PV move|PV continues after (checkmate|stalemate|threefold repetition|fifty-move rule)|Incomplete mating PV|Mating PV does not end|Too long mating PV|Bestmove does not match beginning of last PV|Sign mismatch in mate scores)'
           pv_warnings=$(grep -cE "$pv_warn_re" match.log || true)
           if [ "$pv_warnings" -gt 0 ]; then
@@ -684,7 +684,7 @@ jobs:
             echo "not a smaller batch, it is a biased one: the surviving shards are those that"
             echo "happened to avoid whatever went wrong. No pooled figure is reported."
             echo
-            echo "Check the individual shard logs, then re-dispatch."
+            echo "Check the individual shard logs, then re-dispatch. A shard lost to its runner gets a repair run: measure-strength, strength-lab.md."
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 

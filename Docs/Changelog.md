@@ -23,6 +23,19 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-03: Lab repair runs and standard batch sizes
+
+### Added
+- `pool_repaired_batch.py` pools a lab batch whose lost shard was replayed by a separate repair run. It
+  refuses differing comparisons, wrong openings, a partial batch and mixed revisions.
+
+### Changed
+- An infrastructure-lost shard now gets a repair run after the batch ends, in place of
+  `gh run rerun --failed`, which holds the lab for a full shard's duration. A repair took 29 min against
+  about 4 h.
+- `strength.yml` defaults to `games=20088` (18 x 558). The standard sizes, 558 and 738 x 18 plus 900 x 20
+  at night, split evenly across a repair run.
+
 ## 2026-11-03: Late move pruning at depth 3 on by default (#895)
 
 ### Changed
