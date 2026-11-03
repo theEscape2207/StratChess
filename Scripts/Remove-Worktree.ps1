@@ -32,6 +32,8 @@
        unnoticed. This script finds it and deletes both -- but only when the branch both
        points at the worktree's HEAD and is named after the worktree, so an unrelated
        branch that merely shares the commit is never touched.
+    5. **A directory git cannot delete** does not stop branch cleanup. Windows can hold it
+       open, and an unregistered directory is not a worktree; the script reports it instead.
 
     Deletes the remote branch only if it exists. Optionally syncs `master` afterwards.
 
@@ -570,7 +572,7 @@ if (Test-Path $TargetPath) {
         # folder itself when any process holds a handle on it (a shell sitting in it,
         # Visual Studio, an indexer). That is a cosmetic leftover, NOT a reason to stop:
         # the branch cleanup below is the part that actually matters, and bailing here
-        # is how orphaned branches accumulate. Deregister and carry on.
+        # is how orphaned branches accumulate. Carry on.
         Write-Host "WARNING: could not delete the directory (a process holds it open, or it is not a worktree)." -ForegroundColor Yellow
         Write-Host "         It is not registered; continuing with branch cleanup." -ForegroundColor Yellow
         $script:DirLeftBehind = $true
