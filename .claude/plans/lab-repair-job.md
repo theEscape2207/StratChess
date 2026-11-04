@@ -48,7 +48,7 @@ This changes what a valid batch means, so the rule is stated exactly in D2.
 `repair-plan` classifies every `match (N)` job that did not succeed. It is lost only when:
 
 1. its conclusion is `failure`;
-2. its annotations contain `The hosted runner lost communication with the server`;
+2. its only failure annotation is `The hosted runner lost communication with the server`;
 3. the run has no `strength-<run>-shard-<N>` artifact.
 
 Anything else discards the batch, including a batch where another shard qualifies as lost. All three
@@ -58,6 +58,13 @@ past losses match exactly, with the identical annotation text. The fatal shards 
 Rejected: **no artifact alone**, the signal used on #895. A shard that fails before fastchess writes
 anything, such as a failed toolkit download, also leaves none. Rejected: **annotation alone**, since
 an artifact means the upload step ran, so the runner was alive after the games.
+
+**A fatal line before the loss can't be seen, and the owner accepted that risk.** All three lost jobs'
+logs return 404, so no log can veto, and requiring one would stop repair ever firing. A runner-caused
+time loss only taints that shard's games, and all of those are replaced. An engine bug common enough
+to move Elo also shows in the other shards (about 94% of the games) and discards the batch. Rejected:
+**a live watcher emitting the annotation mid-game**, which adds code to every batch's play path with
+no evidence the annotation would survive the loss.
 
 The match on the wording is deliberate. If GitHub rewords it, the batch is discarded as it is today,
 and the fixture holds the text to compare against. A different loss message, such as a runner
@@ -77,6 +84,8 @@ unattended during an outage.
 ```
 needs.match.result == 'success'
 || (needs.match.result == 'failure'
+    && github.run_attempt == 1
+    && needs.repair-plan.result == 'success'
     && needs.repair-plan.outputs.status == 'repair'
     && needs.repair.result == 'success')
 ```
@@ -88,9 +97,15 @@ needs.match.result == 'success'
 | failure | `repair` | failure or cancelled | discard |
 | failure | `discard`, or the job failed | skipped | discard, with the planner's reason |
 | cancelled or skipped | skipped | skipped | discard |
+| failure, attempt 2 or later | skipped | skipped | discard |
 
 Both new jobs need `!cancelled()` in their `if:`: without a status function, GitHub adds an implicit
 `success()`, which is false once a shard has failed. `aggregate` keeps `always()`.
+
+**Only attempt 1 can repair.** `repair-plan` also requires `github.run_attempt == 1`, so no state has
+to say which attempt produced which artifact. Automation is lost only on re-runs, and D5 shows a
+re-run is rarely needed. `gh run rerun --failed` stays valid as before: if `match` then succeeds, the
+batch pools normally, with no repair.
 
 The reason this is sound is the existing argument turned around. Survivors alone are a biased subset
 because they are the shards that avoided the failure. A replay at the same openings completes the
@@ -131,9 +146,8 @@ After a successful pool, `aggregate` uploads the assembled directory as
 `strength-<run>-shard-<N>` and the plan as `strength-<run>-repair`, so `gh run download -p
 'strength-<run>-shard-*'`, `Sync-LabPgn.ps1` and the analysis scripts see a complete batch. The
 slices stay as `strength-<run>-replay-<N>-<i>`, 90 days, as the raw evidence. The name does not match
-`^strength-\d+-shard-\d+$`, so no reader counts them as shards. A re-run of `aggregate` downloads the
-assembled shard too, so the step replaces the directory of any shard the plan lists as lost, and the
-upload sets `overwrite: true`.
+`^strength-\d+-shard-\d+$`, so no reader counts them as shards.The `repair` marker uploads last, once
+the assembled shards exist.
 
 The report gains one row, `| Replayed | shard 6, 18 slices (runner lost) |`, so a repaired batch can't
 pass for an ordinary one.
@@ -155,12 +169,13 @@ sizes mean batches no longer need sizes that divide evenly, so the `Repair shard
 `strength-lab.md` goes.
 
 **A lost replay is not retried automatically.** At about 1 loss per 2,100 runner-hours (the same estimate, at about 3.5 h a job), a repair of 18
-quarter-hour jobs loses one on the order of 1 in 500 repairs. That discards the batch, and
-`gh run rerun --job <leg>` brings it back within the toolkit's 1-day retention. Replay uploads set
-`overwrite: true` so that re-run can write the same artifact name.
+quarter-hour jobs loses one on the order of 1 in 500 repairs. With losses in about 3% of runs, that is
+roughly once per 15,000 runs (an estimate). It discards the batch, and the manual repair (D8, about 30
+min) still works. `repair` sets `fail-fast: false`, as `match` does, so the other slices' PGNs and logs
+remain for diagnosis.
 
-Rejected: **`gh run rerun --failed` as that recovery**: it also re-runs `match (N)` for about 3 h. It
-stays valid, since `match` then succeeds, the planner is skipped and stale slices are ignored.
+Rejected: **one-leg recovery with `gh run rerun --job`**, which needs per-attempt identity for the
+plan, slices, assembled shards and marker to guard a case this rare.
 
 ### D6: Multi-arm runs are left out
 
@@ -175,15 +190,15 @@ for a lost runner (`continue-on-error` is never evaluated). Two consequences:
 
 - `Sync-LabPgn.ps1` lists `--status success` only, so without a change a repaired batch silently
   misses the corpus and expires after 90 days. It also lists failed runs and copies those holding a
-  `strength-<run>-repair` artifact, uploaded only after a successful pool. Discarded runs still aren't
-  copied.
+  `strength-<run>-repair` artifact, uploaded only after a successful pool, and whose latest attempt is
+  1, so a later discarded re-run can't pass on an old marker. Discarded runs still aren't copied.
 - `strength-lab.md` tells a reader to judge a run by its report heading. The PR comment is unaffected,
   since it depends on the pool step.
 
 ### D8: `pool_repaired_batch.py` stays for now
 
-It remains the fallback when the planner discards a real single loss (reworded annotation) or the
-toolkit has expired. This is two repair paths, deliberately temporary: the decision to delete it is
+It remains the fallback when the planner discards a real single loss (reworded annotation) or a
+repair job is lost. This is two repair paths, deliberately temporary: the decision to delete it is
 taken after the first real repair, per the issue, and the manual procedure shrinks to a short
 fallback note meanwhile.
 
@@ -196,6 +211,18 @@ artifacts remain for local pooling.
 
 Rejected: **keeping a sleep**, which delays every repair for a choice nobody has yet wanted to make.
 The survivors' preview also goes, since nothing now waits on it.
+
+### D10: Lab ledger rows get a template, and a repair adds three words
+
+A repaired row adds only `, shard N replayed` after the run id. The owner found the rows and row
+details had filled with boilerplate nobody reads, so `Measurements/README.md` gains a template for lab
+rows. Detail is written only if something applies, at most 3 sentences: something specific the run
+didn't test or separate, an arm tried or superseded, a non-default setting, a null result where nothing
+proves the option applied, or anything unusual with its evidence. It never restates what a pooled
+figure already implies: forfeits, PV warnings, shard agreement, Ptnml or score, default settings, the
+comparison link, or the verdict's rule. Existing rows stay as they are.
+
+Rejected: **a `Replayed` field in every row**, which is the same noise again.
 
 ## Assumptions I cannot verify from the code
 
@@ -210,13 +237,10 @@ The survivors' preview also goes, since nothing now waits on it.
   - a job token with `actions: read`, `checks: read` can list jobs, artifacts and annotations.
     **Verified only for a personal token**. The planner reads each job's `check_run_url` and
     paginates every listing, since the jobs API defaults to 30 entries;
-  - `/actions/runs/<id>/jobs?filter=latest` lists all S shards in a re-attempt. **Partly verified**:
-    run `38149928440` shows attempt 2's jobs, but every job there re-ran, so no reused job was seen.
-    The planner discards unless it finds exactly one completed record for each index 0..S-1;
+  - the jobs listing holds every shard. The planner discards unless it finds exactly one completed
+    record for each index 0..S-1;
   - the annotation exists when the planner reads it. If a lost shard is the last job to end, a race
-    is conceivable; the result is a discard;
-  - `gh run rerun --job` re-runs one matrix leg plus `aggregate`, keeps `repair-plan`'s outputs, and
-    `aggregate` can download earlier attempts' artifacts. Not verified.
+    is conceivable; the result is a discard.
 - **A3: A runner loss is independent of the games on that shard.** Evidence: three different commits,
   lost at about 1 h 30, 1 h 35 and 3 h 30 into the job, and no failures in #895's replay. Not proof:
   the annotation names resource starvation as a cause, and the CPU samples die with the runner. A
@@ -237,7 +261,8 @@ The survivors' preview also goes, since nothing now waits on it.
   toolkit under one `comparison.md`.
 - Every unclear state discards, as it does today: an unknown annotation, a failed planner, a missing
   job, a slice that is short or at the wrong opening.
-- A shard with a fatal failure discards the batch, even when another shard is repairable.
+- A shard with a visible fatal failure discards the batch, even when another shard is repairable.
+- A repaired verdict exists only in attempt 1.
 - A run with no lost shard behaves as before: same fastchess command, artifacts and report.
 - A shard and its replay differ only in the fastchess `start` and `-rounds`.
 - `Sync-LabPgn.ps1` copies repaired runs and never a discarded one.
@@ -255,6 +280,8 @@ JSON captured from run `41631693815`:
 | one or two lost shards | `repair`, with exact slices and starts |
 | three lost, or all lost | `discard` |
 | fatal shard alone, or beside a lost one | `discard` |
+| one job with the loss annotation and a harness/engine annotation, no artifact | `discard` |
+| attempt 2 with a lost shard | no plan; `discard` |
 | failed with no artifact and no annotation (toolkit failure) | `discard` |
 | annotation with an artifact present | `discard` |
 | timed-out or cancelled shard, or a missing `match` job | `discard` |
@@ -271,20 +298,19 @@ fastchess. The stub asserts the full expected arguments for an ordinary shard wi
 offset, a multi-arm shard and a replay, that a shard's and a replay's arguments differ only in `start`
 and `-rounds`, and that a fatal line or nonzero fastchess exit still fails the script. It also evaluates
 the D2 table against the workflow's actual `if:` text, translated to Python, since Actions expressions
-don't run locally and that expression is what the change rests on. `Sync-LabPgn.ps1 -SelfTest` covers both repaired and discarded runs.
+don't run locally and that expression is what the change rests on. `Sync-LabPgn.ps1 -SelfTest` covers repaired runs, discarded runs and an old
+marker on a later attempt.
 
 **Live proof.** A runner loss can't be scheduled, so a temporary branch on top of the PR head adds a
-power-off to `play_shard.sh`, never merged, selecting original shards and replay legs separately so
-it can't kill every replay of a shard. Candidate and reference are the same commit with
-`calibration=true`. Total about 1 h of the lab, so timed by the owner:
+power-off to `play_shard.sh`, never merged, firing only in `match`, so replay legs survive. Candidate
+and reference are the same commit with
+`calibration=true`. Total about 40 min of the lab, so timed by the owner:
 
 1. **Repair.** 6 shards x 36 pairs (`games=432`), shard 1 powered off a few minutes in. Closes when:
    the annotation is the real text (A1), the planner finds it with the job token (A2), 6 replay
    legs run, the pool is exactly 216 pairs, `shard-1` and `repair` artifacts exist, and the report
    carries the `Replayed` row.
-2. **Failed repair, then recovery.** The same batch, also powering off one replay leg on attempt 1.
-   Closes when: `aggregate` discards, then `gh run rerun --job <leg>` pools the batch in attempt 2 (A2).
-3. **The ordinary path.** A plain small batch on the PR head with no hook. Closes when it pools,
+2. **The ordinary path.** A plain small batch on the PR head with no hook. Closes when it pools,
    the report has no `Replayed` row, and the `repair-plan` and `repair` jobs are skipped.
 
 The first real loss afterwards is the final check, and triggers D8's decision.
@@ -297,13 +323,12 @@ The first real loss afterwards is the final check, and triggers D8's decision.
 - **Blast radius:** `Build` tier (`.github/workflows`). Every future lab batch runs the moved script. No engine, no gate on
   `main` other than the new self-tests in the existing Linux Release leg.
 - **Review:** the code review, plus cross-agent review of this document if the owner routes it.
-- **Lab time:** the live proof, about 1 h, with nothing else able to use the lab meanwhile.
+- **Lab time:** the live proof, about 40 min, with nothing else able to use the lab meanwhile.
 - **Optional parts, each priced alone:**
   - the second lost shard (`MAX_LOST_SHARDS` 2 rather than 1): about 10 lines and two fixtures. The
     issue lists it as a gain; the numbers above say it will rarely fire;
   - upload of the assembled shard (D4): about 10 lines. Dropping it means `Sync-LabPgn.ps1` and
-    analysis scripts need to learn about slices, so keep it unless that is wanted;
-  - live proof step 2: about 20 min. It alone closes the `rerun --job` assumption.
+    analysis scripts need to learn about slices, so keep it unless that is wanted.
 
 ## Harvest
 
@@ -317,4 +342,5 @@ The first real loss afterwards is the final check, and triggers D8's decision.
 | D7 red run, report is the verdict | `strength-lab.md`; `Sync-LabPgn.ps1` help |
 | D8 fallback pending deletion | `strength-lab.md`; note on #956 when closing |
 | A3 undetected build-up failure | `strength-lab.md`, beside the discard rule |
+| D10 ledger template | `Measurements/README.md`; `strength-lab.md` step 4 goes |
 | Live proof runs | `Measurements/ci-calibration.md`, with a `Docs/Changelog.md` line |
