@@ -199,8 +199,9 @@ for a lost runner (`continue-on-error` is never evaluated). Two consequences:
 
 It remains the fallback when the planner discards a real single loss (reworded annotation) or a
 repair job is lost. This is two repair paths, deliberately temporary: the decision to delete it is
-taken after the first real repair, per the issue, and the manual procedure shrinks to a short
-fallback note meanwhile.
+taken after the first real repair, per the issue. Meanwhile the manual procedure stays executable as a
+fallback, without its wait and without the chat gate on its preview; its pool needs that preview's
+`Revisions:` line.
 
 ### D9: The owner's stop goes
 
@@ -346,5 +347,5 @@ The first real loss afterwards is the final check, and triggers D8's decision.
 | D7 red run, report is the verdict | `strength-lab.md`; `Sync-LabPgn.ps1` help |
 | D8 fallback pending deletion | `strength-lab.md`; note on #956 when closing |
 | A3 undetected build-up failure | `strength-lab.md`, beside the discard rule |
-| D10 ledger template | `Measurements/README.md`; `strength-lab.md` step 4 goes |
+| D10 ledger template | `Measurements/README.md`; `strength-lab.md` step 4 shortened |
 | Live proof runs | `Measurements/ci-calibration.md`, with a `Docs/Changelog.md` line |

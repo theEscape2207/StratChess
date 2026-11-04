@@ -81,6 +81,19 @@ def discard_rule():
     assert 'needs: [setup, build, match, repair-plan, repair]' in workflow, 'aggregate must wait for the repair'
     print(f'PASS: the discard rule refuses as designed in {len(table)} outcomes')
 
+def step_env(name):
+    section = workflow.split(f'      - name: {name}')[1]
+    block = section.split('        env:\n')[1].split('        run:')[0]
+    return dict(line.strip().split(': ', 1) for line in block.splitlines() if ': ' in line and not line.strip().startswith('#'))
+
+def replay_settings():
+    """The one place a replay could still drift from its shard: the settings each job hands the script."""
+    shard, replay = step_env('Run shard'), step_env('Replay shard')
+    own = {'SHARD', 'START', 'ROUNDS', 'OPENING_OFFSET', 'ARM_LABEL', 'ARM_OPTIONS'}
+    assert set(shard) | {'START'} == set(replay) | {'OPENING_OFFSET'}, (shard, replay)
+    assert {k: v for k, v in shard.items() if k not in own} == {k: v for k, v in replay.items() if k not in own}
+    print('PASS: a replay gets the same settings as its shard')
+
 def play_script(root):
     """The staged script's fastchess arguments, for a shard, an arm and a replay, and its failure exits."""
     assert 'cp .github/scripts/play_shard.sh "$stage/play_shard.sh"' in shell_blocks['Stage the toolkit']
@@ -158,6 +171,7 @@ def repaired_batch(root, env):
     report = (root / 'outputs/report.md').read_text(encoding='utf-8')
     assert '| Replayed | shard 1, 2 slices (runner lost) |' in report and '**Pooled:' in report
     assert 'on 1 of 2 shards' in report, 'an assembled shard carries no CPU samples'
+    assert 'by score: 0 of 2 (0 the reference, 2 even)' in report, 'the replay counts as one shard'
     print('PASS: a repaired batch assembles, verifies, pools at the designed size and says it was repaired')
     (root / 'outputs/pooled.md').unlink()
     # A slice whose log disagrees with its PGN must stop before anything pools.
@@ -204,6 +218,7 @@ def self_test():
         shutil.copytree(repo / '.github/scripts', root / '.github/scripts')
         (root / 'outputs').mkdir()
         discard_rule()
+        replay_settings()
         play_script(root)
         stage = root / 'runner/stage'
         stage.mkdir(parents=True)

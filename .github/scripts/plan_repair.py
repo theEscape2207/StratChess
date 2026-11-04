@@ -7,10 +7,9 @@
 A shard is lost only when its job failed, the runner-loss annotation is its only failure annotation,
 and it left no artifact. A toolkit failure also leaves no artifact, and an artifact means the runner
 outlived the games. Every other failed shard discards the batch, as does a job listing that does not
-hold exactly one finished record per shard. A lost job's log is gone (404 on all three seen), so a
-fatal line played before the loss cannot be seen: an accepted risk, since a runner-caused time loss
-only taints games that get replaced, and an engine bug common enough to move Elo also shows in the
-other shards. Rates behind MAX_LOST_SHARDS: 3 losses in the 100 runs since 2026-08-07, all single.
+hold exactly one finished record per shard. A lost job's log is gone, so a fatal line played before
+the loss cannot be seen: an accepted risk, since a runner-caused time loss only taints games that get
+replaced, and an engine bug common enough to move Elo also shows in the other shards.
 
 Each slice is checked alone by the unchanged verify_batch and read_shard, then the slices of a shard
 are joined into strength-<run>-shard-<N>, so the workflow's verify and pool see the designed batch
@@ -30,8 +29,8 @@ import plan_arms
 import pool_pentanomial
 
 LOSS_ANNOTATION = "The hosted runner lost communication with the server"
-# Two independent losses in a batch are about 1 in 2,400 batches, three essentially never: three or
-# more means something is wrong with the run, so it stops for a person.
+# Three independent losses in a batch essentially never happen, so they mean something is wrong with
+# the run, and it stops for a person. Rates: strength-lab.md.
 MAX_LOST_SHARDS = 2
 JOB_RE = re.compile(r"match \((\d+)\)")
 
@@ -141,8 +140,8 @@ def write_outputs(result, path):
         handle.write(f"replayed={text}\n")
 
 
-def check_coverage(slices, rounds, offset):
-    """The slices of each shard must cover its pairs exactly and in order."""
+def slices_by_shard(slices, rounds, offset):
+    """Each lost shard's slices in order, refusing any that do not cover its pairs exactly."""
     by_shard = {}
     for piece in sorted(slices, key=lambda piece: (piece["shard"], piece["index"])):
         by_shard.setdefault(piece["shard"], []).append(piece)
@@ -171,7 +170,7 @@ def verified_counts(piece, directory, run, names, book):
 
 def assemble(slices, run, rounds, offset, names, book, replays, shard_root):
     """Build strength-<run>-shard-<N> from each lost shard's verified slices."""
-    for shard, pieces in check_coverage(slices, rounds, offset).items():
+    for shard, pieces in slices_by_shard(slices, rounds, offset).items():
         target = Path(shard_root) / f"strength-{run}-shard-{shard}"
         if target.exists():
             raise Refused(f"{target} exists, but shard {shard} was planned as lost")
@@ -272,7 +271,7 @@ def self_test():
         for shard in lost_list:
             pieces = [s for s in slices if s["shard"] == shard]
             sizes = {s["pairs"] for s in pieces}
-            check_coverage(pieces, rounds, 5)
+            slices_by_shard(pieces, rounds, 5)
             expect(f"{shards}x{rounds} lost {shard}: covers, even, within slots",
                    sum(sizes_ := [s["pairs"] for s in pieces]) == rounds and max(sizes) - min(sizes) <= 1
                    and sizes_ == sorted(sizes_, reverse=True) and len(slices) <= shards)
@@ -430,7 +429,6 @@ def main():
             return 2
         return 0
     parser.error("a command is required")
-    return 2
 
 
 if __name__ == "__main__":

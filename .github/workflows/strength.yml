@@ -620,8 +620,9 @@ jobs:
           THREADS: ${{ inputs.threads }}
           CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
           REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
-          ARM_LABEL: ${{ fromJSON(needs.setup.outputs.shard_arms)[matrix.slice.shard].label }}
-          ARM_OPTIONS: ${{ fromJSON(needs.setup.outputs.shard_arms)[matrix.slice.shard].options }}
+          # The planner refuses a multi-arm run.
+          ARM_LABEL: ""
+          ARM_OPTIONS: ""
           CAND_NAME: ${{ needs.build.outputs.cand_name }}
           REF_NAME: ${{ needs.build.outputs.ref_name }}
         run: bash "$RUNNER_TEMP/tools/play_shard.sh"

@@ -346,33 +346,29 @@ function Invoke-Gh {
     return ($out | Out-String)
 }
 
-function Get-SuccessfulRun {
+function Get-LabRun {
+    param([Parameter(Mandatory)][string]$Status)
+
     # --jq keeps createdAt a raw UTC string: ConvertFrom-Json would hand back a local-zone DateTime,
     # and the folder date is the UTC one.
-    $tsv = Invoke-Gh -Argument @('run', 'list', '--repo', $Repo, '--workflow', 'strength.yml', '--status', 'success',
-        '--limit', "$RunLimit", '--json', 'databaseId,createdAt,headSha',
-        '--jq', '.[] | [.databaseId,.createdAt,.headSha] | @tsv')
+    $tsv = Invoke-Gh -Argument @('run', 'list', '--repo', $Repo, '--workflow', 'strength.yml', '--status', $Status,
+        '--limit', "$RunLimit", '--json', 'databaseId,createdAt,headSha,attempt',
+        '--jq', '.[] | [.databaseId,.createdAt,.headSha,.attempt] | @tsv')
     $runs = foreach ($line in @($tsv -split "`r?`n" | Where-Object { $_.Trim() })) {
         $f = $line -split "`t"
-        [pscustomobject]@{ Id = $f[0]; Created = (ConvertTo-Utc $f[1]); Sha = $f[2] }
+        [pscustomobject]@{ Id = $f[0]; Created = (ConvertTo-Utc $f[1]); Sha = $f[2]; Attempt = [int]$f[3] }
     }
     return @($runs)
 }
 
 function Get-RepairedRun {
-    # The artifact listing is per run, so only failed runs not copied yet are asked.
+    # Only a repaired run is ever copied, so a local failed run is one, and is kept for its README row.
+    # The artifact listing is per run, so only the others are asked.
     param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$LocalId)
 
-    $tsv = Invoke-Gh -Argument @('run', 'list', '--repo', $Repo, '--workflow', 'strength.yml', '--status', 'failure',
-        '--limit', "$RunLimit", '--json', 'databaseId,createdAt,headSha,attempt',
-        '--jq', '.[] | [.databaseId,.createdAt,.headSha,.attempt] | @tsv')
-    $failedRuns = foreach ($line in @($tsv -split "`r?`n" | Where-Object { $_.Trim() })) {
-        $f = $line -split "`t"
-        [pscustomobject]@{ Id = $f[0]; Created = (ConvertTo-Utc $f[1]); Sha = $f[2]; Attempt = [int]$f[3] }
-    }
-    $candidates = @(Get-FirstAttemptRun @($failedRuns)) | Where-Object { $_.Id -notin $LocalId }
-    return @($candidates | Where-Object {
-            Test-RepairedRun (Invoke-Gh -Argument @('api', "repos/$Repo/actions/runs/$($_.Id)/artifacts?per_page=100")) $_.Id
+    return @(Get-FirstAttemptRun @(Get-LabRun 'failure') | Where-Object {
+            $_.Id -in $LocalId -or
+            (Test-RepairedRun (Invoke-Gh -Argument @('api', "repos/$Repo/actions/runs/$($_.Id)/artifacts?per_page=100")) $_.Id)
         })
 }
 
@@ -445,7 +441,7 @@ if (-not (Test-Path $readmePath)) { throw "README.md not found in $PgnRoot" }
 
 $localNames = @(Get-ChildItem $PgnRoot -Directory | ForEach-Object { $_.Name })
 $localIds = @(Get-LocalRunId $localNames)
-$runList = @(Get-SuccessfulRun) + @(Get-RepairedRun $localIds)
+$runList = @(Get-LabRun 'success') + @(Get-RepairedRun $localIds)
 $missing = @(Get-MissingRun $runList $localIds)
 $utcNow = (Get-Date).ToUniversalTime()
 

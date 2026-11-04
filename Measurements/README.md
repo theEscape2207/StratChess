@@ -26,8 +26,8 @@ carries the mechanical facts; the prose section carries what a reader could not 
 them.
 
 For new experiments, use existing issue/design notes to record the question, role (diagnostic,
-screen or confirmation), stopping rule and agreed budget **before dispatch**. Link that declaration
-from the row detail, and retain every tried arm, including weak or inconclusive ones, with its
+screen or confirmation), stopping rule and agreed budget **before dispatch**. The row's issue number
+leads to that declaration. Retain every tried arm, including weak or inconclusive ones, with its
 options and run reference. Mark invalid/cancelled attempts as discarded with a reason. A fresh
 confirmation names the screen that selected it and its opening range. Use the existing ledger
 appropriate to the instrument/reference; no separate decision-record template is needed.
@@ -101,7 +101,7 @@ when its points -- `n1 + 2*n2 + 3*n3 + 4*n4` out of `4 x pairs` -- exceed the ne
 losing pairs against winning ones (`n0 + n1` against `n3 + n4`) weights a 2-0 pair the same as a
 1.5-0.5 one, so the bucket count reads high. The lab summary prints this count.
 
-**The detail section is for what the table cannot hold** — which shards disagreed, why a figure
+**The detail section is for what the table cannot hold** — why a figure
 supersedes an earlier one, what a run does *not* settle, a hand-correction and its evidence. It is
 not for restating the verdict. If a sentence would still be true with the numbers deleted, it is
 padding: `INCONCLUSIVE` already says the run settled nothing, and `10.43 +/- 18.33` already says the

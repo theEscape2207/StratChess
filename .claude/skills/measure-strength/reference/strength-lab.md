@@ -39,7 +39,8 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
 replays up to 2 shards as small jobs from the batch's own toolkit, then `aggregate` verifies each slice
 and pools the batch. This adds roughly 15-30 min. A shard counts as lost only when its job failed, "The
 hosted runner lost communication with the server" is its only failure annotation, and it left no
-artifact. Anything else discards the batch. Cancelling during the repair discards it too, and the
+artifact. Anything else discards the batch, as do three or more lost shards: two independent losses
+are already about 1 batch in 2,400 at the estimated 1 loss per 600 shard jobs. Cancelling during the repair discards it too, and the
 artifacts stay.
 
 **What this can't see:** a lost job's log is gone, so a fatal line played before the loss is invisible,
@@ -54,9 +55,8 @@ as does a multi-arm run. Only attempt 1 repairs automatically.
    preview rather than a result.
 2. Dispatch at the batch's exact commit through a temporary branch. `pool_pentanomial.py` refuses mixed revisions, so `--ref main` fails
    once `main` moves. Repeat every other input the batch set, concurrency included, since
-   `comparison.md` omits it. Take `<reference sha>` from the preview's `Revisions:` line:
-
-   Size the repair so its shards divide the lost shard's pairs evenly.
+   `comparison.md` omits it. Size the repair so its shards divide the lost shard's pairs evenly, and
+   take `<reference sha>` from the preview's `Revisions:` line:
 
    ```
    git push origin <batch sha>:refs/heads/lab-repair-<original run>
