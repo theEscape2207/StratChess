@@ -130,8 +130,8 @@ replayed shards` step, before `Verify the complete batch`, builds that directory
 
 1. **Each slice is verified alone** with the unchanged `verify_batch`, as a one-shard batch at the
    slice's own start and pair count: the method `pool_repaired_batch.py` uses. This checks the
-   assigned opening, PGN pair count, colours and engine names. `verify_batch` never reads the log's
-   counts, so each log also goes through `read_shard(log, slice.pairs)` before its counts are summed.
+   assigned opening, PGN and log pair counts, colours and engine names, so compensating log counts
+   are refused before anything is summed.
 2. The slices must cover the lost shard's pairs exactly, in order, per the plan.
 3. `match.pgn` is the slices' PGNs with `Round` offset to run 1..R. `match.log` is their logs
    concatenated plus one final `Ptnml(0-2)` line of the summed counts, which `parse_counts` reads as

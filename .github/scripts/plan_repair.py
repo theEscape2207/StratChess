@@ -158,12 +158,12 @@ def check_coverage(slices, rounds, offset):
 
 
 def verified_counts(piece, directory, run, names, book):
-    """The slice's pair counts, after the batch's own checks of its PGN and of its log."""
+    """The slice's pair counts, after the batch's own checks of its PGN and of its log's total."""
     try:
-        counts = pool_pentanomial.read_shard(str(directory / "match.log"), piece["pairs"])
         with tempfile.TemporaryDirectory() as root:
             shutil.copytree(directory, Path(root) / f"strength-{run}-shard-0")
             plan_arms.verify_batch([], 1, piece["pairs"], piece["start"] - 1, *names, str(book), root)
+        counts = pool_pentanomial.read_shard(str(directory / "match.log"))
     except (plan_arms.PlanError, ValueError, OSError) as error:
         raise Refused(f"{directory}: {error}") from error
     return counts
