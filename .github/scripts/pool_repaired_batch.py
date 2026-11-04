@@ -59,10 +59,10 @@ def verify(shards, pairs, offset, names, book, root):
 
 def fatal_pattern():
     """The match job's own list, so a shard cannot pass here on a failure that turned its job red."""
-    workflow = Path(__file__).resolve().parents[1] / "workflows" / "strength.yml"
-    match = re.search(r"^\s*fatal_re='([^']+)'$", workflow.read_text(encoding="utf-8"), flags=re.M)
+    script = Path(__file__).resolve().with_name("play_shard.sh")
+    match = re.search(r"^\s*fatal_re='([^']+)'$", script.read_text(encoding="utf-8"), flags=re.M)
     if not match:
-        raise Refused(f"{workflow} defines no fatal_re")
+        raise Refused(f"{script} defines no fatal_re")
     return re.compile(match.group(1))
 
 

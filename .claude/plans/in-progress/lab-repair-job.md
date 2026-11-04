@@ -219,8 +219,12 @@ details had filled with boilerplate nobody reads, so `Measurements/README.md` ga
 rows. Detail is written only if something applies, at most 3 sentences: something specific the run
 didn't test or separate, an arm tried or superseded, a non-default setting, a null result where nothing
 proves the option applied, or anything unusual with its evidence. It never restates what a pooled
-figure already implies: forfeits, PV warnings, shard agreement, Ptnml or score, default settings, the
-comparison link, or the verdict's rule. Existing rows stay as they are.
+figure already implies: forfeits, PV warnings, shard agreement, score, default settings, the comparison
+link, or the verdict's rule. Existing rows stay as they are.
+
+Two short facts stay, outside the 3-sentence limit: `Ptnml [a, b, c, d, e]`, on every lab row since a
+fixed form needs no judgement, and `bench +0.58%` when the change adds per-node work. The issue number
+and commit stay in the row and the detail title, as the keys to find the run, PR and design again.
 
 Rejected: **a `Replayed` field in every row**, which is the same noise again.
 
