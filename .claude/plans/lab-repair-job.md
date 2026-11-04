@@ -64,8 +64,9 @@ and the fixture holds the text to compare against. A different loss message, suc
 shutdown signal, has not been seen in 100 runs and also discards.
 
 **At most 2 lost shards, and at least one survivor** (`MAX_LOST_SHARDS = 2`). At about 1 loss per 600
-shard jobs, two independent losses in one 18-shard batch happen about once in 2,000 batches, and
-three essentially never. Three or more means something is wrong with the run, so it stops for a
+shard jobs (3 losses in the 100 runs since 2026-08-07, taken as about 1,800 jobs: an estimate, not a
+count), two independent losses in one 18-shard batch happen about once in 2,400 batches, and three
+essentially never. Three or more means something is wrong with the run, so it stops for a
 person, who can use `gh run rerun --failed`. Rejected: no cap, which would replay a whole batch
 unattended during an outage.
 
@@ -114,11 +115,13 @@ replayed shards` step, before `Verify the complete batch`, builds that directory
 
 1. **Each slice is verified alone** with the unchanged `verify_batch`, as a one-shard batch at the
    slice's own start and pair count: the method `pool_repaired_batch.py` uses. This checks the
-   assigned opening, pair count, colours and engine names.
+   assigned opening, PGN pair count, colours and engine names. `verify_batch` never reads the log's
+   counts, so each log also goes through `read_shard(log, slice.pairs)` before its counts are summed.
 2. The slices must cover the lost shard's pairs exactly, in order, per the plan.
 3. `match.pgn` is the slices' PGNs with `Round` offset to run 1..R. `match.log` is their logs
    concatenated plus one final `Ptnml(0-2)` line of the summed counts, which `parse_counts` reads as
-   the last line. `cpu.tsv` is one header and all rows.
+   the last line. There is no `cpu.tsv`: a replay's samples come from several runners, so the report
+   reads `Sampled on 17 of 18 shards` and the raw samples stay in the slices.
 
 Then the existing `Verify the complete batch` and `Pool the result` run **unchanged**, with
 `--expect-shards` and `--expect-pairs-per-shard` as today. That is what makes a replay count as the
@@ -151,7 +154,7 @@ batch is 18 slices of 31 pairs, roughly 15 min (estimated from #895's 10 x 74 in
 sizes mean batches no longer need sizes that divide evenly, so the `Repair shards x pairs` column in
 `strength-lab.md` goes.
 
-**A lost replay is not retried automatically.** At about 1 loss per 2,100 runner-hours, a repair of 18
+**A lost replay is not retried automatically.** At about 1 loss per 2,100 runner-hours (the same estimate, at about 3.5 h a job), a repair of 18
 quarter-hour jobs loses one on the order of 1 in 500 repairs. That discards the batch, and
 `gh run rerun --job <leg>` brings it back within the toolkit's 1-day retention. Replay uploads set
 `overwrite: true` so that re-run can write the same artifact name.
@@ -200,14 +203,16 @@ The survivors' preview also goes, since nothing now waits on it.
   `sudo poweroff -f` should skip the graceful stop that reports a shutdown signal instead. Not
   verified; settled by the first proof run, with `iptables -A OUTPUT -j DROP` as the fallback. If
   neither gives the annotation, the proof runs against a stubbed annotation lookup and the real path
-  waits for a real loss, which comes about 1 run in 13 recently.
+  waits for a real loss, which comes about 1 run in 13 recently. A stub proves the wiring only, and
+  A1 stays open until a real loss passes.
 - **A2: GitHub's behaviour on the paths this relies on.** Each is settled by the live proof, and each
   fails closed by discarding:
   - a job token with `actions: read`, `checks: read` can list jobs, artifacts and annotations.
-    **Verified only for a personal token**, which also showed job id equals check-run id;
+    **Verified only for a personal token**. The planner reads each job's `check_run_url` and
+    paginates every listing, since the jobs API defaults to 30 entries;
   - `/actions/runs/<id>/jobs?filter=latest` lists all S shards in a re-attempt. **Partly verified**:
     run `38149928440` shows attempt 2's jobs, but every job there re-ran, so no reused job was seen.
-    The planner discards unless it finds exactly S `match` jobs;
+    The planner discards unless it finds exactly one completed record for each index 0..S-1;
   - the annotation exists when the planner reads it. If a lost shard is the last job to end, a race
     is conceivable; the result is a discard;
   - `gh run rerun --job` re-runs one matrix leg plus `aggregate`, keeps `repair-plan`'s outputs, and
@@ -220,9 +225,11 @@ The survivors' preview also goes, since nothing now waits on it.
   Accepted because the 17-odd surviving shards ran the same binaries for the full duration without
   it, and the report row names the repair. Comparing replay with survivors is not a usable check:
   #895's replay alone was +3.99 +/- 12.78 against +12.97 +/- 3.11.
-- **A4: Short slices play under the same conditions.** The last games of a slice run with fewer games
-  beside them, about 3% of a 31-pair slice's games against 0.2% of a shard's, and both engines share
-  that. Argued, not measured; #895 used the same shape.
+- **A4: Short slices play under slightly different conditions, accepted.** At concurrency 3, at most
+  two games finish with spare capacity beside them: 3.2% of a 31-pair slice against 0.18% of a 558-pair
+  shard. Engine processes also live for fewer games. Neither is shown to treat both sides equally, and
+  neither is measured; #895 used the same shape. The report names the replay. A slice under about 30
+  pairs only occurs in small test batches, so no minimum size is set.
 
 ## Invariants
 
@@ -254,16 +261,21 @@ JSON captured from run `41631693815`:
 | multi-arm | `discard` |
 | slice sizes for 558/18, 740/18, 900/20, uneven and R < S | cover R exactly, contiguous |
 | assembly with a short slice, wrong opening or wrong engine name | refused |
+| slice logs with compensating counts (2 and 4 pairs where PGNs hold 3 and 3), or no `Ptnml` line | refused |
+| a duplicate job index beside a missing one | `discard` |
 | assembled shard | passes `verify_batch` and the pool at S x R; shard tally counts it once |
 
 `test_strength_workflow.py` runs the real workflow blocks against: a repaired batch, which pools;
-a failed repair, which reports DISCARDED with no figure; and `play_shard.sh` with a stub fastchess,
-asserting a shard's and a replay's arguments differ only in `start` and `-rounds`. It also evaluates
+a failed repair, which reports DISCARDED with no figure; and the staged `play_shard.sh` with a stub
+fastchess. The stub asserts the full expected arguments for an ordinary shard with options and an
+offset, a multi-arm shard and a replay, that a shard's and a replay's arguments differ only in `start`
+and `-rounds`, and that a fatal line or nonzero fastchess exit still fails the script. It also evaluates
 the D2 table against the workflow's actual `if:` text, translated to Python, since Actions expressions
 don't run locally and that expression is what the change rests on. `Sync-LabPgn.ps1 -SelfTest` covers both repaired and discarded runs.
 
 **Live proof.** A runner loss can't be scheduled, so a temporary branch on top of the PR head adds a
-power-off to `play_shard.sh`, never merged. Candidate and reference are the same commit with
+power-off to `play_shard.sh`, never merged, selecting original shards and replay legs separately so
+it can't kill every replay of a shard. Candidate and reference are the same commit with
 `calibration=true`. Total about 1 h of the lab, so timed by the owner:
 
 1. **Repair.** 6 shards x 36 pairs (`games=432`), shard 1 powered off a few minutes in. Closes when:
