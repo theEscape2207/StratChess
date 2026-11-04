@@ -4,7 +4,7 @@
 # CMAKE_MSVC_DEBUG_INFORMATION_FORMAT below is inert.
 cmake_minimum_required(VERSION 3.30)
 # The only place the version number is written; UCI 'id name' reports it (see "Version identity").
-project(StratChess VERSION 0.8.0 LANGUAGES CXX)
+project(StratChess VERSION 0.9.0 LANGUAGES CXX)
 
 # Builds on Linux (GCC/Clang) and on Windows via clang-cl + Ninja, configured by
 # the windows-clang-cl presets in CMakePresets.json.
