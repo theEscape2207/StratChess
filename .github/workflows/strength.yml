@@ -206,6 +206,10 @@ jobs:
       - name: Verify the arm router
         run: python3 .github/scripts/plan_arms.py --self-test
 
+      # A wrong repair verdict would pool a batch that should have been discarded.
+      - name: Verify the repair planner
+        run: python3 .github/scripts/plan_repair.py --self-test
+
       - name: Verify the CPU summary
         run: python3 .github/scripts/summarize_cpu.py --self-test
 
@@ -390,6 +394,7 @@ jobs:
           cp "$RUNNER_TEMP/tools/fastchess" "$stage/fastchess"
           cp "$RUNNER_TEMP/tools/$BOOK_FILE" "$stage/$BOOK_FILE"
           cp .github/scripts/cpu_sampler.sh "$stage/cpu_sampler.sh"
+          cp .github/scripts/play_shard.sh "$stage/play_shard.sh"
 
           cand_sha=$(git rev-parse --short HEAD)
           ref_sha=$(git -C "$RUNNER_TEMP/reference" rev-parse --short HEAD)
@@ -516,129 +521,17 @@ jobs:
           REF_NAME: ${{ needs.build.outputs.ref_name }}
         run: |
           set -euo pipefail
-          tools="$RUNNER_TEMP/tools"
-          work="$RUNNER_TEMP/match"
-          # Artifact download does not preserve the executable bit.
-          chmod +x "$tools/fastchess" "$tools/candidate" "$tools/reference"
-          # Separate working directories per engine: the engine writes logs
-          # relative to its cwd, and spdlog fails silently when logs/ is absent.
-          mkdir -p "$work/cand/logs" "$work/ref/logs"
-
           # Disjointness is arithmetic, not file surgery: with order=sequential,
           # shard i starting at i*ROUNDS+1 and playing ROUNDS pairs consumes
           # openings [i*R+1, (i+1)*R], which cannot overlap another shard's.
           # start= is 1-based. The offset moves the whole batch, keeping it
           # disjoint from another run's.
-          start=$(( OPENING_OFFSET + SHARD * ROUNDS + 1 ))
-          echo "Shard $SHARD: $ROUNDS pairs from opening $start"
-
-          # In a multi-arm run this shard plays one arm, named in the engine
-          # name so the log and PGN headers identify it.
-          if [ -n "$ARM_LABEL" ]; then
-            CANDIDATE_UCI_OPTIONS=$ARM_OPTIONS
-            CAND_NAME="$CAND_NAME-arm$ARM_LABEL"
-            echo "Shard $SHARD: arm $ARM_LABEL, options $ARM_OPTIONS"
-          fi
-
-          # compute_budget() bounds a move by the clock (issue #204), but an
-          # increment under 100 ms still leaves the engine playing near-instant
-          # moves at the bottom of its clock. A control run should halve the
-          # BASE time and leave the increment alone; halving both measures the
-          # time manager rather than the change under test.
-          for tc in "$CANDIDATE_TC" "$REFERENCE_TC"; do
-            inc=${tc#*+}
-            if [ "$inc" = "$tc" ]; then inc=0; fi
-            if awk -v i="$inc" 'BEGIN { exit !(i < 0.1) }'; then
-              echo "::warning::Time control $tc has an increment below 0.1 s. Expect very fast play at low clock, and check the batch for time losses."
-            fi
-          done
-
-          # Per-engine UCI options, already checked against each engine's own
-          # advertised table in `build`. Built as arrays so an empty request
-          # expands to nothing at all rather than to an empty argument, and so
-          # no value is ever re-split by the shell.
-          cand_opts=()
-          ref_opts=()
-          if [ -n "$CANDIDATE_UCI_OPTIONS" ]; then
-            read -r -a cand_kv <<< "$CANDIDATE_UCI_OPTIONS"
-            for kv in "${cand_kv[@]}"; do cand_opts+=("option.$kv"); done
-          fi
-          if [ -n "$REFERENCE_UCI_OPTIONS" ]; then
-            read -r -a ref_kv <<< "$REFERENCE_UCI_OPTIONS"
-            for kv in "${ref_kv[@]}"; do ref_opts+=("option.$kv"); done
-          fi
-
-          cd "$work"
-          # Evidence of how busy the runner was; the aggregate summarises it.
-          # Detached from the step's output, which an orphaned sleep would hold open.
-          bash "$tools/cpu_sampler.sh" 60 cpu.tsv > /dev/null 2>&1 &
-          sampler_pid=$!
-          trap 'kill "$sampler_pid" 2>/dev/null || true' EXIT
-
-          # Adjudication settings are copied from Run-EloMatch.ps1 verbatim: the
-          # two instruments must differ only in toolchain and hardware.
-          # The same Threads on both sides -- Lazy SMP scales with core count, so
-          # unequal counts measure the hardware split, not the change.
-          start_s=$SECONDS
-          set +e
-          "$tools/fastchess" \
-            -engine cmd="$tools/candidate" name="$CAND_NAME" dir=cand args=uci "option.Threads=$THREADS" ${cand_opts[@]+"${cand_opts[@]}"} "tc=$CANDIDATE_TC" \
-            -engine cmd="$tools/reference" name="$REF_NAME" dir=ref args=uci "option.Threads=$THREADS" ${ref_opts[@]+"${ref_opts[@]}"} "tc=$REFERENCE_TC" \
-            -each proto=uci \
-            -rounds "$ROUNDS" -repeat -concurrency "$MATCH_CONCURRENCY" -recover \
-            -openings file="$tools/$BOOK_FILE" format=epd order=sequential start="$start" \
-            -draw movenumber=40 movecount=8 score=10 \
-            -resign movecount=4 score=800 \
-            -pgnout file=match.pgn notation=san \
-            2>&1 | tee match.log
-          fc_exit=${PIPESTATUS[0]}
-          set -e
-          echo "fastchess exit: $fc_exit"
-          echo "elapsed_min=$(( (SECONDS - start_s) / 60 ))" >> "$GITHUB_OUTPUT"
-
-          # Both scans below key on fastchess's own wordings rather than on
-          # keywords like "illegal", which also occur in engine output echoed
-          # into the log. The alternations are the complete set of PV-compliance
-          # and engine-failure messages fastchess emits.
-          #
-          # A PV-compliance warning says the engine's reported `pv` is
-          # defective. fastchess plays the game on from `bestmove`, so the
-          # result stands and the batch stays measurable. Reported rather than
-          # fatal: a PV that does not replay is worthless as evidence, but that
-          # is no reason to discard 1116 sound games.
-          pv_warn_re='Warning; (Illegal PV move|PV continues after (checkmate|stalemate|threefold repetition|fifty-move rule)|Incomplete mating PV|Mating PV does not end|Too long mating PV|Bestmove does not match beginning of last PV|Sign mismatch in mate scores)'
-          pv_warnings=$(grep -cE "$pv_warn_re" match.log || true)
-          if [ "$pv_warnings" -gt 0 ]; then
-            echo "::warning::Shard $SHARD: $pv_warnings PV-compliance warnings -- reported PV only, games unaffected."
-            grep -oE "$pv_warn_re" match.log | sort | uniq -c | sort -rn
-          fi
-
-          # A time loss, an illegal or malformed move PLAYED, or an engine that
-          # disconnects or stops answering is a harness or engine BUG, not
-          # strength data. On a shared runner it most likely means the box was
-          # oversubscribed, which invalidates every game in the shard, not just
-          # the one that lost. Fail the shard; the aggregator then refuses to
-          # pool the batch at all.
-          fatal_re='Illegal move .* played by|Move does not match uci move format|disconnects|connection stalls|Engine .* stalls|loses on time|stalled / disconnected|is not responsive|No output from|respond to uci'
-          if grep -qE "$fatal_re" match.log; then
-            echo "::error::Shard $SHARD: harness/engine failures detected -- batch is not measurable."
-            grep -E "$fatal_re" match.log | head -10
-            exit 1
-          fi
-
-          # Anything else fastchess flagged is unclassified. Surfaced so that a
-          # wording added by a future release cannot pass silently as neither
-          # tolerated nor fatal -- the failure mode this accounting is built to
-          # avoid.
-          if grep -E 'Warning;|Error;' match.log | grep -qvE "$pv_warn_re|$fatal_re"; then
-            echo "::warning::Shard $SHARD: unclassified fastchess diagnostics:"
-            grep -E 'Warning;|Error;' match.log | grep -vE "$pv_warn_re|$fatal_re" \
-              | sort | uniq -c | sort -rn | head -10
-          fi
-          test "$fc_exit" = "0"
+          START=$(( OPENING_OFFSET + SHARD * ROUNDS + 1 ))
+          export START
+          bash "$RUNNER_TEMP/tools/play_shard.sh"
 
       # Always runs, so a killed or crashed shard still yields its PGN -- the
-      # games played up to that point are the only thing that cannot be redone.
+      # games played up to that point are the evidence of what went wrong.
       # The name must be unique per shard: upload-artifact@v4+ errors on a
       # duplicate name within a run.
       - name: Upload shard PGN and log
@@ -654,11 +547,104 @@ jobs:
           retention-days: 90
 
   # ---------------------------------------------------------------------------
+  # Decide whether the failed shards were runners lost to infrastructure. A replay
+  # at the same openings completes the batch designed rather than selecting from
+  # it, so it does not carry the bias that discards a partial batch. Only attempt 1
+  # repairs, so nothing has to say which attempt produced which artifact. Criteria:
+  # plan_repair.py. !cancelled() because a job's implicit success() is false once a
+  # shard has failed.
+  # ---------------------------------------------------------------------------
+  repair-plan:
+    needs: [setup, build, match]
+    if: ${{ !cancelled() && needs.match.result == 'failure' && github.run_attempt == '1' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    outputs:
+      status: ${{ steps.plan.outputs.status }}
+      reason: ${{ steps.plan.outputs.reason }}
+      slices: ${{ steps.plan.outputs.slices }}
+      lost_a: ${{ steps.plan.outputs.lost_a }}
+      lost_b: ${{ steps.plan.outputs.lost_b }}
+      replayed: ${{ steps.plan.outputs.replayed }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Plan the repair
+        id: plan
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHARDS: ${{ inputs.shards }}
+          ROUNDS: ${{ needs.setup.outputs.rounds_per_shard }}
+          OPENING_OFFSET: ${{ inputs.opening_offset }}
+          CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/plan_repair.py plan \
+            --repo "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID" --shards "$SHARDS" --rounds "$ROUNDS" \
+            --opening-offset "$OPENING_OFFSET" --arms "$CANDIDATE_ARMS" --output "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Replay the lost shards' pairs as small jobs, from the batch's own toolkit, so
+  # binaries, book and settings are the same by construction. A lost replay is not
+  # retried: it discards the batch, and the manual repair still works.
+  # ---------------------------------------------------------------------------
+  repair:
+    needs: [setup, build, match, repair-plan]
+    if: ${{ !cancelled() && needs.repair-plan.result == 'success' && needs.repair-plan.outputs.status == 'repair' }}
+    name: repair (${{ matrix.slice.shard }}.${{ matrix.slice.index }})
+    runs-on: ubuntu-26.04
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: ${{ fromJSON(needs.repair-plan.outputs.slices) }}
+    steps:
+      - name: Download the toolkit
+        uses: actions/download-artifact@v8
+        with:
+          name: strength-${{ github.run_id }}-toolkit
+          path: ${{ runner.temp }}/tools
+
+      - name: Replay shard ${{ matrix.slice.shard }} slice ${{ matrix.slice.index }}
+        env:
+          SHARD: ${{ matrix.slice.shard }}.${{ matrix.slice.index }}
+          START: ${{ matrix.slice.start }}
+          ROUNDS: ${{ matrix.slice.pairs }}
+          CANDIDATE_TC: ${{ inputs.candidate_tc }}
+          REFERENCE_TC: ${{ inputs.reference_tc }}
+          MATCH_CONCURRENCY: ${{ inputs.concurrency }}
+          THREADS: ${{ inputs.threads }}
+          CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
+          REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
+          # The planner refuses a multi-arm run.
+          ARM_LABEL: ""
+          ARM_OPTIONS: ""
+          CAND_NAME: ${{ needs.build.outputs.cand_name }}
+          REF_NAME: ${{ needs.build.outputs.ref_name }}
+        run: bash "$RUNNER_TEMP/tools/play_shard.sh"
+
+      - name: Upload slice PGN and log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}-replay-${{ matrix.slice.shard }}-${{ matrix.slice.index }}
+          path: |
+            ${{ runner.temp }}/match/match.pgn
+            ${{ runner.temp }}/match/match.log
+            ${{ runner.temp }}/match/cpu.tsv
+          if-no-files-found: warn
+          retention-days: 90
+
+  # ---------------------------------------------------------------------------
   # Pool the shards into one figure per arm. Runs even when a shard failed, so the
   # summary explains the discard rather than leaving a red X with no reason.
   # ---------------------------------------------------------------------------
   aggregate:
-    needs: [setup, build, match]
+    needs: [setup, build, match, repair-plan, repair]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 15
@@ -673,9 +659,13 @@ jobs:
       # A biased subset wearing a full batch's error bar is worse than no
       # result: if three shards of twenty died, the surviving seventeen are not
       # a random sample of the batch -- they are the ones that happened not to
-      # hit whatever went wrong. Refuse before pooling anything.
+      # hit whatever went wrong. Refuse before pooling anything. The one exception
+      # is a fully repaired batch, which has every designed pair; see repair-plan.
       - name: Refuse a partial batch
-        if: needs.match.result != 'success'
+        if: ${{ !(needs.match.result == 'success' || (needs.match.result == 'failure' && github.run_attempt == '1' && needs.repair-plan.result == 'success' && needs.repair-plan.outputs.status == 'repair' && needs.repair.result == 'success')) }}
+        env:
+          PLAN_REASON: ${{ needs.repair-plan.outputs.reason }}
+          REPAIR_RESULT: ${{ needs.repair.result }}
         run: |
           {
             echo "## Strength lab — DISCARDED"
@@ -684,7 +674,11 @@ jobs:
             echo "not a smaller batch, it is a biased one: the surviving shards are those that"
             echo "happened to avoid whatever went wrong. No pooled figure is reported."
             echo
-            echo "Check the individual shard logs, then re-dispatch. A shard lost to its runner gets a repair run: measure-strength, strength-lab.md."
+            if [ -n "$PLAN_REASON" ]; then echo "Not repaired: $PLAN_REASON."; fi
+            if [ "$REPAIR_RESULT" = "failure" ] || [ "$REPAIR_RESULT" = "cancelled" ]; then
+              echo "The repair was $REPAIR_RESULT."
+            fi
+            echo "Check the individual shard logs. A manual repair may still apply: measure-strength, strength-lab.md."
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
@@ -702,6 +696,31 @@ jobs:
         with:
           name: strength-${{ github.run_id }}-comparison
           path: evidence
+
+      - name: Download the replayed slices
+        if: needs.repair.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: strength-${{ github.run_id }}-replay-*
+          path: replays
+
+      # The verify and pool below then see the designed batch, unchanged, and count
+      # a replay as the one shard it replaces.
+      - name: Assemble the replayed shards
+        if: needs.repair.result == 'success'
+        env:
+          SLICES: ${{ needs.repair-plan.outputs.slices }}
+          ROUNDS: ${{ needs.setup.outputs.rounds_per_shard }}
+          OPENING_OFFSET: ${{ inputs.opening_offset }}
+          CAND_NAME: ${{ needs.build.outputs.cand_name }}
+          REF_NAME: ${{ needs.build.outputs.ref_name }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/plan_repair.py assemble \
+            --slices "$SLICES" --run "$GITHUB_RUN_ID" --rounds "$ROUNDS" --opening-offset "$OPENING_OFFSET" \
+            --candidate-name "$CAND_NAME" --reference-name "$REF_NAME" --book "evidence/$BOOK_FILE" \
+            --replays replays --shards shards
+          printf '%s\n' "$SLICES" > repair-plan.json
 
       - name: Verify the complete batch
         env:
@@ -760,6 +779,37 @@ jobs:
           mv /tmp/pooled.pending.md /tmp/pooled.md
           cat /tmp/pooled.md
 
+      # Under the shard name, so PGN sync and the analysis scripts see a complete
+      # batch. One step per shard because the name is per artifact; the planner
+      # repairs at most two.
+      - name: Upload the first replayed shard
+        if: steps.pool.outcome == 'success' && needs.repair-plan.outputs.lost_a != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}-shard-${{ needs.repair-plan.outputs.lost_a }}
+          path: shards/strength-${{ github.run_id }}-shard-${{ needs.repair-plan.outputs.lost_a }}
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload the second replayed shard
+        if: steps.pool.outcome == 'success' && needs.repair-plan.outputs.lost_b != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}-shard-${{ needs.repair-plan.outputs.lost_b }}
+          path: shards/strength-${{ github.run_id }}-shard-${{ needs.repair-plan.outputs.lost_b }}
+          if-no-files-found: error
+          retention-days: 90
+
+      # Last: a repaired run stays red, and this marker is what tells PGN sync it pooled.
+      - name: Mark the run as repaired
+        if: steps.pool.outcome == 'success' && needs.repair-plan.outputs.lost_a != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}-repair
+          path: repair-plan.json
+          if-no-files-found: error
+          retention-days: 90
+
       # Built once into a file and used twice, so the pull-request comment and
       # the job summary cannot drift apart.
       - name: Report
@@ -775,6 +825,7 @@ jobs:
           THREADS: ${{ inputs.threads }}
           BUILD_RESULT: ${{ needs.build.result }}
           POOL_RESULT: ${{ steps.pool.outcome }}
+          REPLAYED: ${{ needs.repair-plan.outputs.replayed }}
         run: |
           {
             if [ "$POOL_RESULT" = "success" ]; then
@@ -792,6 +843,9 @@ jobs:
             fi
             echo "| Reference | ${{ needs.build.outputs.ref_name }} (\`${{ inputs.reference_ref }}\` = \`${{ needs.setup.outputs.reference_sha }}\`), tc=${{ inputs.reference_tc }}, options \`${REFERENCE_UCI_OPTIONS:-none}\` |"
             echo "| Games | ${{ needs.setup.outputs.actual_games }} = ${{ inputs.shards }} shards x ${{ needs.setup.outputs.games_per_shard }}, concurrency ${{ inputs.concurrency }} per shard |"
+            if [ "$POOL_RESULT" = "success" ] && [ -n "$REPLAYED" ]; then
+              echo "| Replayed | $REPLAYED |"
+            fi
             echo "| Book | \`$BOOK_FILE\` (${{ needs.build.outputs.openings }} openings) |"
             if [ "$OPENING_OFFSET" != "0" ] && [ -n "$ACTUAL_GAMES" ]; then
               echo "| Openings | $(( OPENING_OFFSET + 1 ))–$(( OPENING_OFFSET + ACTUAL_GAMES / 2 )) (offset $OPENING_OFFSET) |"

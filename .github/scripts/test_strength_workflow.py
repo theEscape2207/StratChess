@@ -8,6 +8,7 @@ single/multi-arm batches exercise the actual verify, pool and report commands.
 """
 from pathlib import Path
 import argparse
+import json
 import os
 import shlex
 import re
@@ -52,6 +53,142 @@ def run(root, name, env, expected=0, command_wrapper=None):
         raise AssertionError(f'{name}: expected {expected}, got {result.returncode}\n{result.stdout}\n{result.stderr}')
     return result
 
+def discard_rule():
+    """The aggregate's actual if: text against every outcome, since Actions expressions don't run locally."""
+    expression = re.search(r"name: Refuse a partial batch\n\s+if: \$\{\{ (.+) \}\}", workflow)[1]
+    python = expression.replace('!(', 'not (').replace('||', ' or ').replace('&&', ' and ')
+    names = {'needs.match.result': 'match', 'github.run_attempt': 'attempt', 'needs.repair-plan.result': 'plan',
+             'needs.repair-plan.outputs.status': 'status', 'needs.repair.result': 'repair'}
+    for name, variable in names.items():
+        python = python.replace(name, variable)
+    table = [('success', '1', 'skipped', '', 'skipped', False),
+             ('success', '2', 'skipped', '', 'skipped', False),
+             ('failure', '1', 'success', 'repair', 'success', False),
+             ('failure', '1', 'success', 'repair', 'failure', True),
+             ('failure', '1', 'success', 'repair', 'cancelled', True),
+             ('failure', '1', 'success', 'discard', 'skipped', True),
+             ('failure', '1', 'failure', '', 'skipped', True),
+             ('failure', '2', 'skipped', '', 'skipped', True),
+             ('failure', '2', 'success', 'repair', 'success', True),
+             ('cancelled', '1', 'skipped', '', 'skipped', True),
+             ('skipped', '1', 'skipped', '', 'skipped', True)]
+    for match, attempt, plan, status, repair, refused in table:
+        scope = dict(match=match, attempt=attempt, plan=plan, status=status, repair=repair)
+        assert eval(python, {}, scope) == refused, (scope, python)
+    # Without a status function GitHub adds success(), which is false once a shard has failed.
+    assert "if: ${{ !cancelled() && needs.match.result == 'failure' && github.run_attempt == '1' }}" in workflow
+    assert "if: ${{ !cancelled() && needs.repair-plan.result == 'success' && needs.repair-plan.outputs.status == 'repair' }}" in workflow
+    assert 'needs: [setup, build, match, repair-plan, repair]' in workflow, 'aggregate must wait for the repair'
+    print(f'PASS: the discard rule refuses as designed in {len(table)} outcomes')
+
+def step_env(name):
+    section = workflow.split(f'      - name: {name}')[1]
+    block = section.split('        env:\n')[1].split('        run:')[0]
+    return dict(line.strip().split(': ', 1) for line in block.splitlines() if ': ' in line and not line.strip().startswith('#'))
+
+def replay_settings():
+    """The one place a replay could still drift from its shard: the settings each job hands the script."""
+    shard, replay = step_env('Run shard'), step_env('Replay shard')
+    own = {'SHARD', 'START', 'ROUNDS', 'OPENING_OFFSET', 'ARM_LABEL', 'ARM_OPTIONS'}
+    assert set(shard) | {'START'} == set(replay) | {'OPENING_OFFSET'}, (shard, replay)
+    assert {k: v for k, v in shard.items() if k not in own} == {k: v for k, v in replay.items() if k not in own}
+    print('PASS: a replay gets the same settings as its shard')
+
+def play_script(root):
+    """The staged script's fastchess arguments, for a shard, an arm and a replay, and its failure exits."""
+    assert 'cp .github/scripts/play_shard.sh "$stage/play_shard.sh"' in shell_blocks['Stage the toolkit']
+    temp = root / 'play'
+    tools = temp / 'tools'
+    tools.mkdir(parents=True)
+    shutil.copy(repo / '.github/scripts/play_shard.sh', tools)
+    for name in ['candidate', 'reference', 'book.epd']:
+        (tools / name).write_text('')
+    (tools / 'cpu_sampler.sh').write_text('exit 0\n')
+    (tools / 'fastchess').write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$RUNNER_TEMP/args.txt"\n'
+                                     'printf "%s\\n" "${FIXTURE_LINE:-}"\nexit "${FIXTURE_EXIT:-0}"\n', newline='\n')
+    output = temp / 'github-output'
+    base = dict(RUNNER_TEMP=temp.as_posix(), GITHUB_OUTPUT=output.as_posix(), SHARD='3', START='1117', ROUNDS='558',
+                CANDIDATE_TC='10+0.1', REFERENCE_TC='5+0.1', MATCH_CONCURRENCY='3', THREADS='1',
+                CANDIDATE_UCI_OPTIONS='Contempt=20', REFERENCE_UCI_OPTIONS='Hash=64', ARM_LABEL='', ARM_OPTIONS='',
+                CAND_NAME='candidate-x', REF_NAME='reference-y', BOOK_FILE='book.epd')
+
+    def play(expected=0, **overrides):
+        shutil.rmtree(temp / 'match', ignore_errors=True)
+        result = subprocess.run([bash, (tools / 'play_shard.sh').as_posix()], cwd=root, text=True, capture_output=True,
+                                env={**os.environ, **base, **overrides}, timeout=30)
+        assert (result.returncode == 0) == (expected == 0), (overrides, result.stdout, result.stderr)
+        return (temp / 'args.txt').read_text().splitlines()
+
+    def arguments(candidate, options, rounds, start):
+        return ['-engine', f'cmd={tools.as_posix()}/candidate', f'name={candidate}', 'dir=cand', 'args=uci',
+                'option.Threads=1', *options, 'tc=10+0.1',
+                '-engine', f'cmd={tools.as_posix()}/reference', 'name=reference-y', 'dir=ref', 'args=uci',
+                'option.Threads=1', 'option.Hash=64', 'tc=5+0.1',
+                '-each', 'proto=uci', '-rounds', rounds, '-repeat', '-concurrency', '3', '-recover',
+                '-openings', f'file={tools.as_posix()}/book.epd', 'format=epd', 'order=sequential', f'start={start}',
+                '-draw', 'movenumber=40', 'movecount=8', 'score=10', '-resign', 'movecount=4', 'score=800',
+                '-pgnout', 'file=match.pgn', 'notation=san']
+
+    shard = play()
+    assert shard == arguments('candidate-x', ['option.Contempt=20'], '558', '1117'), shard
+    assert (temp / 'match/match.log').is_file(), 'the log must land where the upload reads it'
+    arm = play(ARM_LABEL='B', ARM_OPTIONS='Contempt=30 Foo=1')
+    assert arm == arguments('candidate-x-armB', ['option.Contempt=30', 'option.Foo=1'], '558', '1117'), arm
+    replay = play(SHARD='3.1', START='1148', ROUNDS='31')
+    assert replay == arguments('candidate-x', ['option.Contempt=20'], '31', '1148'), replay
+    differing = [pair for pair in zip(shard, replay) if pair[0] != pair[1]]
+    assert differing == [('558', '31'), ('start=1117', 'start=1148')], differing
+    play(expected=1, FIXTURE_LINE='Finished game 1: Engine x loses on time')
+    play(expected=1, FIXTURE_EXIT='3')
+    print('PASS: the play script passes full arguments, a replay differs only in start and rounds, failures exit nonzero')
+
+def repaired_batch(root, env):
+    """A lost shard replayed as two slices pools as the designed batch; a failed repair reports no figure."""
+    summary = root / 'summary.md'
+    candidate, reference = env['CAND_NAME'], env['REF_NAME']
+    shutil.rmtree(root / 'shards/strength-1-shard-1')
+    survivor = root / 'shards/strength-1-shard-0/match.pgn'
+    survivor.write_text(survivor.read_text().replace(f'{candidate}-armA', candidate))
+    # Offset 1, 2 pairs a shard: shard 1 holds openings 4 and 5 (1-based).
+    book = (root / 'evidence/book.epd').read_text().splitlines()
+    slices = [dict(shard=1, index=0, start=4, pairs=1), dict(shard=1, index=1, start=5, pairs=1)]
+    for piece, position in zip(slices, book[3:5]):
+        target = root / f"replays/strength-1-replay-1-{piece['index']}"
+        target.mkdir(parents=True)
+        pgn = ''
+        for white, black in [(candidate, reference), (reference, candidate)]:
+            pgn += (f'[Event "fixture"]\n[Round "1"]\n[White "{white}"]\n[Black "{black}"]\n'
+                    f'[FEN "{position} 0 9"]\n[Result "1/2-1/2"]\n\n1/2-1/2\n\n')
+        (target / 'match.pgn').write_text(pgn)
+        (target / 'match.log').write_text('Ptnml(0-2): [0, 0, 1, 0, 0]\n')
+    repair = {**env, 'CANDIDATE_ARMS': '', 'SLICES': json.dumps(slices), 'GITHUB_RUN_ID': '1', 'POOL_RESULT': 'success',
+              'REPLAYED': 'shard 1, 2 slices (runner lost)'}
+    run(root, 'Assemble the replayed shards', repair)
+    assert json.loads((root / 'repair-plan.json').read_text()) == slices
+    run(root, 'Verify the complete batch', repair)
+    run(root, 'Pool the result', repair)
+    run(root, 'Report', repair)
+    report = (root / 'outputs/report.md').read_text(encoding='utf-8')
+    assert '| Replayed | shard 1, 2 slices (runner lost) |' in report and '**Pooled:' in report
+    assert 'on 1 of 2 shards' in report, 'an assembled shard carries no CPU samples'
+    assert 'by score: 0 of 2 (0 the reference, 2 even)' in report, 'the replay counts as one shard'
+    print('PASS: a repaired batch assembles, verifies, pools at the designed size and says it was repaired')
+    (root / 'outputs/pooled.md').unlink()
+    # A slice whose log disagrees with its PGN must stop before anything pools.
+    shutil.rmtree(root / 'shards/strength-1-shard-1')
+    (root / 'replays/strength-1-replay-1-1/match.log').write_text('Ptnml(0-2): [0, 0, 2, 0, 0]\n')
+    run(root, 'Assemble the replayed shards', repair, expected=1)
+    summary.unlink(missing_ok=True)
+    run(root, 'Refuse a partial batch', {**repair, 'PLAN_REASON': 'shard 2 failed', 'REPAIR_RESULT': 'skipped'}, expected=1)
+    text = summary.read_text(encoding='utf-8')
+    assert 'DISCARDED' in text and 'Not repaired: shard 2 failed.' in text and '**Pooled:' not in text
+    run(root, 'Refuse a partial batch', {**repair, 'PLAN_REASON': '', 'REPAIR_RESULT': 'failure'}, expected=1)
+    assert 'The repair was failure.' in summary.read_text(encoding='utf-8')
+    run(root, 'Report', {**repair, 'POOL_RESULT': 'failure'})
+    report = (root / 'outputs/report.md').read_text(encoding='utf-8')
+    assert 'DISCARDED' in report and 'Replayed' not in report and '**Pooled:' not in report
+    print('PASS: a failed slice or repair reports DISCARDED with the reason and no figure')
+
 def self_test():
     (repo / 'build').mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=repo / 'build') as directory:
@@ -80,10 +217,13 @@ def self_test():
         (root / '.github').mkdir()
         shutil.copytree(repo / '.github/scripts', root / '.github/scripts')
         (root / 'outputs').mkdir()
+        discard_rule()
+        replay_settings()
+        play_script(root)
         stage = root / 'runner/stage'
         stage.mkdir(parents=True)
         positions = [f'8/8/8/8/8/8/4K3/4k3 {colour} - -' for colour in ['w', 'b']]
-        (stage / 'book.epd').write_text(positions[1] + '\n' + positions[0] + '\n' + positions[1] + '\n' + positions[1] + '\n')
+        (stage / 'book.epd').write_text('\n'.join(positions[i] for i in [1, 0, 1, 1, 0]) + '\n')
         summary = root / 'summary.md'
         env = {'SHARDS': '2', 'ROUNDS': '2', 'OPENING_OFFSET': '1', 'CAND_NAME': 'candidate-x',
                'REF_NAME': 'reference-y', 'BOOK_FILE': 'book.epd', 'GITHUB_STEP_SUMMARY': summary.as_posix(),
@@ -163,6 +303,7 @@ def self_test():
             assert 'DISCARDED' in report and '**Pooled:' not in report and 'Threads=4 |' in report
             assert 'on 1 of 2 shards' in report and '| Busy, all vCPUs | 75.0% |' in report, 'CPU summary missing'
             print('PASS: failure summary contains no partial Elo')
+        repaired_batch(root, env)
         (root / 'evidence/comparison.md').unlink()
         run(root, 'Verify the complete batch', env, expected=1)
         print('PASS: absent comparison evidence refuses aggregation')

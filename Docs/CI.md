@@ -355,11 +355,15 @@ worse than none, because its output looks exactly like a measurement — so it s
 numbers are only trusted because the null test and the known-sign control were run first. Both are
 in `Measurements/ci-calibration.md`.
 
-**Four jobs.** `setup` turns the requested game count into a shard plan and self-tests the pooling
+**Six jobs.** `setup` turns the requested game count into a shard plan and self-tests the pooling
 formula, comparison preflight and shard verifier before anything expensive runs. `build` compiles
 both engines, resolves the intended comparison, and stages them with fastchess and the book
 as **one artifact**, so every shard provably plays the same two binaries against the same book.
-`match` is the shard matrix. `aggregate` verifies the whole batch before pooling any arm.
+`match` is the shard matrix. When it fails, `repair-plan` decides whether the shards were lost to
+their runners, and `repair` replays those pairs as small jobs from the same toolkit
+(`.github/scripts/plan_repair.py`). `aggregate` verifies the whole batch before pooling any arm.
+`match` and `repair` run the one `.github/scripts/play_shard.sh`, staged in the toolkit because shards
+do not check out the repository, so a replay cannot drift from the shard it replaces.
 The normal PR gate also runs these Python self-tests and workflow boundary fixtures in its Linux
 Release leg, so harness failures can be checked without dispatching a strength match.
 
@@ -451,7 +455,13 @@ same rule as `Run-EloMatch.ps1`, and on a shared runner a time loss most likely 
 oversubscribed, which invalidates the whole batch rather than the one game. **A failed shard
 discards the whole batch**, not just itself: the survivors are the ones that happened to avoid
 whatever went wrong, so pooling them would be a biased subset wearing a full batch's error bar.
-An infrastructure loss is replayed by a repair run and pooled with `pool_repaired_batch.py`: `measure-strength` → `reference/strength-lab.md`.
+The exception is a shard lost to its runner: on attempt 1, the batch replays it at the same openings,
+which completes the batch designed rather than selecting from it, and pools it with a `Replayed` row in
+the report. Each slice is verified alone, then assembled into `strength-<run>-shard-<N>`, so the
+existing verify and pool steps count it as the one shard it replaces; the raw slices stay as
+`strength-<run>-replay-<N>-<i>`. Such a run stays red, and its `strength-<run>-repair` artifact is what
+tells `Sync-LabPgn.ps1` it pooled. Rules and the manual fallback, `pool_repaired_batch.py`:
+`measure-strength` → `reference/strength-lab.md`.
 Numbers land in `Measurements/ci-per-change.md` or `ci-anchor.md`, which must never be compared
 against the local clang-cl rows. **Ratios transfer between the two instruments; absolute values
 do not.**

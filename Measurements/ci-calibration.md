@@ -14,6 +14,8 @@ recorded and read. Why its rows are never comparable with the local ledger: [`RE
 | 2026-08-06 | 0e0fc94 | 0e0fc94 (same commit) | 20000 | 10+0.1 | **-2.17 +/- 4.18** | calibration |
 | 2026-08-06 | c52d1a6 | c52d1a6 (same commit) | 19980 | 10+0.1 | **-1.51 +/- 4.15** | calibration |
 | 2026-10-01 | 05fc0d5 | 7f72225 (same engine source) | 28400 | 10+0.1 | **+0.38 +/- 2.95** | calibration |
+| 2026-11-04 | ec7e83c, ordinary path (#956; run `41836943865`) | ec7e83c (same commit) | 432 | 10+0.1 | -16.90 +/- 23.63 | calibration |
+| 2026-11-04 | 7e528b6, forced runner loss (#956; run `41837456562`, shard 1 replayed) | 7e528b6 (same commit) | 432 | 10+0.1 | +10.46 +/- 23.87 | calibration |
 
 ## Row detail
 
@@ -38,3 +40,11 @@ Same order as the table above. A row with nothing to add beyond its verdict has 
 ### 2026-10-01 — 05fc0d5 (28400 games)
 
 **Toolchain-change null test (#476) — PASS. First row on GCC 15 / `ubuntu-26.04`; every row above is GCC 13 / `ubuntu-24.04`.** 20 shards x 710 pairs, pooled Ptnml(0-2) [1095, 3157, 5699, 3120, 1129], score 50.05%, 4 h 03 min wall-clock (shards 235-240 min). The candidate only moves the lab's runners and docs, so both sides build the same engine source and the true difference is zero by construction; [-2.57, +3.33] contains it. Resolution matches the 24.04 instrument as it stood just before (run 36599205249: ±3.60 at 19,980 games, ±3.03 scaled to this count); the wider August rows predate the current setup. Shard slices verified disjoint (20 opening positions, 20 unique). **Zero time losses**: every shard's fatal-pattern check passed. Run 36782774432
+
+### 2026-11-04 — ec7e83c, ordinary path (#956) (432 games)
+
+Ptnml [17, 58, 84, 43, 14]. 6 shards x 36 pairs on the repair PR's head. `repair-plan` and `repair` were skipped and the batch pooled as before, so the moved play script works on a real runner.
+
+### 2026-11-04 — 7e528b6, forced runner loss (#956) (432 games)
+
+Ptnml [13, 51, 80, 54, 18]. A temporary commit, never merged, ran `sudo -n poweroff -f` on shard 1's runner 3 min in, which produced GitHub's real annotation. GitHub took about 45 min to declare the runner lost, ending the job at 14:24:56; the planner found the annotation 3 s after that, with the job token, as the last job to finish. 6 replay jobs of 6 pairs took about 2.5 min, and the assembled shard passed verify and pool as 1 of 6 shards.

@@ -1,12 +1,14 @@
 <#
 .SYNOPSIS
-    Lists the successful strength-lab runs not yet copied to StrengthLabPgn, and copies them.
+    Lists the valid strength-lab runs not yet copied to StrengthLabPgn, and copies them.
 
 .DESCRIPTION
     GitHub deletes a run's shard artifacts 90 days after the run, and the PGNs inside are the raw
-    corpus every game analysis starts from. The rule is to copy EVERY successful strength.yml
+    corpus every game analysis starts from. The rule is to copy EVERY valid strength.yml
     run: a ledger row is written days after the run, so "copy what has a row" races the expiry.
-    Failed and cancelled runs are not copied.
+    Failed and cancelled runs are not copied, except a repaired one: a shard lost to its runner stays
+    red although the batch pooled, so it is recognised by its strength-<run>-repair artifact, uploaded
+    only after the pool. A re-run's verdict can differ from that marker, so only attempt 1 counts.
 
     With no flags it only lists, oldest first, with the days each run has left. Exit 0 when
     nothing is missing, 1 when a run is missing or a folder lacks its README row.
@@ -17,7 +19,7 @@
     folder. A run is downloaded to a `.partial` folder and renamed only once every shard is
     present, so an interrupted download is retried rather than mistaken for a copy.
 
-    A successful run can carry no shard artifacts (a probe, or one already expired). Those are
+    A valid run can carry no shard artifacts (a probe, or one already expired). Those are
     named separately and are never "missing": there is nothing left to copy.
 
     StrengthLabPgn is StratChessSupport\StrengthLabPgn beside the main checkout, not in the repo.
@@ -32,7 +34,7 @@
     Override the StrengthLabPgn folder.
 
 .PARAMETER RunLimit
-    How many of the newest successful runs to consider. The window is 90 days of ~1 run a day, so
+    How many of the newest successful runs, and of the newest failed ones, to consider. The window is 90 days of ~1 run a day, so
     the default is generous.
 
 .PARAMETER SelfTest
@@ -132,6 +134,30 @@ function Get-ShardCount {
 
     $list = ($ArtifactsJson | ConvertFrom-Json).artifacts
     return @($list | Where-Object { $_.name -match '^strength-\d+-shard-\d+$' -and -not $_.expired }).Count
+}
+
+function Test-RepairedRun {
+    <#
+      .SYNOPSIS
+        Whether a failed run's artifact-list JSON holds the marker a repaired batch uploads last.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ArtifactsJson,
+        [Parameter(Mandatory)][string]$RunId
+    )
+
+    $list = ($ArtifactsJson | ConvertFrom-Json).artifacts
+    return @($list | Where-Object { $_.name -ceq "strength-$RunId-repair" -and -not $_.expired }).Count -gt 0
+}
+
+function Get-FirstAttemptRun {
+    <#
+      .SYNOPSIS
+        Only attempt 1 can repair, so a later attempt's marker describes a verdict since replaced.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Run)
+
+    return @($Run | Where-Object { $_.Attempt -eq 1 })
 }
 
 function Get-PgnGameCount {
@@ -247,6 +273,22 @@ function Invoke-SelfTest {
     Assert-Equal 'shards: none' (Get-ShardCount '{"artifacts":[{"name":"strength-9","expired":false}]}') 0
     Assert-Equal 'shards: empty list' (Get-ShardCount '{"artifacts":[]}') 0
 
+    $repaired = '{"artifacts":[{"name":"strength-9-shard-0","expired":false},{"name":"strength-9-repair","expired":false}]}'
+    $discarded = '{"artifacts":[{"name":"strength-9-shard-0","expired":false},{"name":"strength-9-replay-6-0","expired":false}]}'
+    $expiredMarker = '{"artifacts":[{"name":"strength-9-repair","expired":true}]}'
+    Assert-Equal 'repaired: the marker counts' (Test-RepairedRun $repaired '9') $true
+    # The falsification: a discarded run keeps its shards and slices, and must not be copied.
+    Assert-Equal 'repaired: a discarded run has no marker' (Test-RepairedRun $discarded '9') $false
+    Assert-Equal 'repaired: an expired marker does not count' (Test-RepairedRun $expiredMarker '9') $false
+    Assert-Equal 'repaired: another run''s marker does not count' (Test-RepairedRun $repaired '8') $false
+    Assert-Equal 'repaired: a replayed shard counts as a shard' (Get-ShardCount $repaired) 1
+
+    $failed = @(
+        [pscustomobject]@{ Id = '1'; Attempt = 1 }
+        [pscustomobject]@{ Id = '2'; Attempt = 2 }
+    )
+    Assert-Equal 'repaired: an old marker on a later attempt does not count' ((Get-FirstAttemptRun $failed).Id -join ',') '1'
+
     $pgn = @('[Event "x"]', '[Result "1-0"]', '1. e4 {+0.2/12 0.5s}', '[Result "1/2-1/2"]', '[ResultNote "no"]', '')
     Assert-Equal 'games counted by Result tag' (Get-PgnGameCount $pgn) 2
     Assert-Equal 'empty pgn' (Get-PgnGameCount @()) 0
@@ -304,17 +346,30 @@ function Invoke-Gh {
     return ($out | Out-String)
 }
 
-function Get-SuccessfulRun {
+function Get-LabRun {
+    param([Parameter(Mandatory)][string]$Status)
+
     # --jq keeps createdAt a raw UTC string: ConvertFrom-Json would hand back a local-zone DateTime,
     # and the folder date is the UTC one.
-    $tsv = Invoke-Gh -Argument @('run', 'list', '--repo', $Repo, '--workflow', 'strength.yml', '--status', 'success',
-        '--limit', "$RunLimit", '--json', 'databaseId,createdAt,headSha',
-        '--jq', '.[] | [.databaseId,.createdAt,.headSha] | @tsv')
+    $tsv = Invoke-Gh -Argument @('run', 'list', '--repo', $Repo, '--workflow', 'strength.yml', '--status', $Status,
+        '--limit', "$RunLimit", '--json', 'databaseId,createdAt,headSha,attempt',
+        '--jq', '.[] | [.databaseId,.createdAt,.headSha,.attempt] | @tsv')
     $runs = foreach ($line in @($tsv -split "`r?`n" | Where-Object { $_.Trim() })) {
         $f = $line -split "`t"
-        [pscustomobject]@{ Id = $f[0]; Created = (ConvertTo-Utc $f[1]); Sha = $f[2] }
+        [pscustomobject]@{ Id = $f[0]; Created = (ConvertTo-Utc $f[1]); Sha = $f[2]; Attempt = [int]$f[3] }
     }
     return @($runs)
+}
+
+function Get-RepairedRun {
+    # Only a repaired run is ever copied, so a local failed run is one, and is kept for its README row.
+    # The artifact listing is per run, so only the others are asked.
+    param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$LocalId)
+
+    return @(Get-FirstAttemptRun @(Get-LabRun 'failure') | Where-Object {
+            $_.Id -in $LocalId -or
+            (Test-RepairedRun (Invoke-Gh -Argument @('api', "repos/$Repo/actions/runs/$($_.Id)/artifacts?per_page=100")) $_.Id)
+        })
 }
 
 function Save-Run {
@@ -386,7 +441,7 @@ if (-not (Test-Path $readmePath)) { throw "README.md not found in $PgnRoot" }
 
 $localNames = @(Get-ChildItem $PgnRoot -Directory | ForEach-Object { $_.Name })
 $localIds = @(Get-LocalRunId $localNames)
-$runList = @(Get-SuccessfulRun)
+$runList = @(Get-LabRun 'success') + @(Get-RepairedRun $localIds)
 $missing = @(Get-MissingRun $runList $localIds)
 $utcNow = (Get-Date).ToUniversalTime()
 
@@ -406,7 +461,7 @@ foreach ($run in $missing) {
     if ($shards -gt 0) { $copyable += $entry } else { $unavailable += $entry }
 }
 
-Write-Host ("{0} successful runs, {1} local, {2} missing" -f $runList.Count, $localIds.Count, $copyable.Count)
+Write-Host ("{0} valid runs, {1} local, {2} missing" -f $runList.Count, $localIds.Count, $copyable.Count)
 foreach ($e in $copyable) {
     Write-Host ("  {0}  {1}  {2}  {3,2} shards  {4,3} days left" -f
         $e.Run.Id, $e.Run.Created.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture),
@@ -414,7 +469,7 @@ foreach ($e in $copyable) {
         -ForegroundColor ($e.DaysLeft -le 14 ? 'Yellow' : 'White')
 }
 if ($unavailable.Count -gt 0) {
-    Write-Host ("{0} successful run(s) have no live shard artifacts (nothing to copy): {1}" -f
+    Write-Host ("{0} valid run(s) have no live shard artifacts (nothing to copy): {1}" -f
         $unavailable.Count, (($unavailable | ForEach-Object { $_.Run.Id }) -join ' ')) -ForegroundColor DarkGray
 }
 
@@ -429,7 +484,7 @@ foreach ($name in $unrowed) {
     $runId = [regex]::Match($name, $script:FolderPattern).Groups[2].Value
     $known = @($runList | Where-Object { $_.Id -eq $runId })
     if ($known.Count -eq 0) {
-        Write-Host "SKIP  $name is not among the last $RunLimit successful runs; add its row by hand" -ForegroundColor Yellow
+        Write-Host "SKIP  $name is not among the last $RunLimit valid runs; add its row by hand" -ForegroundColor Yellow
         continue
     }
     $row = Get-FolderRow -Path (Join-Path $PgnRoot $name) -Folder $name -Sha $known[0].Sha
