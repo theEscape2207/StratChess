@@ -27,7 +27,7 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
 ### Changed
 - `project(VERSION)` is 0.9.0, ahead of the `v0.9.0` tag. MINOR, for the measured strength gains from
-  quiet SEE pruning and depth-3 late move pruning. Builds now report `id name StratChess 0.9.0+<commit>`.
+  quiet SEE pruning and depth-3 late move pruning. Release builds report `id name StratChess 0.9.0`, others `0.9.0+<commit>`.
 
 ## 2026-11-04: Lab batch repairs a shard lost to its runner, in the same run (#956)
 
