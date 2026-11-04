@@ -291,6 +291,10 @@ The rules cover:
 - the `info` fields that [Interpret search output](#interpret-search-output) defines;
 - the `bestmove` line.
 
+They cover the form of those lines, not the values: any release may change the score or move a
+given search reports. A client that depends on score values pins a release and rechecks on adopting
+a new one.
+
 Every other advertised option, meaning the search tuning options `LmrLogBase` …
 `StabilityTimeFloor`, is an **unsupported tuning control**. Any MINOR may rename or remove one, so a UI must not depend on it. `info string` lines
 are diagnostics and not part of the contract.
