@@ -3,7 +3,7 @@
 
 Refuses unless both runs' comparison.md match, the lost shard left no artifact, the
 original run has no shard beyond the batch, every other shard passes verify_batch at its
-assigned openings, and no log carries a failure strength.yml treats as fatal. comparison.md
+assigned openings, and no log carries a failure play_shard.sh treats as fatal. comparison.md
 omits concurrency, so the dispatch must repeat it. Single-candidate batches only: an arm's
 suffixed engine name fails the check. Procedure and sizes:
 .claude/skills/measure-strength/reference/strength-lab.md.

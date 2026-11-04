@@ -531,7 +531,7 @@ jobs:
           bash "$RUNNER_TEMP/tools/play_shard.sh"
 
       # Always runs, so a killed or crashed shard still yields its PGN -- the
-      # games played up to that point are the only thing that cannot be redone.
+      # games played up to that point are the evidence of what went wrong.
       # The name must be unique per shard: upload-artifact@v4+ errors on a
       # duplicate name within a run.
       - name: Upload shard PGN and log

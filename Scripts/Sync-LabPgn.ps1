@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     GitHub deletes a run's shard artifacts 90 days after the run, and the PGNs inside are the raw
-    corpus every game analysis starts from. The rule is to copy EVERY successful strength.yml
+    corpus every game analysis starts from. The rule is to copy EVERY valid strength.yml
     run: a ledger row is written days after the run, so "copy what has a row" races the expiry.
     Failed and cancelled runs are not copied, except a repaired one: a shard lost to its runner stays
     red although the batch pooled, so it is recognised by its strength-<run>-repair artifact, uploaded
@@ -19,7 +19,7 @@
     folder. A run is downloaded to a `.partial` folder and renamed only once every shard is
     present, so an interrupted download is retried rather than mistaken for a copy.
 
-    A successful run can carry no shard artifacts (a probe, or one already expired). Those are
+    A valid run can carry no shard artifacts (a probe, or one already expired). Those are
     named separately and are never "missing": there is nothing left to copy.
 
     StrengthLabPgn is StratChessSupport\StrengthLabPgn beside the main checkout, not in the repo.
@@ -34,7 +34,7 @@
     Override the StrengthLabPgn folder.
 
 .PARAMETER RunLimit
-    How many of the newest successful runs to consider. The window is 90 days of ~1 run a day, so
+    How many of the newest successful runs, and of the newest failed ones, to consider. The window is 90 days of ~1 run a day, so
     the default is generous.
 
 .PARAMETER SelfTest
@@ -469,7 +469,7 @@ foreach ($e in $copyable) {
         -ForegroundColor ($e.DaysLeft -le 14 ? 'Yellow' : 'White')
 }
 if ($unavailable.Count -gt 0) {
-    Write-Host ("{0} successful run(s) have no live shard artifacts (nothing to copy): {1}" -f
+    Write-Host ("{0} valid run(s) have no live shard artifacts (nothing to copy): {1}" -f
         $unavailable.Count, (($unavailable | ForEach-Object { $_.Run.Id }) -join ' ')) -ForegroundColor DarkGray
 }
 
@@ -484,7 +484,7 @@ foreach ($name in $unrowed) {
     $runId = [regex]::Match($name, $script:FolderPattern).Groups[2].Value
     $known = @($runList | Where-Object { $_.Id -eq $runId })
     if ($known.Count -eq 0) {
-        Write-Host "SKIP  $name is not among the last $RunLimit successful runs; add its row by hand" -ForegroundColor Yellow
+        Write-Host "SKIP  $name is not among the last $RunLimit valid runs; add its row by hand" -ForegroundColor Yellow
         continue
     }
     $row = Get-FolderRow -Path (Join-Path $PgnRoot $name) -Folder $name -Sha $known[0].Sha
