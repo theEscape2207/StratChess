@@ -28,7 +28,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 ### Added
 
 - `strength.yml` replays up to 2 shards lost to their runners as small jobs from the batch's own
-  toolkit, then pools one result from one run, adding roughly 15-30 min. `aggregate` now pools a run
+  toolkit, then pools one result from one run. Replaying adds roughly 15-30 min, and GitHub took about
+  45 min to declare a powered-off runner lost. `aggregate` now pools a run
   whose `match` failed when attempt 1 repaired it fully, because the same openings complete the batch
   designed rather than selecting from it.
 - `Sync-LabPgn.ps1` copies repaired runs, which stay red, by their `strength-<run>-repair` marker.
@@ -43,6 +44,10 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
 - A lost job's log is gone, so a fatal line played before the loss is invisible, and a failure that
   builds up over hours would not recur in a short slice.
+
+### Results
+
+- Live proof: a forced runner loss repaired and pooled 216 of 216 pairs (ci-calibration).
 
 ## 2026-11-03: Lab repair runs and standard batch sizes
 

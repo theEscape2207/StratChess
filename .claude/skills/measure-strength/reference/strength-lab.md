@@ -37,7 +37,8 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
 
 **Automatic, in the run.** When every shard has finished, `repair-plan` looks at the failed ones. It
 replays up to 2 shards as small jobs from the batch's own toolkit, then `aggregate` verifies each slice
-and pools the batch. This adds roughly 15-30 min. A shard counts as lost only when its job failed, "The
+and pools the batch. Replaying adds roughly 15-30 min. GitHub took about 45 min to declare a
+powered-off runner lost, so a loss late in a batch can add that as well. A shard counts as lost only when its job failed, "The
 hosted runner lost communication with the server" is its only failure annotation, and it left no
 artifact. Anything else discards the batch, as do three or more lost shards: two independent losses
 are already about 1 batch in 2,400 at the estimated 1 loss per 600 shard jobs. Cancelling during the repair discards it too, and the
