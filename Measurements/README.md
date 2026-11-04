@@ -32,11 +32,26 @@ options and run reference. Mark invalid/cancelled attempts as discarded with a r
 confirmation names the screen that selected it and its opening range. Use the existing ledger
 appropriate to the instrument/reference; no separate decision-record template is needed.
 
-For each new CI lab row, link the retained **resolved comparison** in the run's summary or
-`strength-<run>-comparison` artifact from its row detail. It records both sides' advertised
-defaults plus validated overrides, every arm, build identity and time controls. Those are intended
-settings, not runtime acknowledgement that `setoption` was applied. The next eligible experiment
-uses this convention; historical rows do not need a new run.
+**A CI lab row takes this form.** The issue and the commit stay in the row and the detail's title, as
+the keys that find the run, PR and design again.
+
+```
+| <date> | <sha>, <change in one clause> (#<issue>; run `<id>`[, shard N replayed]) | <reference> | <games> | <TC> | **<Elo> +/- <err>** | <verdict>; <what happens to the default> |
+
+### <date> -- <sha>, <change> (#<issue>) (<games> games)
+
+Ptnml [a, b, c, d, e]. [bench +0.58%, when the change adds per-node work.]
+<At most 3 sentences, only for what applies below.>
+```
+
+Those sentences are for something specific the run did not test or separate, an arm tried, dropped or
+superseded, a non-default setting (threads, concurrency, offset), a null result where nothing proves
+the option applied, or anything unusual with its evidence.
+
+**Never write what a pooled figure already implies:** no time loss, illegal move or disconnect; PV
+warnings; shard agreement; score; default settings; the comparison link; "Threads=1 at 10+0.1 only";
+the rule the verdict already gives. Before adding a recurring phrase here, ask whether a reader would
+act differently without it. Older rows stay as they are.
 
 **The two move-quality ledgers are the exception to the shape and to the vocabulary.** A strength
 row is one number with an interval; a move-quality run is a wide profile — blunder rates by phase
@@ -68,7 +83,7 @@ batch gives a size.
 **Discard the batch, not the game**, on any time loss, illegal move played, disconnect or stall. On
 a shared runner a time loss most likely means the box was oversubscribed, which invalidates
 everything the batch measured. An illegal *PV* warning (#310) is a reporting defect fastchess plays
-through and is not grounds to discard — say so in the row's detail section when one appears.
+through and is not grounds to discard.
 
 **Label the reference from what actually played.** `Run-EloMatch.ps1` names the reference side from
 `-ReferenceTag` regardless of `-ReferenceExe` (#309), which silently inverts the distinction these
@@ -81,12 +96,10 @@ after dispatch gives the wrong one (#809's screen).
 **Never compare across ledgers.** A Linux-lab row and a local clang-cl row differ in compiler,
 machine and book at once. Same trap as the MSVC rule, different axis.
 
-**Count shard agreement by score, not by buckets.** A lab shard favours the candidate when its
-points -- `n1 + 2*n2 + 3*n3 + 4*n4` out of `4 x pairs` -- exceed the neutral half. Comparing losing
-pairs against winning ones (`n0 + n1` against `n3 + n4`) weights a 2-0 pair the same as a 1.5-0.5
-one, so the two tests disagree on close shards and the bucket count reads high. Both #112 and #363
-were recorded that way and recounted on 2026-09-06. The lab summary prints this count, and the
-interval's bounds, under each pooled figure.
+**When shard agreement matters, count it by score, not by buckets.** A lab shard favours the candidate
+when its points -- `n1 + 2*n2 + 3*n3 + 4*n4` out of `4 x pairs` -- exceed the neutral half. Comparing
+losing pairs against winning ones (`n0 + n1` against `n3 + n4`) weights a 2-0 pair the same as a
+1.5-0.5 one, so the bucket count reads high. The lab summary prints this count.
 
 **The detail section is for what the table cannot hold** — which shards disagreed, why a figure
 supersedes an earlier one, what a run does *not* settle, a hand-correction and its evidence. It is

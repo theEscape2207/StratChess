@@ -84,7 +84,7 @@ unattended during an outage.
 ```
 needs.match.result == 'success'
 || (needs.match.result == 'failure'
-    && github.run_attempt == 1
+    && github.run_attempt == '1'
     && needs.repair-plan.result == 'success'
     && needs.repair-plan.outputs.status == 'repair'
     && needs.repair.result == 'success')

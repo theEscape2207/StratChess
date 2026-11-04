@@ -14,11 +14,11 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
   never overlap.
 - **A failed shard discards the whole batch**, not just itself: the survivors are the ones that
   happened to avoid whatever went wrong, so pooling them would be a biased subset wearing a full
-  batch's error bar. An engine or harness failure ends there. **An infrastructure failure** ("The
-  hosted runner lost communication with the server" in the job's annotations) gets a repair run,
-  by default, because the owner may be asleep. Replaying the same openings completes the batch
-  designed, not a selection: [Repairing a lost shard](#repairing-a-lost-shard). Two or more lost
-  shards get `gh run rerun <run> --failed` once the batch ends, since a repair replays one.
+  batch's error bar. An engine or harness failure ends there. **A shard lost to its runner is
+  replayed inside the run**, because the same openings complete the batch designed rather than
+  selecting from it: [Repairing a lost shard](#repairing-a-lost-shard).
+- **Judge a run by its report heading, not its colour.** A repaired run stays red, since `match (N)`
+  failed, and its report still says `## Strength lab` with a `Replayed` row.
 - **Screening several settings in one run:** `candidate_arms` splits the shards among K option sets,
   each pooled alone at about √K times the full run's error bar. Confirm the winner in a
   single-candidate run with its own `opening_offset`. The best of K noisy arms reads high, so the
@@ -27,27 +27,36 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
 
 ## Batch sizes
 
-Pick one of these; each pair count divides evenly across a full repair run.
-
-| Use | `games` | Shards x pairs | Time | Error bar | Repair shards x pairs |
-|---|---|---|---|---|---|
-| Normal (the default) | 20088 | 18 x 558 | ~3 h | ±3.48 | 18 x 31 |
-| Full | 26568 | 18 x 738 | ~4 h | ±3.02 | 18 x 41 |
-| Night only, CI unused | 36000 | 20 x 900 | ~4 h 55 (estimated, worst shard ~292 of the job's 340 min) | ±2.60 | 20 x 45 |
+| Use | `games` | Shards x pairs | Time | Error bar |
+|---|---|---|---|---|
+| Normal (the default) | 20088 | 18 x 558 | ~3 h | ±3.48 |
+| Full | 26568 | 18 x 738 | ~4 h | ±3.02 |
+| Night only, CI unused | 36000 | 20 x 900 | ~4 h 55 (estimated, worst shard ~292 of the job's 340 min) | ±2.60 |
 
 ## Repairing a lost shard
 
-GitHub refuses a re-run while the run is active, and `gh run rerun --failed` then holds the lab for
-a full shard's duration. A repair replays the lost pairs across many shards instead: 10 x 74 took
-29 min (#895).
+**Automatic, in the run.** When every shard has finished, `repair-plan` looks at the failed ones. It
+replays up to 2 shards as small jobs from the batch's own toolkit, then `aggregate` verifies each slice
+and pools the batch. This adds roughly 15-30 min. A shard counts as lost only when its job failed, "The
+hosted runner lost communication with the server" is its only failure annotation, and it left no
+artifact. Anything else discards the batch. Cancelling during the repair discards it too, and the
+artifacts stay.
+
+**What this can't see:** a lost job's log is gone, so a fatal line played before the loss is invisible,
+and a failure that builds up over hours wouldn't recur in a short slice. The owner accepted this: the
+surviving shards ran the same binaries for the full duration.
+
+**Manual, the fallback** for a single lost shard the job didn't repair: a repair job was itself lost,
+or GitHub reworded the annotation. Three or more lost shards get `gh run rerun <run> --failed` instead,
+as does a multi-arm run. Only attempt 1 repairs automatically.
 
 1. **Wait for the batch to finish**, then pool the survivors with `pool_pentanomial.py`, read as a
-   preview rather than a result. Done when chat has the preview, the cause, the plan to repair and
-   what the lost shard would need to score to flip the call.
-2. **Wait 5 min**, leaving the owner time to stop it, then dispatch at the batch's exact commit
-   through a temporary branch. `pool_pentanomial.py` refuses mixed revisions, so `--ref main` fails
+   preview rather than a result.
+2. Dispatch at the batch's exact commit through a temporary branch. `pool_pentanomial.py` refuses mixed revisions, so `--ref main` fails
    once `main` moves. Repeat every other input the batch set, concurrency included, since
    `comparison.md` omits it. Take `<reference sha>` from the preview's `Revisions:` line:
+
+   Size the repair so its shards divide the lost shard's pairs evenly.
 
    ```
    git push origin <batch sha>:refs/heads/lab-repair-<original run>
@@ -68,4 +77,4 @@ a full shard's duration. A repair replays the lost pairs across many shards inst
 
    Done when it prints the pool with no `REFUSED`. Its pool counts each repair shard separately, so
    take shard agreement from its `For the ledger:` line.
-4. **Record** both run IDs and their comparisons in the row's detail, then delete the branch.
+4. **Record** both run IDs in the row, then delete the branch.
