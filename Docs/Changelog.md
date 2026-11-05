@@ -23,6 +23,12 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-04: Version 0.9.0
+
+### Changed
+- `project(VERSION)` is 0.9.0, ahead of the `v0.9.0` tag. MINOR, for the measured strength gains from
+  quiet SEE pruning and depth-3 late move pruning. Release builds report `id name StratChess 0.9.0`, others `0.9.0+<commit>`.
+
 ## 2026-11-04: Lab batch repairs a shard lost to its runner, in the same run (#956)
 
 ### Added
