@@ -17,7 +17,7 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
   batch's error bar. An engine or harness failure ends there. **A shard lost to its runner is
   replayed inside the run**, because the same openings complete the batch designed rather than
   selecting from it: [Repairing a lost shard](#repairing-a-lost-shard).
-- **Judge a run by its report heading, not its colour.** A repaired run stays red, since `match (N)`
+- **Judge a run by its report heading, not its colour.** A repaired run stays red, since `wave-1 / match (N)`
   failed, and its report still says `## Strength lab` with a `Replayed` row.
 - **Screening several settings in one run:** `candidate_arms` splits the shards among K option sets,
   each pooled alone at about √K times the full run's error bar. Confirm the winner in a
@@ -35,9 +35,11 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
 
 ## Repairing a lost shard
 
-**Automatic, in the run.** When every shard has finished, `repair-plan` looks at the failed ones. It
-replays up to 2 shards as small jobs from the batch's own toolkit, then `aggregate` verifies each slice
-and pools the batch. Replaying adds roughly 15-30 min. GitHub took about 45 min to declare a
+**Automatic, in the run, per wave.** A run plays one or more waves (`strength-wave.yml`); a
+fixed-size run is one. When a wave's shards have finished, its `repair-plan` reads its failed jobs
+(`wave-<k> / match (N)`), replays the lost slices as small jobs from the batch's own toolkit, and its
+`decide` verifies each piece and pools the wave. The next wave waits for the repair, and the limit of
+2 lost shards counts across the whole run. Replaying adds roughly 15-30 min. GitHub took about 45 min to declare a
 powered-off runner lost, so a loss late in a batch can add that as well. A shard counts as lost only when its job failed, "The
 hosted runner lost communication with the server" is its only failure annotation, and it left no
 artifact. Anything else discards the batch, as do three or more lost shards: two independent losses

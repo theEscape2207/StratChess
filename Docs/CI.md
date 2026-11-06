@@ -355,15 +355,26 @@ worse than none, because its output looks exactly like a measurement — so it s
 numbers are only trusted because the null test and the known-sign control were run first. Both are
 in `Measurements/ci-calibration.md`.
 
-**Six jobs.** `setup` turns the requested game count into a shard plan and self-tests the pooling
-formula, comparison preflight and shard verifier before anything expensive runs. `build` compiles
-both engines, resolves the intended comparison, and stages them with fastchess and the book
-as **one artifact**, so every shard provably plays the same two binaries against the same book.
-`match` is the shard matrix. When it fails, `repair-plan` decides whether the shards were lost to
-their runners, and `repair` replays those pairs as small jobs from the same toolkit
-(`.github/scripts/plan_repair.py`). `aggregate` verifies the whole batch before pooling any arm.
-`match` and `repair` run the one `.github/scripts/play_shard.sh`, staged in the toolkit because shards
-do not check out the repository, so a replay cannot drift from the shard it replaces.
+**Jobs.** `setup` turns the requested game count into a shard plan and a wave plan
+(`.github/scripts/sprt.py plan`), and self-tests the pooling formula, comparison preflight and shard
+verifier before anything expensive runs. `build` compiles both engines, resolves the intended
+comparison, and stages them with fastchess and the book as **one artifact**, so every shard provably
+plays the same two binaries against the same book. `wave-1` calls the reusable
+**`strength-wave.yml`**, which holds one wave's jobs: `match` is the slice matrix; when it fails,
+`repair-plan` decides whether the shards were lost to their runners, and `repair` replays those
+pairs as small jobs from the same toolkit (`.github/scripts/plan_repair.py`); `decide` refuses a
+partial wave, verifies and pools the wave, and emits the outputs `strength.yml` reads (the contract
+is the header comment of `strength-wave.yml`). `aggregate` reads those outputs, verifies the whole
+batch and pools each arm. `match` and `repair` run the one `.github/scripts/play_shard.sh`, staged in
+the toolkit because shards do not check out the repository, so a replay cannot drift from the shard
+it replaces.
+
+A fixed-size run is one wave: its slice per shard is the whole shard, its jobs are listed as
+`wave-1 / match (N)`, and its artifacts carry no wave — `strength-<run>-shard-<N>` per shard,
+`strength-<run>-replay-<N>-<i>` per repair piece, `strength-<run>-repair` for the marker. Fixed-size
+runs share the wave path rather than keeping a second one, so there is one repair planner and one
+discard rule. A waved run's names carry the wave (`strength-<run>-wave-<k>-shard-<N>`);
+`sprt.py` names both forms, and `test_strength_workflow.py` checks the workflow agrees.
 The normal PR gate also runs these Python self-tests and workflow boundary fixtures in its Linux
 Release leg, so harness failures can be checked without dispatching a strength match.
 
@@ -457,10 +468,11 @@ discards the whole batch**, not just itself: the survivors are the ones that hap
 whatever went wrong, so pooling them would be a biased subset wearing a full batch's error bar.
 The exception is a shard lost to its runner: on attempt 1, the batch replays it at the same openings,
 which completes the batch designed rather than selecting from it, and pools it with a `Replayed` row in
-the report. Each slice is verified alone, then assembled into `strength-<run>-shard-<N>`, so the
-existing verify and pool steps count it as the one shard it replaces; the raw slices stay as
-`strength-<run>-replay-<N>-<i>`. Such a run stays red, and its `strength-<run>-repair` artifact is what
-tells `Sync-LabPgn.ps1` it pooled. Rules and the manual fallback, `pool_repaired_batch.py`:
+the report. The wave's `decide` verifies each slice alone, assembles them into
+`strength-<run>-shard-<N>` (`.github/scripts/batch_slices.py`) and uploads it once the wave pools, so
+`aggregate`'s verify and pool count it as the one shard it replaces; the raw slices stay as
+`strength-<run>-replay-<N>-<i>`. Such a run stays red, and its `strength-<run>-repair` artifact,
+uploaded last by `aggregate`, is what tells `Sync-LabPgn.ps1` it pooled. Rules and the manual fallback, `pool_repaired_batch.py`:
 `measure-strength` → `reference/strength-lab.md`.
 Numbers land in `Measurements/ci-per-change.md` or `ci-anchor.md`, which must never be compared
 against the local clang-cl rows. **Ratios transfer between the two instruments; absolute values

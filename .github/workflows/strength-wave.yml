@@ -1,0 +1,448 @@
+name: Strength lab wave
+
+# One wave of a strength-lab run, called by strength.yml as job wave-<k>: the wave's
+# shard slices, the repair of a runner lost on attempt 1, and a decide job that closes
+# the wave. A fixed-size run is the one-wave case: its one slice per shard is the whole
+# shard, its artifacts carry no wave in their names (sprt.slice_artifact,
+# replay_artifact), and decide emits "fixed".
+#
+# decide's outputs are the contract with strength.yml:
+#   status        complete or discarded; empty if decide failed or never ran
+#   reason        why the wave was discarded; empty when complete
+#   decision      continue, H1, H0, cap or fixed; empty when discarded
+#   llr           the cumulative LLR to two decimals; empty for fixed
+#   counts        the pooled Ptnml as compact JSON
+#   lost_total    shards lost so far in the run, this wave included
+#   replayed      the report's Replayed text; empty when nothing was replayed
+#   lost_a, lost_b, slices   the repair plan, for the run's repair marker
+#
+# A failed match job fails this called workflow, and so the caller's wave-<k> job,
+# but decide's outputs still reach the caller, which is why a repaired wave can carry
+# its decision forward.
+#
+# No concurrency group here: the caller holds strength-lab, and a called workflow
+# waiting on its own caller's group would never start.
+on:
+  workflow_call:
+    inputs:
+      wave:
+        description: "This wave's number, 1..waves"
+        type: number
+        required: true
+      waves:
+        description: "The run's wave count; 1 is a fixed-size run"
+        type: number
+        required: true
+      wave_plan:
+        description: "sprt.py plan's whole plan: a JSON list of waves, each a list of {shard, start, pairs}"
+        type: string
+        required: true
+      slices:
+        description: "This wave's entry of wave_plan; Actions expressions cannot index by wave - 1"
+        type: string
+        required: true
+      prior_lost:
+        description: "Shards lost in the run's earlier waves"
+        type: number
+        required: true
+      book_file:
+        type: string
+        required: true
+      candidate_tc:
+        type: string
+        required: true
+      reference_tc:
+        type: string
+        required: true
+      concurrency:
+        type: string
+        required: true
+      threads:
+        type: string
+        required: true
+      candidate_uci_options:
+        type: string
+        required: true
+      reference_uci_options:
+        type: string
+        required: true
+      candidate_arms:
+        type: string
+        required: true
+      shard_arms:
+        type: string
+        required: true
+      cand_name:
+        type: string
+        required: true
+      ref_name:
+        type: string
+        required: true
+    outputs:
+      status:
+        value: ${{ jobs.decide.outputs.status }}
+      reason:
+        value: ${{ jobs.decide.outputs.reason }}
+      decision:
+        value: ${{ jobs.decide.outputs.decision }}
+      llr:
+        value: ${{ jobs.decide.outputs.llr }}
+      counts:
+        value: ${{ jobs.decide.outputs.counts }}
+      lost_total:
+        value: ${{ jobs.decide.outputs.lost_total }}
+      replayed:
+        value: ${{ jobs.decide.outputs.replayed }}
+      lost_a:
+        value: ${{ jobs.decide.outputs.lost_a }}
+      lost_b:
+        value: ${{ jobs.decide.outputs.lost_b }}
+      slices:
+        value: ${{ jobs.decide.outputs.slices }}
+
+# A workflow-level env of strength.yml does not reach a called workflow.
+env:
+  BOOK_FILE: ${{ inputs.book_file }}
+  # The wave part of every artifact name, empty for a one-wave run (sprt.slice_artifact).
+  WAVE_PREFIX: ${{ inputs.waves > 1 && format('wave-{0}-', inputs.wave) || '' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # One job per shard slice. Each plays a disjoint, contiguous range of the book
+  # fixed by the plan, so the slices of one arm together are exactly the batch a
+  # single job would have played. The job name is what plan_repair.py reads.
+  # ---------------------------------------------------------------------------
+  match:
+    name: match (${{ matrix.slice.shard }})
+    runs-on: ubuntu-26.04
+    # A 1110-game shard at 10+0.1 with concurrency 3 runs ~172 min. This leaves
+    # headroom without touching the 6 h job cap. Shard time scales with
+    # games / concurrency, so concurrency 1 needs a third of the games.
+    timeout-minutes: 340
+    strategy:
+      # One shard failing must not cancel the rest: decide refuses to pool a
+      # partial wave anyway, and the surviving PGNs are still worth having for
+      # diagnosis.
+      fail-fast: false
+      matrix:
+        slice: ${{ fromJSON(inputs.slices) }}
+    steps:
+      - name: Download the toolkit
+        uses: actions/download-artifact@v8
+        with:
+          name: strength-${{ github.run_id }}-toolkit
+          path: ${{ runner.temp }}/tools
+
+      - name: Run shard ${{ matrix.slice.shard }}
+        # Inputs reach the shell as environment variables rather than through
+        # ${{ }} interpolation into the command line, which would splice their
+        # text into the script.
+        env:
+          SHARD: ${{ matrix.slice.shard }}
+          # Disjointness is the plan's (sprt.py): with order=sequential, each slice's
+          # 1-based start and pair count tile its shard's range, which cannot overlap
+          # another shard's or another run's at a different offset.
+          START: ${{ matrix.slice.start }}
+          ROUNDS: ${{ matrix.slice.pairs }}
+          CANDIDATE_TC: ${{ inputs.candidate_tc }}
+          REFERENCE_TC: ${{ inputs.reference_tc }}
+          MATCH_CONCURRENCY: ${{ inputs.concurrency }}
+          THREADS: ${{ inputs.threads }}
+          CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
+          REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
+          ARM_LABEL: ${{ fromJSON(inputs.shard_arms)[matrix.slice.shard].label }}
+          ARM_OPTIONS: ${{ fromJSON(inputs.shard_arms)[matrix.slice.shard].options }}
+          CAND_NAME: ${{ inputs.cand_name }}
+          REF_NAME: ${{ inputs.ref_name }}
+        run: |
+          set -euo pipefail
+          bash "$RUNNER_TEMP/tools/play_shard.sh"
+
+      # Always runs, so a killed or crashed shard still yields its PGN -- the
+      # games played up to that point are the evidence of what went wrong.
+      # The name must be unique per slice: upload-artifact@v4+ errors on a
+      # duplicate name within a run. It is sprt.slice_artifact's.
+      - name: Upload shard PGN and log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}shard-${{ matrix.slice.shard }}
+          path: |
+            ${{ runner.temp }}/match/match.pgn
+            ${{ runner.temp }}/match/match.log
+            ${{ runner.temp }}/match/cpu.tsv
+          if-no-files-found: warn
+          retention-days: 90
+
+  # ---------------------------------------------------------------------------
+  # Decide whether the failed slices were runners lost to infrastructure. A replay
+  # at the same openings completes the wave designed rather than selecting from
+  # it, so it does not carry the bias that discards a partial wave. Only attempt 1
+  # repairs, so nothing has to say which attempt produced which artifact. Criteria
+  # and the per-run limit: plan_repair.py. !cancelled() because a job's implicit
+  # success() is false once a shard has failed. The caller grants this job's scope.
+  # ---------------------------------------------------------------------------
+  repair-plan:
+    needs: match
+    if: ${{ !cancelled() && needs.match.result == 'failure' && github.run_attempt == '1' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    outputs:
+      status: ${{ steps.plan.outputs.status }}
+      reason: ${{ steps.plan.outputs.reason }}
+      slices: ${{ steps.plan.outputs.slices }}
+      lost_a: ${{ steps.plan.outputs.lost_a }}
+      lost_b: ${{ steps.plan.outputs.lost_b }}
+      replayed: ${{ steps.plan.outputs.replayed }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The jobs API lists a called job as "<caller job> / <job>", every wave's
+      # jobs in one listing, so the prefix picks this wave's.
+      - name: Plan the repair
+        id: plan
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLICES: ${{ inputs.slices }}
+          WAVE: ${{ inputs.wave }}
+          WAVES: ${{ inputs.waves }}
+          PRIOR_LOST: ${{ inputs.prior_lost }}
+          CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/plan_repair.py plan \
+            --repo "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID" --slices "$SLICES" --wave "$WAVE" --waves "$WAVES" \
+            --job-prefix "wave-$WAVE / " --prior-lost "$PRIOR_LOST" --arms "$CANDIDATE_ARMS" --output "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Replay the lost slices' pairs as small jobs, from the run's own toolkit, so
+  # binaries, book and settings are the same by construction. A lost replay is not
+  # retried: it discards the wave, and the manual repair still works.
+  # ---------------------------------------------------------------------------
+  repair:
+    needs: [match, repair-plan]
+    if: ${{ !cancelled() && needs.repair-plan.result == 'success' && needs.repair-plan.outputs.status == 'repair' }}
+    name: repair (${{ matrix.slice.shard }}.${{ matrix.slice.index }})
+    runs-on: ubuntu-26.04
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: ${{ fromJSON(needs.repair-plan.outputs.slices) }}
+    steps:
+      - name: Download the toolkit
+        uses: actions/download-artifact@v8
+        with:
+          name: strength-${{ github.run_id }}-toolkit
+          path: ${{ runner.temp }}/tools
+
+      - name: Replay shard ${{ matrix.slice.shard }} slice ${{ matrix.slice.index }}
+        env:
+          SHARD: ${{ matrix.slice.shard }}.${{ matrix.slice.index }}
+          START: ${{ matrix.slice.start }}
+          ROUNDS: ${{ matrix.slice.pairs }}
+          CANDIDATE_TC: ${{ inputs.candidate_tc }}
+          REFERENCE_TC: ${{ inputs.reference_tc }}
+          MATCH_CONCURRENCY: ${{ inputs.concurrency }}
+          THREADS: ${{ inputs.threads }}
+          CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
+          REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
+          # The planner refuses a multi-arm run.
+          ARM_LABEL: ""
+          ARM_OPTIONS: ""
+          CAND_NAME: ${{ inputs.cand_name }}
+          REF_NAME: ${{ inputs.ref_name }}
+        run: bash "$RUNNER_TEMP/tools/play_shard.sh"
+
+      # sprt.replay_artifact's name.
+      - name: Upload slice PGN and log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}replay-${{ matrix.slice.shard }}-${{ matrix.slice.index }}
+          path: |
+            ${{ runner.temp }}/match/match.pgn
+            ${{ runner.temp }}/match/match.log
+            ${{ runner.temp }}/match/cpu.tsv
+          if-no-files-found: warn
+          retention-days: 90
+
+  # ---------------------------------------------------------------------------
+  # Close the wave: refuse a partial one, assemble any replayed slices, verify the
+  # wave at batch level, pool it and decide. A failure after the refusal fails this
+  # job with no status, which the caller reads as a discard.
+  # ---------------------------------------------------------------------------
+  decide:
+    needs: [match, repair-plan, repair]
+    if: always()
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    outputs:
+      status: ${{ steps.partial.outputs.status || steps.record.outputs.status }}
+      reason: ${{ steps.partial.outputs.reason }}
+      decision: ${{ steps.decide.outputs.decision }}
+      llr: ${{ steps.decide.outputs.llr }}
+      counts: ${{ steps.decide.outputs.counts }}
+      lost_total: ${{ steps.record.outputs.lost_total }}
+      replayed: ${{ steps.record.outputs.replayed }}
+      lost_a: ${{ steps.record.outputs.lost_a }}
+      lost_b: ${{ steps.record.outputs.lost_b }}
+      slices: ${{ steps.record.outputs.slices }}
+    steps:
+      # A biased subset wearing a full batch's error bar is worse than no
+      # result: if three shards of twenty died, the surviving seventeen are not
+      # a random sample of the batch -- they are the ones that happened not to
+      # hit whatever went wrong. And a sequential test would let that bias choose
+      # an early stop. Refuse before pooling anything. The one exception is a
+      # fully repaired wave, which has every designed pair; see repair-plan.
+      - name: Refuse a partial wave
+        id: partial
+        if: ${{ !(needs.match.result == 'success' || (needs.match.result == 'failure' && github.run_attempt == '1' && needs.repair-plan.result == 'success' && needs.repair-plan.outputs.status == 'repair' && needs.repair.result == 'success')) }}
+        env:
+          MATCH_RESULT: ${{ needs.match.result }}
+          PLAN_REASON: ${{ needs.repair-plan.outputs.reason }}
+          REPAIR_RESULT: ${{ needs.repair.result }}
+        run: |
+          set -euo pipefail
+          reason="Shard jobs reported \`$MATCH_RESULT\`."
+          if [ -n "$PLAN_REASON" ]; then reason="$reason Not repaired: $PLAN_REASON."; fi
+          if [ "$REPAIR_RESULT" = "failure" ] || [ "$REPAIR_RESULT" = "cancelled" ]; then
+            reason="$reason The repair was $REPAIR_RESULT."
+          fi
+          printf 'status=discarded\nreason=%s\n' "$reason" >> "$GITHUB_OUTPUT"
+          echo "Wave discarded: $reason"
+
+      - uses: actions/checkout@v7
+        if: steps.partial.outcome == 'skipped'
+
+      - name: Download the wave's slices
+        if: steps.partial.outcome == 'skipped'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}shard-*
+          path: shards
+
+      - name: Download comparison and opening evidence
+        if: steps.partial.outcome == 'skipped'
+        uses: actions/download-artifact@v8
+        with:
+          name: strength-${{ github.run_id }}-comparison
+          path: evidence
+
+      - name: Download the replayed slices
+        if: steps.partial.outcome == 'skipped' && needs.repair.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}replay-*
+          path: replays
+
+      # The verify and pool below then see the designed wave, unchanged, and count
+      # a replay as the one slice it replaces.
+      - name: Assemble the replayed shards
+        if: steps.partial.outcome == 'skipped' && needs.repair.result == 'success'
+        env:
+          PIECES: ${{ needs.repair-plan.outputs.slices }}
+          SLICES: ${{ inputs.slices }}
+          WAVE: ${{ inputs.wave }}
+          WAVES: ${{ inputs.waves }}
+          CAND_NAME: ${{ inputs.cand_name }}
+          REF_NAME: ${{ inputs.ref_name }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/plan_repair.py assemble \
+            --pieces "$PIECES" --slices "$SLICES" --run "$GITHUB_RUN_ID" --wave "$WAVE" --waves "$WAVES" \
+            --candidate-name "$CAND_NAME" --reference-name "$REF_NAME" --book "evidence/$BOOK_FILE" \
+            --replays replays --shards shards
+
+      # Shard i's slice starts at offset + i*R + cut(k-1) + 1 and plays cut(k) - cut(k-1)
+      # pairs, so the batch-level verify runs with start spacing R.
+      - name: Verify the wave
+        if: steps.partial.outcome == 'skipped'
+        env:
+          WAVE: ${{ inputs.wave }}
+          WAVE_PLAN: ${{ inputs.wave_plan }}
+          SLICES: ${{ inputs.slices }}
+          CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
+          CAND_NAME: ${{ inputs.cand_name }}
+          REF_NAME: ${{ inputs.ref_name }}
+        run: |
+          set -euo pipefail
+          test -s evidence/comparison.md
+          shape=$(python3 .github/scripts/sprt.py shape --wave-plan "$WAVE_PLAN" --wave "$WAVE" --slices "$SLICES")
+          read -r shards rounds pairs offset <<< "$shape"
+          python3 .github/scripts/plan_arms.py verify \
+            --arms "$CANDIDATE_ARMS" --shards "$shards" --rounds-per-shard "$rounds" --pairs-per-shard "$pairs" \
+            --opening-offset "$offset" --candidate-name "$CAND_NAME" --reference-name "$REF_NAME" \
+            --book "evidence/$BOOK_FILE" --shard-root shards
+
+      # Every log is read with its planned pair count, so a short or excess log is
+      # refused. Across arms the counts are only summed for the decision; a fixed
+      # run's per-arm figures are pooled by aggregate.
+      - name: Pool the wave
+        id: decide
+        if: steps.partial.outcome == 'skipped'
+        env:
+          WAVE: ${{ inputs.wave }}
+          WAVES: ${{ inputs.waves }}
+          WAVE_PLAN: ${{ inputs.wave_plan }}
+          SLICES: ${{ inputs.slices }}
+        run: |
+          set -euo pipefail
+          shape=$(python3 .github/scripts/sprt.py shape --wave-plan "$WAVE_PLAN" --wave "$WAVE" --slices "$SLICES")
+          read -r shards _ pairs _ <<< "$shape"
+          python3 .github/scripts/pool_pentanomial.py \
+            --expect-shards "$shards" --expect-pairs-per-shard "$pairs" shards/*/match.log > pooled-wave.md
+          counts=$(sed -n 's/^Pooled Ptnml(0-2): //p' pooled-wave.md)
+          python3 .github/scripts/sprt.py decide --counts "$counts" --wave "$WAVE" --waves "$WAVES" --output "$GITHUB_OUTPUT"
+
+      # Under the slice's own name, so PGN sync and the analysis scripts see a
+      # complete batch. One step per shard because the name is per artifact; the
+      # planner repairs at most two.
+      - name: Upload the first replayed shard
+        if: steps.decide.outcome == 'success' && needs.repair-plan.outputs.lost_a != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}shard-${{ needs.repair-plan.outputs.lost_a }}
+          path: shards/strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}shard-${{ needs.repair-plan.outputs.lost_a }}
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload the second replayed shard
+        if: steps.decide.outcome == 'success' && needs.repair-plan.outputs.lost_b != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}shard-${{ needs.repair-plan.outputs.lost_b }}
+          path: shards/strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}shard-${{ needs.repair-plan.outputs.lost_b }}
+          if-no-files-found: error
+          retention-days: 90
+
+      # Last, so status=complete means every step above succeeded.
+      - name: Record the wave
+        id: record
+        if: steps.decide.outcome == 'success'
+        env:
+          WAVE: ${{ inputs.wave }}
+          WAVES: ${{ inputs.waves }}
+          PRIOR_LOST: ${{ inputs.prior_lost }}
+          LOST_A: ${{ needs.repair-plan.outputs.lost_a }}
+          LOST_B: ${{ needs.repair-plan.outputs.lost_b }}
+          PIECES: ${{ needs.repair-plan.outputs.slices }}
+          REPLAYED: ${{ needs.repair-plan.outputs.replayed }}
+        run: |
+          set -euo pipefail
+          lost=0
+          if [ -n "$LOST_A" ]; then lost=$(( lost + 1 )); fi
+          if [ -n "$LOST_B" ]; then lost=$(( lost + 1 )); fi
+          if [ -n "$REPLAYED" ] && [ "$WAVES" -gt 1 ]; then REPLAYED="wave $WAVE: $REPLAYED"; fi
+          {
+            echo "status=complete"
+            echo "lost_total=$(( PRIOR_LOST + lost ))"
+            echo "replayed=$REPLAYED"
+            echo "lost_a=$LOST_A"
+            echo "lost_b=$LOST_B"
+            echo "slices=$PIECES"
+          } >> "$GITHUB_OUTPUT"
