@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Waved pentanomial SPRT for a Full strength-lab run.
 
-  sprt.py plan    cut every shard into W wave slices, fixed before any game is played
-  sprt.py decide  the SPRT decision on the pooled counts of waves 1..k
-  sprt.py shape   print "S R P OFFSET" for verifying wave k at batch level
+  sprt.py plan       cut every shard into W wave slices, fixed before any game is played
+  sprt.py decide     the SPRT decision on the pooled counts of waves 1..k
+  sprt.py shape      print "S R P OFFSET" for verifying wave k at batch level
+  sprt.py summarize  the run's outcome from every wave's outputs, for aggregate
 
 A waved run plays each shard's R pairs in W slices cut at ceil(k*R/W), so wave k always holds the
 first k/W of every shard in planned order, whatever the games' speed. W = 1 is a fixed-size run: its
@@ -24,6 +25,9 @@ rule, pooled by pool_pentanomial.pool().
 A crossing takes priority over the cap fallback, at wave W as at any other: the fallback is only for
 a run the SPRT left undecided. The two can disagree at the cap; the self-test pins one such batch,
 where H0 at wave 4 beats Elo - err = +0.89.
+
+A waved run plays at the cap the simulation validated, Full's 26,568 games on 18 shards; a
+calibration run may be smaller, so a null smoke run can play all four waves.
 """
 
 import argparse
@@ -54,6 +58,18 @@ def expected_score(elo):
 
 S0 = expected_score(ELO0)
 S1 = expected_score(ELO1)
+
+
+def run_waves(sprt, games, shards, calibration, arms):
+    """The run's wave count: 1 for a fixed-size run, WAVES for an SPRT one at the validated cap."""
+    if not sprt:
+        return 1
+    if arms:
+        raise ValueError("sprt cannot run a multi-arm screen")
+    if not calibration and (games, shards) != (FULL_GAMES, FULL_SHARDS):
+        raise ValueError(f"sprt runs at the cap the simulation validated, games={FULL_GAMES} shards={FULL_SHARDS}; "
+                         f"got games={games} shards={shards}. A calibration run may be smaller")
+    return WAVES
 
 
 def wave_cuts(rounds, waves):
@@ -166,11 +182,109 @@ def write_outputs(path, values):
             handle.write(f"{key}={value}\n")
 
 
+def cumulative(prior, counts, wave):
+    """Waves 1..k's counts: wave k's own plus waves 1..k-1's, which wave 1 has none of."""
+    checked_counts(counts)
+    if (wave == 1) != (prior is None):
+        raise ValueError(f"wave {wave} needs the earlier waves' counts exactly when it is not wave 1")
+    return counts if prior is None else [a + b for a, b in zip(checked_counts(prior), counts)]
+
+
 def decide_outputs(counts, wave, waves):
     if waves == 1:
         return {"decision": decide(counts, wave, waves), "llr": "", "counts": compact(counts)}
     value = llr(counts)
     return {"decision": decision_for(value, wave, waves), "llr": f"{value:+.2f}", "counts": compact(counts)}
+
+
+NO_SHARD_RAN = "No shard ran: setup or build did not complete."
+UNDECIDED = "The wave ended `{}` without a decision: a check after the shards failed, or the run was cancelled."
+EMPTY_SUMMARY = dict.fromkeys(("outcome", "wave", "reason", "counts", "pairs", "heading", "games", "replayed",
+                               "repair_plan"), "")
+
+
+def discarded(reason):
+    return {**EMPTY_SUMMARY, "outcome": "discarded", "reason": reason, "heading": "## Strength lab — DISCARDED"}, ""
+
+
+def played_waves(needs, waves):
+    """Each wave's outputs up to the one that decided, or the reason the run has no decision.
+
+    Read from outputs only: which artifacts exist cannot tell a planned stop from a discard.
+    """
+    played = []
+    for wave in range(1, waves + 1):
+        job = needs.get(f"wave-{wave}", {})
+        result, outputs = job.get("result", "missing"), job.get("outputs") or {}
+        prefix = f"Wave {wave}: " if waves > 1 else ""
+        if outputs.get("status") == "discarded":
+            return None, prefix + outputs.get("reason", "")
+        if outputs.get("status") != "complete" or not outputs.get("decision"):
+            return None, prefix + (NO_SHARD_RAN if wave == 1 and result == "skipped" else UNDECIDED.format(result))
+        played.append(outputs)
+        if outputs["decision"] != "continue":
+            break
+    decision = played[-1]["decision"]
+    if not (decision == "fixed" if waves == 1 else
+            decision in ("H1", "H0") or (decision == "cap" and len(played) == waves)):
+        raise ValueError(f"wave {len(played)} of {waves} decided {decision!r}")
+    return played, ""
+
+
+def sprt_report(plan, played):
+    """The waved report's SPRT block: the test's settings and every played wave pooled cumulatively."""
+    shards, cuts = len(plan[0]), [0]
+    for wave in plan:
+        cuts.append(cuts[-1] + wave[0]["pairs"])
+    cap = 2 * shards * cuts[-1]
+    lines = [f"SPRT [{ELO0:g}, {ELO1:g}], α = β = {ALPHA:g}: H1 at LLR ≥ {UPPER:+.2f}, "
+             f"H0 at ≤ {LOWER:+.2f}, cap {cap:,} games".replace("-", "−"), "",
+             "| Wave | Games | Elo ± err | LLR | Decision |", "|---|---|---|---|---|"]
+    for wave, outputs in enumerate(played, 1):
+        elo, err, _, _ = pool_pentanomial.pool(checked_counts(json.loads(outputs["counts"])))
+        lines.append(f"| {wave} | {2 * shards * cuts[wave]:,} | {elo:+.2f} ± {err:.2f} | {outputs['llr']} | "
+                     f"{outputs['decision']} |")
+    return "\n".join(lines) + "\n"
+
+
+def summarize(needs, calibration):
+    """The run's outcome from strength.yml's `needs`: the step outputs aggregate reads, and the report's
+    SPRT block, empty for a fixed run. A discard carries its reason and no figures."""
+    setup = needs.get("setup", {})
+    if setup.get("result") != "success":
+        return discarded(NO_SHARD_RAN)
+    plan = json.loads(setup["outputs"]["wave_plan"])
+    waves = len(plan)
+    played, reason = played_waves(needs, waves)
+    if played is None:
+        return discarded(reason)
+    wave, decision = len(played), played[-1]["decision"]
+    counts = checked_counts(json.loads(played[-1]["counts"]))
+    pairs = sum(planned[0]["pairs"] for planned in plan[:wave])
+    repaired = [(k, outputs["slices"]) for k, outputs in enumerate(played, 1) if outputs.get("lost_a")]
+    if waves == 1:
+        # The marker's payload stays the pre-wave repair plan.
+        repair_plan = repaired[0][1] if repaired else ""
+    else:
+        repair_plan = compact([{"wave": k, "slices": json.loads(slices)} for k, slices in repaired]) if repaired else ""
+    summary = {**EMPTY_SUMMARY, "outcome": decision, "wave": str(wave), "counts": compact(counts),
+               "pairs": str(pairs), "heading": "## Strength lab", "repair_plan": repair_plan,
+               "replayed": "; ".join(outputs["replayed"] for outputs in played if outputs.get("replayed"))}
+    if waves == 1:
+        return summary, ""
+    label = "## Strength lab" + (" (calibration)" if calibration else "")
+    if decision == "cap":
+        passes = verdict(decision, counts)["passes"]
+        summary["heading"] = f"{label} — {'passes at the cap (Elo − err > 0)' if passes else 'does not pass at the cap'}"
+        stop = "undecided at the cap"
+    else:
+        summary["heading"] = f"{label} — {'passes' if decision == 'H1' else 'does not pass'} " \
+                             f"(SPRT {decision}, wave {wave} of {waves})"
+        stop = f"stopped by SPRT {decision}"
+    shards = len(plan[0])
+    cap_games = 2 * shards * sum(planned[0]["pairs"] for planned in plan)
+    summary["games"] = f"{2 * shards * pairs:,} of {cap_games:,} planned = {shards} shards × {wave} of {waves} waves, {stop}"
+    return summary, sprt_report(plan, played)
 
 
 # Cumulative wave counts of archived 18 x 555-pair lab runs, cut at ceil(k*555/4) pairs per shard,
@@ -300,6 +414,93 @@ def self_test():
           slice_artifact(42, 2, 4, 17) == "strength-42-wave-2-shard-17"
           and replay_artifact(42, 4, 4, 0, 5) == "strength-42-wave-4-replay-0-5")
 
+    def needs(plan, *waves, setup="success"):
+        """strength.yml's needs: setup with the plan, then each called wave's (result, outputs); later waves skip."""
+        jobs = {"setup": {"result": setup, "outputs": {"wave_plan": compact(plan)} if setup == "success" else {}},
+                "build": {"result": "success", "outputs": {}}}
+        for k in range(1, len(plan) + 1):
+            result, outputs = waves[k - 1] if k <= len(waves) else ("skipped", {})
+            jobs[f"wave-{k}"] = {"result": result, "outputs": outputs}
+        return jobs
+
+    def complete(decision, counts, llr_text="", replayed="", slices=""):
+        return {"status": "complete", "reason": "", "decision": decision, "llr": llr_text, "counts": compact(counts),
+                "lost_total": "1" if slices else "0", "replayed": replayed, "lost_a": "1" if slices else "",
+                "lost_b": "", "slices": slices}
+
+    fixed_plan, golden_plan = wave_plan(2, 2, 1, 1), wave_plan(18, 555, 0, 4)
+    pieces = compact([{"shard": 1, "index": 0, "start": 4, "pairs": 1}, {"shard": 1, "index": 1, "start": 5, "pairs": 1}])
+    summary, report = summarize(needs(fixed_plan, ("success", complete("fixed", [0, 0, 4, 0, 0]))), True)
+    check("summarize: a fixed run keeps the plain heading, no Games text, no SPRT block",
+          summary == {**EMPTY_SUMMARY, "outcome": "fixed", "wave": "1", "counts": "[0,0,4,0,0]", "pairs": "2",
+                      "heading": "## Strength lab"} and report == "")
+    summary, _ = summarize(needs(fixed_plan, ("failure", complete("fixed", [0, 0, 4, 0, 0], "",
+                                                                  "shard 1, 2 slices (runner lost)", pieces))), False)
+    check("summarize: a repaired fixed run keeps the Replayed text and the marker's payload",
+          summary["replayed"] == "shard 1, 2 slices (runner lost)" and summary["repair_plan"] == pieces)
+    discard = {"status": "discarded", "reason": "Shard jobs reported `failure`. Not repaired: shard 2 failed."}
+    for name, run_needs, reason in (
+            ("a discarded wave's reason", needs(fixed_plan, ("failure", discard)), discard["reason"]),
+            ("setup that failed", needs(fixed_plan, setup="failure"), NO_SHARD_RAN),
+            ("a wave that never ran", needs(fixed_plan, ("skipped", {})), NO_SHARD_RAN),
+            ("a wave with no outputs", needs(fixed_plan, ("failure", {})), UNDECIDED.format("failure")),
+            ("a decision without a complete status", needs(fixed_plan, ("failure", {"decision": "fixed"})),
+             UNDECIDED.format("failure"))):
+        summary, report = summarize(run_needs, False)
+        check(f"summarize: a fixed run discards on {name}, with no figures",
+              summary == {**EMPTY_SUMMARY, "outcome": "discarded", "reason": reason,
+                          "heading": "## Strength lab — DISCARDED"} and report == "")
+    summary, report = summarize(needs(golden_plan, ("success", complete("H1", GOLDEN_RUNS[0][0][0], "+5.67"))), False)
+    check("summarize: H1 at wave 1 heads, counts and sizes the report",
+          summary["outcome"] == "H1" and summary["wave"] == "1" and summary["pairs"] == "139"
+          and summary["heading"] == "## Strength lab — passes (SPRT H1, wave 1 of 4)"
+          and summary["games"] == "5,004 of 19,980 planned = 18 shards × 1 of 4 waves, stopped by SPRT H1"
+          and summary["counts"] == compact(GOLDEN_RUNS[0][0][0]) and summary["repair_plan"] == "")
+    check("summarize: the SPRT block states the test and pools each played wave",
+          report.splitlines() == ["SPRT [0, 3], α = β = 0.05: H1 at LLR ≥ +2.94, H0 at ≤ −2.94, cap 19,980 games", "",
+                                  "| Wave | Games | Elo ± err | LLR | Decision |", "|---|---|---|---|---|",
+                                  "| 1 | 5,004 | +36.09 ± 8.46 | +5.67 | H1 |"])
+    summary, _ = summarize(needs(golden_plan, ("success", complete("H1", GOLDEN_RUNS[0][0][0], "+5.67"))), True)
+    check("summarize: a calibration run keeps its label in the heading",
+          summary["heading"] == "## Strength lab (calibration) — passes (SPRT H1, wave 1 of 4)")
+    wave1 = complete("continue", [200, 555, 975, 553, 219], "+0.22")
+    summary, report = summarize(needs(golden_plan, ("success", wave1),
+                                      ("success", complete("H0", [446, 1172, 1902, 1057, 427], "-2.97"))), False)
+    check("summarize: H0 at wave 2, two rows",
+          summary["heading"] == "## Strength lab — does not pass (SPRT H0, wave 2 of 4)"
+          and summary["games"] == "10,008 of 19,980 planned = 18 shards × 2 of 4 waves, stopped by SPRT H0"
+          and summary["pairs"] == "278" and len(report.splitlines()) == 6
+          and report.splitlines()[-1].endswith("| -2.97 | H0 |"))
+    capped = [("success", complete("continue", counts, f"{llr(counts):+.2f}")) for counts in GOLDEN_RUNS[2][0][:3]]
+    for name, counts, heading in (("passes", CAP_PASS, "## Strength lab — passes at the cap (Elo − err > 0)"),
+                                  ("fails", CAP_FAIL, "## Strength lab — does not pass at the cap")):
+        summary, report = summarize(needs(golden_plan, *capped, ("success", complete("cap", counts, "-1.12"))), False)
+        check(f"summarize: the cap {name} by Elo - err", summary["heading"] == heading and summary["wave"] == "4"
+              and summary["games"] == "19,980 of 19,980 planned = 18 shards × 4 of 4 waves, undecided at the cap"
+              and len(report.splitlines()) == 8)
+    for name, wave3, reason in (
+            ("a discard at wave 3", ("failure", discard), "Wave 3: " + discard["reason"]),
+            ("a missing decision at wave 3", ("failure", {}), "Wave 3: " + UNDECIDED.format("failure")),
+            ("a wave 3 that never ran", ("skipped", {}), "Wave 3: " + UNDECIDED.format("skipped"))):
+        summary, report = summarize(needs(golden_plan, ("success", wave1), ("success", wave1), wave3), False)
+        check(f"summarize: {name} discards the run, with no figures",
+              summary == {**EMPTY_SUMMARY, "outcome": "discarded", "reason": reason,
+                          "heading": "## Strength lab — DISCARDED"} and report == "")
+    summary, report = summarize(needs(golden_plan, ("success", wave1),
+                                      ("failure", complete("continue", [400, 1100, 1950, 1100, 454], "+1.00",
+                                                           "wave 2: shard 1, 2 slices (runner lost)", pieces)),
+                                      ("success", complete("H1", [550, 1600, 2900, 1700, 756], "+6.83"))), False)
+    check("summarize: a repaired wave 2 then H1 at wave 3 names the wave and carries its plan",
+          summary["heading"] == "## Strength lab — passes (SPRT H1, wave 3 of 4)"
+          and summary["replayed"] == "wave 2: shard 1, 2 slices (runner lost)"
+          and json.loads(summary["repair_plan"]) == [{"wave": 2, "slices": json.loads(pieces)}]
+          and len(report.splitlines()) == 7)
+    check("summarize refuses a decision its wave cannot make",
+          raises(lambda: summarize(needs(golden_plan, *capped, ("success", complete("continue", CAP_FAIL))), False))
+          and raises(lambda: summarize(needs(golden_plan, ("success", complete("cap", CAP_FAIL))), False))
+          and raises(lambda: summarize(needs(golden_plan, ("success", complete("fixed", CAP_FAIL))), False))
+          and raises(lambda: summarize(needs(fixed_plan, ("success", complete("H1", [0, 0, 4, 0, 0]))), False)))
+
     with tempfile.TemporaryDirectory() as root:
         def cli(*args):
             output = os.path.join(root, "github_output")
@@ -314,24 +515,43 @@ def self_test():
             clean = "Traceback" not in result.stderr
             return result.returncode, values, clean
 
-        code, values, clean = cli("plan", "--shards", "2", "--rounds", "7", "--opening-offset", "5",
-                                  "--waves", "4")
-        check("CLI plan writes wave_plan", code == 0 and clean
-              and json.loads(values.get("wave_plan", "null")) == wave_plan(2, 7, 5, 4)
+        def plan_cli(sprt, calibration, games, shards, rounds, arms=""):
+            return cli("plan", "--sprt", sprt, "--calibration", calibration, "--games", str(games), "--shards",
+                       str(shards), "--rounds", str(rounds), "--opening-offset", "5", "--arms", arms)
+
+        code, values, clean = plan_cli("true", "true", 28, 2, 7)
+        check("CLI plan writes four waves for a calibration SPRT run", code == 0 and clean
+              and values.get("waves") == "4" and json.loads(values.get("wave_plan", "null")) == wave_plan(2, 7, 5, 4)
               and " " not in values["wave_plan"])
-        code, values, clean = cli("plan", "--shards", "2", "--rounds", "3", "--opening-offset", "0",
+        code, values, clean = plan_cli("true", "false", FULL_GAMES, FULL_SHARDS, 738)
+        check("CLI plan writes four waves at the cap", code == 0 and clean and values.get("waves") == "4")
+        code, values, clean = plan_cli("false", "false", 28, 2, 7, arms="X=1;X=2")
+        check("CLI plan writes one wave without sprt", code == 0 and clean and values.get("waves") == "1"
+              and json.loads(values["wave_plan"]) == wave_plan(2, 7, 5, 1))
+        for name, args in (("an empty wave", ("true", "true", 12, 2, 3)),
+                           ("sprt below the cap without calibration", ("true", "false", 20088, FULL_SHARDS, 558)),
+                           ("sprt on other shards without calibration", ("true", "false", FULL_GAMES, 20, 664)),
+                           ("sprt with arms", ("true", "true", 28, 2, 7, "X=1;X=2"))):
+            code, values, clean = plan_cli(*args)
+            check(f"CLI plan refuses {name} cleanly, writing nothing", code == 1 and clean and not values)
+        code, values, clean = cli("decide", "--counts", "[290,326,951,446,489]", "--prior-counts", "", "--wave", "1",
                                   "--waves", "4")
-        check("CLI plan refuses an empty wave cleanly, writing nothing", code == 1 and clean and not values)
-        code, values, clean = cli("decide", "--counts", "[290,326,951,446,489]", "--wave", "1", "--waves", "4")
         check("CLI decide writes H1, LLR and counts", code == 0 and clean
               and values == {"decision": "H1", "llr": "+5.67", "counts": "[290,326,951,446,489]"})
-        code, values, clean = cli("decide", "--counts", "[824, 2301, 3750, 2268, 847]", "--wave", "4",
-                                  "--waves", "4")
-        check("CLI decide writes the cap, LLR to two decimals, counts compact", code == 0 and clean
+        code, values, clean = cli("decide", "--counts", "[225, 578, 921, 541, 219]", "--prior-counts",
+                                  "[599, 1723, 2829, 1727, 628]", "--wave", "4", "--waves", "4")
+        check("CLI decide adds the earlier waves and writes the cap, LLR to two decimals, counts compact",
+              code == 0 and clean
               and values == {"decision": "cap", "llr": "-1.12", "counts": "[824,2301,3750,2268,847]"})
-        code, values, clean = cli("decide", "--counts", "[0,0,1,0,0]", "--wave", "1", "--waves", "1")
+        code, values, clean = cli("decide", "--counts", "[0,0,1,0,0]", "--prior-counts", "", "--wave", "1",
+                                  "--waves", "1")
         check("CLI decide writes fixed with an empty LLR", code == 0 and clean
               and values == {"decision": "fixed", "llr": "", "counts": "[0,0,1,0,0]"})
+        for name, prior, wave in (("wave 2 without earlier counts", "", "2"),
+                                  ("wave 1 with earlier counts", "[0,0,1,0,0]", "1")):
+            code, values, clean = cli("decide", "--counts", "[0,0,1,0,0]", "--prior-counts", prior, "--wave", wave,
+                                      "--waves", "4")
+            check(f"CLI decide refuses {name} cleanly, writing nothing", code == 1 and clean and not values)
         shape = subprocess.run([sys.executable, os.path.abspath(__file__), "shape", "--wave-plan", compact(full),
                                 "--wave", "2", "--slices", compact(full[1])], capture_output=True, text=True)
         check("CLI shape prints S R P OFFSET", shape.returncode == 0 and shape.stdout.split() == ["18", "738", "184", "185"])
@@ -339,8 +559,19 @@ def self_test():
                                 "--wave", "1", "--slices", compact(full[1])], capture_output=True, text=True)
         check("CLI shape refuses mismatched slices cleanly", shape.returncode == 1 and not shape.stdout
               and "Traceback" not in shape.stderr)
+        report_path = os.path.join(root, "sprt.md")
+        code, values, clean = cli("summarize", "--needs", compact(needs(golden_plan, ("success", wave1), (
+            "success", complete("H0", [446, 1172, 1902, 1057, 427], "-2.97")))), "--calibration", "false",
+                                  "--report", report_path)
+        with open(report_path, encoding="utf-8") as handle:
+            written = handle.read()
+        check("CLI summarize writes the outcome and the SPRT block", code == 0 and clean
+              and values["outcome"] == "H0" and values["counts"] == "[446,1172,1902,1057,427]"
+              and set(values) == set(EMPTY_SUMMARY) and written.startswith("SPRT [0, 3]"))
+        code, values, clean = cli("summarize", "--needs", "{", "--calibration", "false", "--report", report_path)
+        check("CLI summarize refuses malformed needs cleanly, writing nothing", code == 1 and clean and not values)
         for bad in ("[1,2,3,4]", "not json", "[0,0,0,0,0]"):
-            code, values, clean = cli("decide", "--counts", bad, "--wave", "1", "--waves", "4")
+            code, values, clean = cli("decide", "--counts", bad, "--prior-counts", "", "--wave", "1", "--waves", "4")
             check(f"CLI decide refuses {bad!r} cleanly, writing nothing", code == 1 and clean and not values)
 
     print("\nSPRT self-test " + ("FAIL" if failures else "PASS"))
@@ -352,15 +583,20 @@ def main():
     parser.add_argument("--self-test", action="store_true")
     commands = parser.add_subparsers(dest="command")
 
-    planning = commands.add_parser("plan", help="write the run's wave plan as wave_plan")
+    planning = commands.add_parser("plan", help="write the run's wave count and plan as waves and wave_plan")
+    planning.add_argument("--sprt", choices=["true", "false"], required=True)
+    planning.add_argument("--calibration", choices=["true", "false"], required=True)
+    planning.add_argument("--games", type=int, required=True, help="the games requested")
     planning.add_argument("--shards", type=int, required=True)
     planning.add_argument("--rounds", type=int, required=True, help="pairs per shard")
     planning.add_argument("--opening-offset", type=int, required=True)
-    planning.add_argument("--waves", type=int, required=True)
+    planning.add_argument("--arms", required=True, help="the candidate_arms input")
     planning.add_argument("--output", required=True, help="the file GitHub reads step outputs from")
 
     deciding = commands.add_parser("decide", help="write decision, llr and counts for wave k")
-    deciding.add_argument("--counts", required=True, help="pooled Ptnml(0-2) of waves 1..k, as JSON")
+    deciding.add_argument("--counts", required=True, help="wave k's pooled Ptnml(0-2), as JSON")
+    deciding.add_argument("--prior-counts", required=True,
+                          help="waves 1..k-1's cumulative counts as JSON; empty for wave 1")
     deciding.add_argument("--wave", type=int, required=True)
     deciding.add_argument("--waves", type=int, required=True)
     deciding.add_argument("--output", required=True, help="the file GitHub reads step outputs from")
@@ -369,6 +605,12 @@ def main():
     shaping.add_argument("--wave-plan", required=True, help="sprt.py plan's whole plan, as JSON")
     shaping.add_argument("--wave", type=int, required=True)
     shaping.add_argument("--slices", required=True, help="this wave's slices, as JSON")
+
+    summarizing = commands.add_parser("summarize", help="write the run's outcome for aggregate")
+    summarizing.add_argument("--needs", required=True, help="strength.yml's toJSON(needs)")
+    summarizing.add_argument("--calibration", choices=["true", "false"], required=True)
+    summarizing.add_argument("--report", required=True, help="the file the SPRT block is written to")
+    summarizing.add_argument("--output", required=True, help="the file GitHub reads step outputs from")
 
     args = parser.parse_args()
     if args.self_test:
@@ -379,14 +621,23 @@ def main():
             print(*wave_shape(json.loads(args.wave_plan), args.wave, json.loads(args.slices)))
             return 0
         if args.command == "plan":
-            plan = wave_plan(args.shards, args.rounds, args.opening_offset, args.waves)
-            write_outputs(args.output, {"wave_plan": compact(plan)})
-            print(f"{args.waves} wave(s), cumulative pairs per shard {wave_cuts(args.rounds, args.waves)}")
+            waves = run_waves(args.sprt == "true", args.games, args.shards, args.calibration == "true", args.arms)
+            plan = wave_plan(args.shards, args.rounds, args.opening_offset, waves)
+            write_outputs(args.output, {"waves": waves, "wave_plan": compact(plan)})
+            print(f"{waves} wave(s), cumulative pairs per shard {wave_cuts(args.rounds, waves)}")
             return 0
         if args.command == "decide":
-            outputs = decide_outputs(json.loads(args.counts), args.wave, args.waves)
+            prior = json.loads(args.prior_counts) if args.prior_counts else None
+            outputs = decide_outputs(cumulative(prior, json.loads(args.counts), args.wave), args.wave, args.waves)
             write_outputs(args.output, outputs)
             print(f"wave {args.wave} of {args.waves}: {outputs}")
+            return 0
+        if args.command == "summarize":
+            summary, report = summarize(json.loads(args.needs), args.calibration == "true")
+            with open(args.report, "w", encoding="utf-8") as handle:
+                handle.write(report)
+            write_outputs(args.output, summary)
+            print(f"{summary['outcome']} at wave {summary['wave'] or '-'}")
             return 0
     except ValueError as error:  # json.JSONDecodeError is a ValueError
         print(f"::error::{error}", file=sys.stderr)

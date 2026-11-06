@@ -36,7 +36,8 @@ import pool_pentanomial
 
 OPTION_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*=\S+$")
 SHARD_LOG_RE = re.compile(r"shard-(\d+)[/\\]match\.log$")
-ARTIFACT_RE = re.compile(r"strength-([1-9][0-9]*)-shard-(0|[1-9][0-9]*)$")
+# A waved run's slice names carry its wave (sprt.slice_artifact); a batch is one run's one wave.
+ARTIFACT_RE = re.compile(r"strength-([1-9][0-9]*)-(wave-[1-9][0-9]*-)?shard-(0|[1-9][0-9]*)$")
 TAG_RE = re.compile(r'\[([A-Za-z][A-Za-z0-9_]*)\s+"((?:[^"\\]|\\["\\])*)"\]')
 
 
@@ -181,17 +182,17 @@ def verify_batch(arms, shards, rounds, offset, candidate, reference, book, root,
         match = ARTIFACT_RE.fullmatch(name)
         if not match:
             raise PlanError(f"{directory}: noncanonical shard artifact directory")
-        run_id, index = match.groups()
+        run_id, wave, index = match.groups()
         shard = int(index)
         if shard >= shards or shard in by_shard:
             raise PlanError(f"{directory}: shard {shard} is out of range or seen twice")
-        run_ids.add(run_id)
+        run_ids.add((run_id, wave))
         by_shard[shard] = directory
     missing = sorted(set(range(shards)) - set(by_shard))
     if missing:
         raise PlanError(f"no artifact for shard(s) {missing}; refusing a partial batch")
     if len(run_ids) != 1:
-        raise PlanError("shard artifacts belong to different runs")
+        raise PlanError("shard artifacts belong to different runs or waves")
 
     needed = {offset + shard * rounds for shard in range(shards)}
     starts = {}
@@ -419,6 +420,17 @@ def self_test():
     cli_case("CLI wave slice refused without --pairs-per-shard", replacements=first_pair_only)
     cli_case("CLI --pairs-per-shard above the spacing refused", overrides=["--pairs-per-shard", "3"])
     cli_case("CLI full shards refused at --pairs-per-shard 1", overrides=["--pairs-per-shard", "1"])
+
+    def waved(*shards, wave=2):
+        """Rename the given shards' artifacts to wave slice names."""
+        return {f"strength-37125713346-wave-{wave}-shard-{shard}/{file}": f"strength-37125713346-shard-{shard}/{file}"
+                for shard in shards for file in ("match.log", "match.pgn")}
+
+    cli_case("CLI one wave's slice names accepted", additions=waved(0, 1), removed=[log0, pgn0, log1, pgn1],
+             success=True)
+    cli_case("CLI a slice beside a shard refused", additions=waved(1), removed=[log1, pgn1])
+    cli_case("CLI slices of two waves refused", additions={**waved(0), **waved(1, wave=3)},
+             removed=[log0, pgn0, log1, pgn1])
 
     with tempfile.TemporaryDirectory() as root:
         book = os.path.join(root, "book.epd")
