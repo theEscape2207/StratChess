@@ -51,7 +51,7 @@ def job_re(prefix):
     return re.compile(re.escape(prefix) + r"match \((\d+)\)")
 
 
-def lost_shards(jobs, annotations, artifact_names, run, shards, wave=1, waves=1, prefix="", prior_lost=0):
+def lost_shards(jobs, annotations, artifact_names, run, shards, wave, waves, prefix, prior_lost):
     """The wave's lost shards, or raise Refused naming why the wave cannot be repaired."""
     pattern = job_re(prefix)
     records = {}
@@ -116,7 +116,7 @@ def plan_slices(lost, planned):
     return slices
 
 
-def plan(jobs, annotations, artifact_names, run, planned, arms, wave=1, waves=1, prefix="", prior_lost=0):
+def plan(jobs, annotations, artifact_names, run, planned, arms, wave, waves, prefix, prior_lost):
     """The planner's verdict: status `repair` with slices, or `discard` with the reason."""
     try:
         if arms.strip():
@@ -143,7 +143,7 @@ def gh_lines(path, jq):
     return [json.loads(line) for line in output.splitlines() if line.strip()]
 
 
-def fetch_inventory(repo, run, prefix="", read=gh_lines):
+def fetch_inventory(repo, run, prefix, read=gh_lines):
     jobs = read(f"repos/{repo}/actions/runs/{run}/jobs?filter=latest&per_page=100",
                 ".jobs[] | {id, name, status, conclusion, check_run_url}")
     annotations = {}
@@ -217,7 +217,7 @@ def self_test():
             "runner process, starves it for CPU/Memory, or blocks its network access can cause this error.")
     fatal = "Shard 2: harness/engine failures detected -- batch is not measurable."
 
-    # A called workflow's job is listed as "<caller job> / <job>", as probe run 42265828549 showed.
+    # The jobs API lists a called workflow's job as "<caller job> / <job>".
     def job(shard, conclusion="success", status="completed", prefix="wave-1 / ", base=100):
         return {"id": base + shard, "name": f"{prefix}match ({shard})", "status": status, "conclusion": conclusion,
                 "check_run_url": f"https://api.github.com/repos/o/r/check-runs/{base + shard}"}
@@ -299,7 +299,7 @@ def self_test():
              {6: lost}, prior_lost=2)
     for bad in ([{"shard": 0, "start": 1, "pairs": 5}, {"shard": 0, "start": 6, "pairs": 5}],
                 [{"shard": 1, "start": 1, "pairs": 5}]):
-        result = plan([job(0, "failure")], {100: [note(loss)]}, set(), 1, bad, "")
+        result = plan([job(0, "failure")], {100: [note(loss)]}, set(), 1, bad, "", 1, 1, "wave-1 / ", 0)
         expect(f"a malformed wave plan discards {bad}", result["status"] == "discard" and "wave plan" in result["reason"])
 
     for shards, rounds, lost_list, waves, wave in [
@@ -332,7 +332,7 @@ def self_test():
            notes == {101: [note(loss)]} and len(pages) == 3)
     expect("the job's own check run is read", any(p.startswith("repos/o/r/check-runs/101/annotations") for p in pages))
     expect("the inventory plans", plan(jobs, notes, names, 1, sprt.wave_plan(2, 4, 0, 1)[0], "",
-                                       prefix="wave-1 / ")["lost"] == [1])
+                                       1, 1, "wave-1 / ", 0)["lost"] == [1])
 
     expect("the report names one replay", replayed_text([6], one["slices"]) == "shard 6, 18 slices (runner lost)")
     expect("the report names two", replayed_text([3, 9], two["slices"]) == "shards 3 and 9, 18 slices (runners lost)")

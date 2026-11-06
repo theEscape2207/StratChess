@@ -108,7 +108,7 @@ def artifact_names():
     def expand(template, waves, wave=2, shard=7, index=3):
         values = {'github.run_id': '42', 'matrix.slice.shard': str(shard), 'matrix.slice.index': str(index),
                   'needs.repair-plan.outputs.lost_a': str(shard), 'needs.repair-plan.outputs.lost_b': str(shard),
-                  "inputs.waves > 1 && format('wave-{0}-', inputs.wave) || ''": f'wave-{wave}-' if waves > 1 else ''}
+                  'env.WAVE_PREFIX': f'wave-{wave}-' if waves > 1 else ''}
         text = re.sub(r'\$\{\{ (.+?) \}\}', lambda m: values[m[1]], template)
         assert '${{' not in text, text
         return text
@@ -117,6 +117,7 @@ def artifact_names():
         section = wave_workflow.split(f'      - name: {step}\n')[1].split('      - name:')[0]
         return re.search(rf'(?m)^          {key}: (.+)$', section)[1]
 
+    assert "  WAVE_PREFIX: ${{ inputs.waves > 1 && format('wave-{0}-', inputs.wave) || '' }}\n" in wave_workflow
     for waves in (1, 4):
         slice_name, replay_name = sprt.slice_artifact(42, 2, waves, 7), sprt.replay_artifact(42, 2, waves, 7, 3)
         assert expand(field('Upload shard PGN and log', 'name'), waves) == slice_name
@@ -264,6 +265,10 @@ def repaired_batch(root, env):
         expected=1)
     text = summary.read_text(encoding='utf-8')
     assert 'DISCARDED' in text and 'ended `failure` without a decision' in text, 'a wave without outputs is a discard'
+    summary.unlink()
+    run(root, 'Refuse a partial batch', {**repair, 'WAVE_STATUS': '', 'WAVE_REASON': '', 'WAVE_RESULT': 'skipped'},
+        expected=1)
+    assert 'No shard ran: setup or build did not complete.' in summary.read_text(encoding='utf-8')
     run(root, 'Report', {**repair, 'POOL_RESULT': 'failure'})
     report = (root / 'outputs/report.md').read_text(encoding='utf-8')
     assert 'DISCARDED' in report and 'Replayed' not in report and '**Pooled:' not in report
@@ -380,6 +385,10 @@ def self_test():
             run(root, 'Verify the complete batch', env)
             run(root, 'Pool the result', env)
             pooled = root / 'outputs/pooled.md'
+            run(root, 'Report', {**env, 'POOL_RESULT': 'success', 'REPLAYED': ''})
+            report = (root / 'outputs/report.md').read_text(encoding='utf-8')
+            assert report.startswith('## Strength lab\n') and '| Replayed |' not in report and '**Pooled:' in report, \
+                'a fixed run without a repair keeps the plain heading and no Replayed row'
             assert '**Pooled:' in pooled.read_text() and '0.00 Elo**' in pooled.read_text()
             assert 'Shards favouring the candidate by score:' in pooled.read_text()
             assert ('### Arms' in pooled.read_text()) == bool(arms), 'cross-arm summary missing or spurious'

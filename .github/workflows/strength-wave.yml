@@ -3,8 +3,8 @@ name: Strength lab wave
 # One wave of a strength-lab run, called by strength.yml as job wave-<k>: the wave's
 # shard slices, the repair of a runner lost on attempt 1, and a decide job that closes
 # the wave. A fixed-size run is the one-wave case: its one slice per shard is the whole
-# shard, its artifacts keep the pre-wave names (sprt.slice_artifact, replay_artifact),
-# and decide emits "fixed".
+# shard, its artifacts carry no wave in their names (sprt.slice_artifact,
+# replay_artifact), and decide emits "fixed".
 #
 # decide's outputs are the contract with strength.yml:
 #   status        complete or discarded; empty if decide failed or never ran
@@ -17,8 +17,8 @@ name: Strength lab wave
 #   lost_a, lost_b, slices   the repair plan, for the run's repair marker
 #
 # A failed match job fails this called workflow, and so the caller's wave-<k> job,
-# but decide's outputs still reach the caller (probe run 42265828549), which is why a
-# repaired wave can carry its decision forward.
+# but decide's outputs still reach the caller, which is why a repaired wave can carry
+# its decision forward.
 #
 # No concurrency group here: the caller holds strength-lab, and a called workflow
 # waiting on its own caller's group would never start.
@@ -45,13 +45,7 @@ on:
         description: "Shards lost in the run's earlier waves"
         type: number
         required: true
-      sprt:
-        type: boolean
-        required: true
       book_file:
-        type: string
-        required: true
-      opening_offset:
         type: string
         required: true
       candidate_tc:
@@ -109,6 +103,8 @@ on:
 # A workflow-level env of strength.yml does not reach a called workflow.
 env:
   BOOK_FILE: ${{ inputs.book_file }}
+  # The wave part of every artifact name, empty for a one-wave run (sprt.slice_artifact).
+  WAVE_PREFIX: ${{ inputs.waves > 1 && format('wave-{0}-', inputs.wave) || '' }}
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -170,7 +166,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: strength-${{ github.run_id }}-${{ inputs.waves > 1 && format('wave-{0}-', inputs.wave) || '' }}shard-${{ matrix.slice.shard }}
+          name: strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}shard-${{ matrix.slice.shard }}
           path: |
             ${{ runner.temp }}/match/match.pgn
             ${{ runner.temp }}/match/match.log
@@ -267,7 +263,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: strength-${{ github.run_id }}-${{ inputs.waves > 1 && format('wave-{0}-', inputs.wave) || '' }}replay-${{ matrix.slice.shard }}-${{ matrix.slice.index }}
+          name: strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}replay-${{ matrix.slice.shard }}-${{ matrix.slice.index }}
           path: |
             ${{ runner.temp }}/match/match.pgn
             ${{ runner.temp }}/match/match.log
@@ -327,7 +323,7 @@ jobs:
         if: steps.partial.outcome == 'skipped'
         uses: actions/download-artifact@v8
         with:
-          pattern: strength-${{ github.run_id }}-${{ inputs.waves > 1 && format('wave-{0}-', inputs.wave) || '' }}shard-*
+          pattern: strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}shard-*
           path: shards
 
       - name: Download comparison and opening evidence
@@ -341,7 +337,7 @@ jobs:
         if: steps.partial.outcome == 'skipped' && needs.repair.result == 'success'
         uses: actions/download-artifact@v8
         with:
-          pattern: strength-${{ github.run_id }}-${{ inputs.waves > 1 && format('wave-{0}-', inputs.wave) || '' }}replay-*
+          pattern: strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}replay-*
           path: replays
 
       # The verify and pool below then see the designed wave, unchanged, and count
@@ -410,8 +406,8 @@ jobs:
         if: steps.decide.outcome == 'success' && needs.repair-plan.outputs.lost_a != ''
         uses: actions/upload-artifact@v7
         with:
-          name: strength-${{ github.run_id }}-${{ inputs.waves > 1 && format('wave-{0}-', inputs.wave) || '' }}shard-${{ needs.repair-plan.outputs.lost_a }}
-          path: shards/strength-${{ github.run_id }}-${{ inputs.waves > 1 && format('wave-{0}-', inputs.wave) || '' }}shard-${{ needs.repair-plan.outputs.lost_a }}
+          name: strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}shard-${{ needs.repair-plan.outputs.lost_a }}
+          path: shards/strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}shard-${{ needs.repair-plan.outputs.lost_a }}
           if-no-files-found: error
           retention-days: 90
 
@@ -419,8 +415,8 @@ jobs:
         if: steps.decide.outcome == 'success' && needs.repair-plan.outputs.lost_b != ''
         uses: actions/upload-artifact@v7
         with:
-          name: strength-${{ github.run_id }}-${{ inputs.waves > 1 && format('wave-{0}-', inputs.wave) || '' }}shard-${{ needs.repair-plan.outputs.lost_b }}
-          path: shards/strength-${{ github.run_id }}-${{ inputs.waves > 1 && format('wave-{0}-', inputs.wave) || '' }}shard-${{ needs.repair-plan.outputs.lost_b }}
+          name: strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}shard-${{ needs.repair-plan.outputs.lost_b }}
+          path: shards/strength-${{ github.run_id }}-${{ env.WAVE_PREFIX }}shard-${{ needs.repair-plan.outputs.lost_b }}
           if-no-files-found: error
           retention-days: 90
 

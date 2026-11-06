@@ -369,11 +369,11 @@ batch and pools each arm. `match` and `repair` run the one `.github/scripts/play
 the toolkit because shards do not check out the repository, so a replay cannot drift from the shard
 it replaces.
 
-Every run is one wave today: its slice per shard is the whole shard, its jobs are listed as
-`wave-1 / match (N)`, and every artifact keeps its name — `strength-<run>-shard-<N>` per shard,
+A fixed-size run is one wave: its slice per shard is the whole shard, its jobs are listed as
+`wave-1 / match (N)`, and its artifacts carry no wave — `strength-<run>-shard-<N>` per shard,
 `strength-<run>-replay-<N>-<i>` per repair piece, `strength-<run>-repair` for the marker. Fixed-size
 runs share the wave path rather than keeping a second one, so there is one repair planner and one
-discard rule (#963). A waved run's names carry the wave (`strength-<run>-wave-<k>-shard-<N>`);
+discard rule. A waved run's names carry the wave (`strength-<run>-wave-<k>-shard-<N>`);
 `sprt.py` names both forms, and `test_strength_workflow.py` checks the workflow agrees.
 The normal PR gate also runs these Python self-tests and workflow boundary fixtures in its Linux
 Release leg, so harness failures can be checked without dispatching a strength match.

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Verify and join the contiguous pieces of one lab shard.
 
-A shard's pairs can be played as several pieces: the replayed slices of a lost shard, or (in a waved
-run) the shard's wave slices. Each piece is checked alone by the batch's own verify and log reader,
-then the pieces are joined into one shard directory that the batch-level verify and pool read as if
-one job had played it. Repair and wave aggregation share this one copy.
+A lost shard's pairs are replayed as several pieces. Each piece is checked alone by the batch's own
+verify and log reader, then the pieces are joined into one shard directory that the batch-level
+verify and pool read as if one job had played it.
 
 Imported only; plan_repair.py's self-test exercises it.
 """

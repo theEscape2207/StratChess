@@ -516,9 +516,7 @@ jobs:
       wave_plan: ${{ needs.setup.outputs.wave_plan }}
       slices: ${{ toJSON(fromJSON(needs.setup.outputs.wave_plan)[0]) }}
       prior_lost: 0
-      sprt: false
       book_file: ${{ needs.build.outputs.book_file }}
-      opening_offset: ${{ inputs.opening_offset }}
       candidate_tc: ${{ inputs.candidate_tc }}
       reference_tc: ${{ inputs.reference_tc }}
       concurrency: ${{ inputs.concurrency }}
@@ -561,6 +559,8 @@ jobs:
             echo
             if [ "$WAVE_STATUS" = "discarded" ]; then
               echo "$WAVE_REASON"
+            elif [ "$WAVE_RESULT" = "skipped" ]; then
+              echo "No shard ran: setup or build did not complete."
             else
               echo "The wave ended \`$WAVE_RESULT\` without a decision: a check after the shards failed, or the run was cancelled."
             fi
