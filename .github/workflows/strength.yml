@@ -192,6 +192,11 @@ jobs:
       - name: Verify the pooling formula
         run: python3 .github/scripts/pool_pentanomial.py --self-test
 
+      # Same argument for the waved SPRT's statistic and plan: a wrong LLR or cut
+      # would stop a run on the wrong evidence.
+      - name: Verify the SPRT statistic
+        run: python3 .github/scripts/sprt.py --self-test
+
       # Same argument as the pooling self-test: the option checker is what stops
       # a mistyped option name from producing a three-hour null result, so it is
       # verified before the option string it will be given reaches an engine.

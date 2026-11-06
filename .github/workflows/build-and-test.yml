@@ -144,6 +144,7 @@ jobs:
           python3 .github/scripts/compare_lab_configs.py --self-test
           python3 .github/scripts/plan_arms.py --self-test
           python3 .github/scripts/pool_pentanomial.py --self-test
+          python3 .github/scripts/sprt.py --self-test
           python3 .github/scripts/pool_repaired_batch.py --self-test
           python3 .github/scripts/plan_repair.py --self-test
           python3 .github/scripts/summarize_cpu.py --self-test
