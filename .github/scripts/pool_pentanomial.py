@@ -58,6 +58,16 @@ def elo_from_score(score):
     return -400.0 * math.log10(1.0 / score - 1.0)
 
 
+def score_and_variance(counts):
+    """Mean per-game score of the pairs and the population variance of the per-pair scores."""
+    pairs = sum(counts)
+    if pairs == 0:
+        raise ValueError("no pairs to pool")
+    score = sum(n * s for n, s in zip(counts, CATEGORY_SCORES)) / pairs
+    variance = sum(n * (s - score) ** 2 for n, s in zip(counts, CATEGORY_SCORES)) / pairs
+    return score, variance
+
+
 def pool(counts):
     """Elo and 95% half-width from pooled pentanomial counts.
 
@@ -65,11 +75,7 @@ def pool(counts):
     Returns (elo, half_width, pairs, score).
     """
     pairs = sum(counts)
-    if pairs == 0:
-        raise ValueError("no pairs to pool")
-
-    score = sum(n * s for n, s in zip(counts, CATEGORY_SCORES)) / pairs
-    variance = sum(n * (s - score) ** 2 for n, s in zip(counts, CATEGORY_SCORES)) / pairs
+    score, variance = score_and_variance(counts)
     # Standard error of the mean over PAIRS, not games -- the pair is the
     # independent unit, which is the entire point of the pentanomial model.
     stderr = math.sqrt(variance / pairs)

@@ -192,8 +192,8 @@ jobs:
       - name: Verify the pooling formula
         run: python3 .github/scripts/pool_pentanomial.py --self-test
 
-      # Same argument for the waved SPRT's statistic and plan (#963): a wrong LLR or
-      # cut would stop a run on the wrong evidence.
+      # Same argument for the waved SPRT's statistic and plan: a wrong LLR or cut
+      # would stop a run on the wrong evidence.
       - name: Verify the SPRT statistic
         run: python3 .github/scripts/sprt.py --self-test
 

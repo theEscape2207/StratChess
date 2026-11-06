@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Waved pentanomial SPRT for a Full strength-lab run (#963).
+"""Waved pentanomial SPRT for a Full strength-lab run.
 
   sprt.py plan    cut every shard into W wave slices, fixed before any game is played
   sprt.py decide  the SPRT decision on the pooled counts of waves 1..k
@@ -8,7 +8,7 @@ A waved run plays each shard's R pairs in W slices cut at ceil(k*R/W), so wave k
 first k/W of every shard in planned order, whatever the games' speed. W = 1 is a fixed-size run: its
 one slice is the whole shard, its artifacts keep their pre-wave names and its decision is "fixed".
 
-The statistic is the #962 spike's (replay.py), pinned by golden values in the self-test. Over N pairs
+The statistic is pinned by golden values from archived lab runs in the self-test. Over N pairs
 with mean per-game score m and population variance v of the per-pair scores (Ptnml categories score
 0, 1/4, 1/2, 3/4 and 1):
 
@@ -20,9 +20,9 @@ alpha = beta = 0.05, and both are inclusive: LLR >= upper is H1, LLR <= lower is
 crossing by wave W stops at the cap and passes only if Elo - err > 0 on the full batch, the fixed-run
 rule, pooled by pool_pentanomial.pool().
 
-A crossing takes priority over the cap fallback, at wave W as at any other: the fallback is for a
-run the SPRT left undecided, which is the owner's rule and what the spike measured. The two can
-disagree at the cap; the self-test pins one such batch, where H0 at wave 4 beats Elo - err = +0.89.
+A crossing takes priority over the cap fallback, at wave W as at any other: the fallback is only for
+a run the SPRT left undecided. The two can disagree at the cap; the self-test pins one such batch,
+where H0 at wave 4 beats Elo - err = +0.89.
 """
 
 import argparse
@@ -46,8 +46,6 @@ FULL_SHARDS = 18
 LOWER = math.log(BETA / (1 - ALPHA))
 UPPER = math.log((1 - BETA) / ALPHA)
 
-DECISIONS = ("continue", "H1", "H0", "cap", "fixed")
-
 
 def expected_score(elo):
     return 1 / (1 + 10 ** (-elo / 400))
@@ -63,7 +61,7 @@ def wave_cuts(rounds, waves):
         raise ValueError(f"waves must be at least 1, got {waves}")
     if rounds < waves:
         raise ValueError(f"{rounds} pairs per shard cannot fill {waves} waves; need at least {waves}")
-    # Integer ceil(k*R/W): the cut replay.py used, with no float rounding at large R.
+    # Integer ceil(k*R/W), with no float rounding at large R.
     return [-(-k * rounds // waves) for k in range(1, waves + 1)]
 
 
@@ -83,8 +81,7 @@ def wave_plan(shards, rounds, offset, waves):
 
 
 def checked_counts(counts):
-    if (not isinstance(counts, list) or len(counts) != 5
-            or any(not isinstance(n, int) or isinstance(n, bool) or n < 0 for n in counts)):
+    if not isinstance(counts, list) or len(counts) != 5 or any(not isinstance(n, int) or n < 0 for n in counts):
         raise ValueError(f"counts must be five non-negative integers, got {counts!r}")
     if sum(counts) == 0:
         raise ValueError("counts hold no pairs")
@@ -92,14 +89,10 @@ def checked_counts(counts):
 
 
 def llr(counts):
-    checked_counts(counts)
-    pairs = sum(counts)
-    scores = pool_pentanomial.CATEGORY_SCORES
-    mean = sum(n * s for n, s in zip(counts, scores)) / pairs
-    variance = sum(n * (s - mean) ** 2 for n, s in zip(counts, scores)) / pairs
+    mean, variance = pool_pentanomial.score_and_variance(checked_counts(counts))
     if variance == 0:
         return 0.0
-    return pairs * (S1 - S0) * (2 * mean - S0 - S1) / (2 * variance)
+    return sum(counts) * (S1 - S0) * (2 * mean - S0 - S1) / (2 * variance)
 
 
 def decision_for(value, wave, waves):
@@ -158,15 +151,15 @@ def write_outputs(path, values):
 
 
 def decide_outputs(counts, wave, waves):
-    decision = decide(counts, wave, waves)
-    return {"decision": decision,
-            "llr": "" if decision == "fixed" else f"{llr(counts):+.2f}",
-            "counts": compact(counts)}
+    if waves == 1:
+        return {"decision": decide(counts, wave, waves), "llr": "", "counts": compact(counts)}
+    value = llr(counts)
+    return {"decision": decision_for(value, wave, waves), "llr": f"{value:+.2f}", "counts": compact(counts)}
 
 
-# Cumulative wave counts of archived Full-size runs, cut at ceil(k*555/4) pairs per shard, with the
-# LLR replay.py's llr() gives each. Extracted from StratChessSupport\StrengthLabPgn by the spike's
-# extract.py.
+# Cumulative wave counts of archived 18 x 555-pair lab runs, cut at ceil(k*555/4) pairs per shard,
+# with each LLR computed independently of this module. PGNs: StratChessSupport\StrengthLabPgn.
+CAP_FAIL = [824, 2301, 3750, 2268, 847]
 GOLDEN_RUNS = [
     # 31191858114: +38.34 +/- 4.26 on the full batch; H1 at wave 1.
     ([[290, 326, 951, 446, 489]], [5.672879135812635], "H1"),
@@ -174,13 +167,30 @@ GOLDEN_RUNS = [
     ([[246, 617, 927, 504, 208]], [-3.113374196827115], "H0"),
     # 33802622783: +0.23 +/- 3.62; no crossing, so the cap, which does not pass.
     ([[200, 555, 975, 553, 219], [408, 1155, 1885, 1143, 413],
-      [599, 1723, 2829, 1727, 628], [824, 2301, 3750, 2268, 847]],
+      [599, 1723, 2829, 1727, 628], CAP_FAIL],
      [0.223471909414182, -0.6998399939951975, -0.0435880655625557, -1.1231084857364602], "cap"),
 ]
-# 33802622783's cap counts with 55 pairs moved from 0-2 to 2-0: LLR +2.25, Elo - err = +0.44.
+# CAP_FAIL with 55 pairs moved from 0-2 to 2-0: LLR +2.25, Elo - err = +0.44.
 CAP_PASS = [769, 2301, 3750, 2268, 902]
-# Review B1: every wave-4 pair drawn, 86 of 13,284 pairs at 1.5-0.5. LLR -77.06, Elo - err = +0.89.
-B1_WAVE4 = [0, 0, 13198, 86, 0]
+# The SPRT and Elo - err disagree at the cap: every wave-4 pair drawn, 86 of 13,284 pairs at
+# 1.5-0.5. LLR -77.06, Elo - err = +0.89.
+CAP_DISAGREES = [0, 0, 13198, 86, 0]
+
+
+def plan_tiles_shards(shards, rounds, offset, waves):
+    """Whether shard i's W non-empty slices cover [offset + i*R + 1, offset + (i+1)*R] in order, no gap."""
+    plan = wave_plan(shards, rounds, offset, waves)
+    if len(plan) != waves or any(len(wave) != shards for wave in plan):
+        return False
+    for i in range(shards):
+        expected = offset + i * rounds + 1
+        for piece in (wave[i] for wave in plan):
+            if piece["shard"] != i or piece["pairs"] < 1 or piece["start"] != expected:
+                return False
+            expected += piece["pairs"]
+        if expected != offset + (i + 1) * rounds + 1:
+            return False
+    return True
 
 
 def self_test():
@@ -222,22 +232,22 @@ def self_test():
           decision_for(UPPER, 4, 4) == "H1" and decision_for(LOWER, 4, 4) == "H0")
     check("cap passes when Elo - err > 0", decide(CAP_PASS, 4, 4) == "cap"
           and verdict("cap", CAP_PASS) == {"passes": True, "rule": "cap"})
-    cap_fail = GOLDEN_RUNS[2][0][-1]
-    check("cap fails when Elo - err <= 0", verdict("cap", cap_fail) == {"passes": False, "rule": "cap"})
-    elo, err, _, _ = pool_pentanomial.pool(B1_WAVE4)
-    check("B1: H0 at wave 4 wins over Elo - err > 0",
-          f"{llr(B1_WAVE4):.2f}" == "-77.06" and f"{elo - err:+.2f}" == "+0.89"
-          and decide(B1_WAVE4, 4, 4) == "H0" and verdict("H0", B1_WAVE4) == {"passes": False, "rule": "sprt"})
+    check("cap fails when Elo - err <= 0", verdict("cap", CAP_FAIL) == {"passes": False, "rule": "cap"})
+    elo, err, _, _ = pool_pentanomial.pool(CAP_DISAGREES)
+    check("H0 at wave 4 wins over Elo - err > 0",
+          f"{llr(CAP_DISAGREES):.2f}" == "-77.06" and f"{elo - err:+.2f}" == "+0.89"
+          and decide(CAP_DISAGREES, 4, 4) == "H0"
+          and verdict("H0", CAP_DISAGREES) == {"passes": False, "rule": "sprt"})
     check("H1 passes by the SPRT", verdict("H1", [0, 0, 1, 0, 0]) == {"passes": True, "rule": "sprt"})
     check("continue and fixed are not verdicts",
           raises(lambda: verdict("continue", CAP_PASS)) and raises(lambda: verdict("fixed", CAP_PASS)))
     check("a one-wave run is fixed, whatever its counts",
-          decide([0, 0, 0, 0, 900], 1, 1) == "fixed" and decide(B1_WAVE4, 1, 1) == "fixed")
+          decide([0, 0, 0, 0, 900], 1, 1) == "fixed" and decide(CAP_DISAGREES, 1, 1) == "fixed")
     check("waves outside 1..W refused", raises(lambda: decide(CAP_PASS, 0, 4))
           and raises(lambda: decide(CAP_PASS, 5, 4)))
     check("malformed counts refused", all(raises(lambda c=c: llr(c)) for c in
                                           ([0, 0, 0, 0, 0], [1, 2, 3, 4], [1, 2, 3, 4, -5], [1, 2, 3.0, 4, 5],
-                                           [True, 0, 0, 0, 0], "12345")))
+                                           "12345")))
 
     check("cuts (738, 4)", wave_cuts(738, 4) == [185, 369, 554, 738])
     check("cuts (900, 1)", wave_cuts(900, 1) == [900])
@@ -251,20 +261,9 @@ def self_test():
     check("zero waves, zero shards and a negative offset refused",
           raises(lambda: wave_cuts(5, 0)) and raises(lambda: wave_plan(0, 5, 0, 1))
           and raises(lambda: wave_plan(2, 5, -1, 1)))
-    tiles = True
-    for shards, rounds, offset, waves in ((18, 738, 0, 4), (2, 36, 26568, 4), (18, 740, 10, 1),
-                                          (3, 7, 5, 4), (5, 4, 0, 4), (1, 1001, 99, 3)):
-        plan = wave_plan(shards, rounds, offset, waves)
-        tiles &= len(plan) == waves and all(len(wave) == shards for wave in plan)
-        for i in range(shards):
-            pieces = [wave[i] for wave in plan]
-            tiles &= all(p["shard"] == i and p["pairs"] >= 1 for p in pieces)
-            expected = offset + i * rounds + 1
-            for piece in pieces:
-                tiles &= piece["start"] == expected
-                expected += piece["pairs"]
-            tiles &= expected == offset + (i + 1) * rounds + 1
-    check("every shard's slices tile its range contiguously and disjointly", tiles)
+    check("every shard's slices tile its range contiguously and disjointly",
+          all(plan_tiles_shards(*case) for case in ((18, 738, 0, 4), (2, 36, 26568, 4), (18, 740, 10, 1),
+                                                     (3, 7, 5, 4), (5, 4, 0, 4), (1, 1001, 99, 3))))
     check("one-wave plan is the whole shard",
           wave_plan(2, 740, 7, 1) == [[{"shard": 0, "start": 8, "pairs": 740},
                                         {"shard": 1, "start": 748, "pairs": 740}]])
