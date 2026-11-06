@@ -84,7 +84,7 @@ def summarize(root, env, needs):
     run(root, 'Summarize the waves', {**env, 'NEEDS': json.dumps(needs), 'GITHUB_OUTPUT': output.as_posix()})
     summary = outputs(output)
     names = {'outcome': 'OUTCOME', 'wave': 'WAVE', 'reason': 'REASON', 'counts': 'COUNTS', 'pairs': 'PAIRS',
-             'heading': 'HEADING', 'games': 'WAVED_GAMES', 'replayed': 'REPLAYED', 'repair_plan': 'REPAIR_PLAN'}
+             'heading': 'HEADING', 'waved_games': 'WAVED_GAMES', 'replayed': 'REPLAYED', 'repair_plan': 'REPAIR_PLAN'}
     assert set(summary) == set(names), summary
     return {names[key]: value for key, value in summary.items()}
 
@@ -176,7 +176,8 @@ def publication_gates():
         section = workflow.split(f'\n  {job}:\n')[1]
         python = re.search(r'(?m)^    if: \$\{\{ (.+) \}\}$', section)[1]
         for name, variable in (('!cancelled()', 'not cancelled'), ('&&', ' and '), ('||', ' or '),
-                               ('needs.aggregate.outputs.', ''), ('needs.publish.result', 'publish')):
+                               ('needs.aggregate.outputs.', ''), ('needs.publish.result', 'publish'),
+                               ('needs.setup.outputs.waves', 'waves')):
             python = python.replace(name, variable)
         return python
 
@@ -184,18 +185,20 @@ def publication_gates():
     for joined in ('true', 'false'):
         for cancelled in (False, True):
             assert eval(publish, {}, dict(joined=joined, cancelled=cancelled)) == (joined == 'true' and not cancelled)
-    table = [  # pooled, repair_plan, joined, publish, marked
-        ('success', '[1]', 'false', 'skipped', True),
-        ('success', '[1]', 'true', 'success', True),
-        ('success', '[1]', 'true', 'failure', False),
-        ('success', '[1]', 'true', 'cancelled', False),
-        ('success', '', 'false', 'skipped', False),
-        ('failure', '[1]', 'false', 'skipped', False),
-        ('skipped', '[1]', 'true', 'success', False)]
-    for pooled, repair_plan, joined, published, marked in table:
-        scope = dict(pooled=pooled, repair_plan=repair_plan, joined=joined, publish=published, cancelled=False)
+    table = [  # pooled, repair_plan, waves, publish, marked
+        ('success', '[1]', 1, 'skipped', True),
+        ('success', '[1]', 4, 'success', True),
+        ('success', '[1]', 4, 'failure', False),
+        ('success', '[1]', 4, 'cancelled', False),
+        # The pool succeeded but the joined upload failed, so publish never ran.
+        ('success', '[1]', 4, 'skipped', False),
+        ('success', '', 1, 'skipped', False),
+        ('failure', '[1]', 1, 'skipped', False),
+        ('skipped', '[1]', 4, 'success', False)]
+    for pooled, repair_plan, waves, published, marked in table:
+        scope = dict(pooled=pooled, repair_plan=repair_plan, waves=waves, publish=published, cancelled=False)
         assert eval(mark, {}, scope) == marked, (scope, mark)
-    assert 'needs: [aggregate, publish]' in workflow.split('\n  mark:\n')[1].split('\n\n')[0]
+    assert 'needs: [setup, aggregate, publish]' in workflow.split('\n  mark:\n')[1].split('\n\n')[0]
     print(f'PASS: joined shards publish after the pool, the marker after every shard, in {len(table)} outcomes')
 
 def artifact_names():
@@ -470,7 +473,24 @@ def waved_batch(base, base_env):
     assert json.loads((root / 'repair-plan.json').read_text()) == [{'wave': 2, 'slices': json.loads(waves[1][1]['slices'])}]
     print('PASS: a run at the cap joins, verifies and pools all four waves, reports each and marks its repair')
 
-    # Stopped at wave 2: the later waves never ran, so their slices do not exist.
+    # A stop at wave k: the later waves never ran, so their slices do not exist.
+    (root / 'later').mkdir()
+    for k, decision, heading, pooled in ((1, 'H1', 'passes (SPRT H1, wave 1 of 4)', '[0, 0, 1, 0, 1]'),
+                                         (2, 'H0', 'does not pass (SPRT H0, wave 2 of 4)', '[0, 0, 3, 0, 1]'),
+                                         (3, 'H1', 'passes (SPRT H1, wave 3 of 4)', '[0, 0, 5, 0, 1]')):
+        unplayed = [sprt.slice_artifact(1, j, 4, shard) for j in range(k + 1, 5) for shard in range(2)]
+        for name in unplayed:
+            shutil.move(root / f'slices/{name}', root / f'later/{name}')
+        steps, report = aggregate(*waves[:k - 1], (waves[k - 1][0], {**waves[k - 1][1], 'decision': decision}))
+        for name in unplayed:
+            shutil.move(root / f'later/{name}', root / f'slices/{name}')
+        assert report.startswith(f'## Strength lab (calibration) — {heading}\n'), report
+        assert f'| Games | {4 * k} of 16 planned = 2 shards × {k} of 4 waves, stopped by SPRT {decision} |' in report
+        assert len(re.findall(r'(?m)^\| [1-4] \| ', report)) == k and f'Pooled Ptnml(0-2): {pooled}' in report
+        assert ('| Replayed | wave 2: shard 1, 1 slice (runner lost) |' in report) == (k >= 2), report
+    print('PASS: stops at waves 1, 2 and 3 join, pool and report only the waves played')
+    (root / 'later').rmdir()
+
     stopped = [waves[0], (waves[1][0], {**waves[1][1], 'decision': 'H1'})]
     later = [sprt.slice_artifact(1, k, 4, shard) for k in (3, 4) for shard in range(2)]
     steps = summarized(*stopped)
@@ -479,11 +499,7 @@ def waved_batch(base, base_env):
     (root / 'later').mkdir()
     for name in later:
         shutil.move(root / f'slices/{name}', root / f'later/{name}')
-    steps, report = aggregate(*stopped)
-    assert report.startswith('## Strength lab (calibration) — passes (SPRT H1, wave 2 of 4)\n'), report
-    assert '| Games | 8 of 16 planned = 2 shards × 2 of 4 waves, stopped by SPRT H1 |' in report
-    assert len(re.findall(r'(?m)^\| [1-4] \| ', report)) == 2 and 'Pooled Ptnml(0-2): [0, 0, 3, 0, 1]' in report
-    print('PASS: a run stopped at wave 2 joins, pools and reports only the waves played; a later slice refuses the join')
+    print('PASS: a slice of a wave after the decision refuses the join')
 
     # Every shard job green, and still no figure.
     steps = summarized(waves[0], (waves[1][0], {**stopped[1][1], 'counts': '[0,0,2,0,2]'}))

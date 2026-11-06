@@ -407,9 +407,9 @@ jobs:
           python3 .github/scripts/sprt.py decide --counts "$counts" --prior-counts "$PRIOR_COUNTS" \
             --wave "$WAVE" --waves "$WAVES" --output "$GITHUB_OUTPUT"
 
-      # Under the slice's own name, so PGN sync and the analysis scripts see a
-      # complete batch. One step per shard because the name is per artifact; the
-      # planner repairs at most two.
+      # Under the slice's own name: a fixed run's shard, which PGN sync and the
+      # analysis scripts read, or a waved run's slice, which aggregate joins. One step
+      # per shard because the name is per artifact; the planner repairs at most two.
       - name: Upload the first replayed shard
         if: steps.decide.outcome == 'success' && needs.repair-plan.outputs.lost_a != ''
         uses: actions/upload-artifact@v7

@@ -801,7 +801,7 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           POOL_RESULT: ${{ steps.pool.outcome }}
           HEADING: ${{ steps.summary.outputs.heading }}
-          WAVED_GAMES: ${{ steps.summary.outputs.games }}
+          WAVED_GAMES: ${{ steps.summary.outputs.waved_games }}
           REPLAYED: ${{ steps.summary.outputs.replayed }}
         run: |
           {
@@ -931,8 +931,8 @@ jobs:
   # pooled and every shard it needs is published.
   # ---------------------------------------------------------------------------
   mark:
-    needs: [aggregate, publish]
-    if: ${{ !cancelled() && needs.aggregate.outputs.pooled == 'success' && needs.aggregate.outputs.repair_plan != '' && (needs.aggregate.outputs.joined != 'true' || needs.publish.result == 'success') }}
+    needs: [setup, aggregate, publish]
+    if: ${{ !cancelled() && needs.aggregate.outputs.pooled == 'success' && needs.aggregate.outputs.repair_plan != '' && (needs.setup.outputs.waves == 1 || needs.publish.result == 'success') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:

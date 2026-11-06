@@ -107,11 +107,12 @@ def main():
     joining.add_argument("--target", required=True, help="where the joined shards are written")
     args = parser.parse_args()
     try:
-        join_waves(json.loads(args.wave_plan), args.waves_played, args.run, args.slices, args.target)
+        plan = json.loads(args.wave_plan)
+        join_waves(plan, args.waves_played, args.run, args.slices, args.target)
     except (Refused, ValueError) as error:
         print(f"::error::{error}", file=sys.stderr)
         return 1
-    print(f"Joined waves 1..{args.waves_played} of {len(json.loads(args.wave_plan)[0])} shards into {args.target}")
+    print(f"Joined waves 1..{args.waves_played} of {len(plan[0])} shards into {args.target}")
     return 0
 
 

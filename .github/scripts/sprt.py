@@ -199,7 +199,7 @@ def decide_outputs(counts, wave, waves):
 
 NO_SHARD_RAN = "No shard ran: setup or build did not complete."
 UNDECIDED = "The wave ended `{}` without a decision: a check after the shards failed, or the run was cancelled."
-EMPTY_SUMMARY = dict.fromkeys(("outcome", "wave", "reason", "counts", "pairs", "heading", "games", "replayed",
+EMPTY_SUMMARY = dict.fromkeys(("outcome", "wave", "reason", "counts", "pairs", "heading", "waved_games", "replayed",
                                "repair_plan"), "")
 
 
@@ -231,18 +231,24 @@ def played_waves(needs, waves):
     return played, ""
 
 
+def games_played(plan):
+    """Games across all shards at the end of each wave, the cap last; [0] stands for no wave."""
+    games = [0]
+    for wave in plan:
+        games.append(games[-1] + 2 * sum(piece["pairs"] for piece in wave))
+    return games
+
+
 def sprt_report(plan, played):
     """The waved report's SPRT block: the test's settings and every played wave pooled cumulatively."""
-    shards, cuts = len(plan[0]), [0]
-    for wave in plan:
-        cuts.append(cuts[-1] + wave[0]["pairs"])
-    cap = 2 * shards * cuts[-1]
+    games = games_played(plan)
+    cap = games[-1]
     lines = [f"SPRT [{ELO0:g}, {ELO1:g}], α = β = {ALPHA:g}: H1 at LLR ≥ {UPPER:+.2f}, "
              f"H0 at ≤ {LOWER:+.2f}, cap {cap:,} games".replace("-", "−"), "",
              "| Wave | Games | Elo ± err | LLR | Decision |", "|---|---|---|---|---|"]
     for wave, outputs in enumerate(played, 1):
         elo, err, _, _ = pool_pentanomial.pool(checked_counts(json.loads(outputs["counts"])))
-        lines.append(f"| {wave} | {2 * shards * cuts[wave]:,} | {elo:+.2f} ± {err:.2f} | {outputs['llr']} | "
+        lines.append(f"| {wave} | {games[wave]:,} | {elo:+.2f} ± {err:.2f} | {outputs['llr']} | "
                      f"{outputs['decision']} |")
     return "\n".join(lines) + "\n"
 
@@ -281,9 +287,9 @@ def summarize(needs, calibration):
         summary["heading"] = f"{label} — {'passes' if decision == 'H1' else 'does not pass'} " \
                              f"(SPRT {decision}, wave {wave} of {waves})"
         stop = f"stopped by SPRT {decision}"
-    shards = len(plan[0])
-    cap_games = 2 * shards * sum(planned[0]["pairs"] for planned in plan)
-    summary["games"] = f"{2 * shards * pairs:,} of {cap_games:,} planned = {shards} shards × {wave} of {waves} waves, {stop}"
+    games = games_played(plan)
+    summary["waved_games"] = (f"{games[wave]:,} of {games[-1]:,} planned = {len(plan[0])} shards × {wave} of "
+                              f"{waves} waves, {stop}")
     return summary, sprt_report(plan, played)
 
 
@@ -454,7 +460,7 @@ def self_test():
     check("summarize: H1 at wave 1 heads, counts and sizes the report",
           summary["outcome"] == "H1" and summary["wave"] == "1" and summary["pairs"] == "139"
           and summary["heading"] == "## Strength lab — passes (SPRT H1, wave 1 of 4)"
-          and summary["games"] == "5,004 of 19,980 planned = 18 shards × 1 of 4 waves, stopped by SPRT H1"
+          and summary["waved_games"] == "5,004 of 19,980 planned = 18 shards × 1 of 4 waves, stopped by SPRT H1"
           and summary["counts"] == compact(GOLDEN_RUNS[0][0][0]) and summary["repair_plan"] == "")
     check("summarize: the SPRT block states the test and pools each played wave",
           report.splitlines() == ["SPRT [0, 3], α = β = 0.05: H1 at LLR ≥ +2.94, H0 at ≤ −2.94, cap 19,980 games", "",
@@ -468,7 +474,7 @@ def self_test():
                                       ("success", complete("H0", [446, 1172, 1902, 1057, 427], "-2.97"))), False)
     check("summarize: H0 at wave 2, two rows",
           summary["heading"] == "## Strength lab — does not pass (SPRT H0, wave 2 of 4)"
-          and summary["games"] == "10,008 of 19,980 planned = 18 shards × 2 of 4 waves, stopped by SPRT H0"
+          and summary["waved_games"] == "10,008 of 19,980 planned = 18 shards × 2 of 4 waves, stopped by SPRT H0"
           and summary["pairs"] == "278" and len(report.splitlines()) == 6
           and report.splitlines()[-1].endswith("| -2.97 | H0 |"))
     capped = [("success", complete("continue", counts, f"{llr(counts):+.2f}")) for counts in GOLDEN_RUNS[2][0][:3]]
@@ -476,7 +482,7 @@ def self_test():
                                   ("fails", CAP_FAIL, "## Strength lab — does not pass at the cap")):
         summary, report = summarize(needs(golden_plan, *capped, ("success", complete("cap", counts, "-1.12"))), False)
         check(f"summarize: the cap {name} by Elo - err", summary["heading"] == heading and summary["wave"] == "4"
-              and summary["games"] == "19,980 of 19,980 planned = 18 shards × 4 of 4 waves, undecided at the cap"
+              and summary["waved_games"] == "19,980 of 19,980 planned = 18 shards × 4 of 4 waves, undecided at the cap"
               and len(report.splitlines()) == 8)
     for name, wave3, reason in (
             ("a discard at wave 3", ("failure", discard), "Wave 3: " + discard["reason"]),
