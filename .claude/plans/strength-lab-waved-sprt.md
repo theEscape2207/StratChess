@@ -160,9 +160,13 @@ The outputs are the wave workflow's contract with `strength.yml`:
 - **Decision at wave k:** a crossing gives `H1` or `H0`. Otherwise the result is `continue` for
   k < W and `cap` for k = W.
 - **Run verdict:** `H1` passes and `H0` does not. `cap` passes only if `Elo − err > 0` on the full
-  batch, pooled by `pool_pentanomial.pool()`. At Full, an H1 crossing needs about +3.8 Elo and an H0
-  crossing about −0.8, against the fallback's +3.0, so the two rules cannot disagree at the cap.
-  Checking for a crossing first is safe.
+  batch, pooled by `pool_pentanomial.pool()`. **A crossing takes priority, at wave 4 as at any
+  other.** The fallback applies only to a run still undecided at the cap, which is the owner's rule
+  and what the spike's code does. The two rules can disagree at the cap. Review B1's distribution
+  does it: cumulatively 29, 57, 86 and 86 pairs in the ¾ bucket and the rest in ½, at 3,330, 6,642,
+  9,972 and 13,284 pairs. The SPRT accepts H0 at wave 4 (LLR −77.06), while `Elo − err` is +0.89,
+  and the run does not pass. That case needs no lost pairs, no 2–0 pairs and an all-drawn wave 4,
+  and the archived runs show nothing like it. The slice 1 self-test pins this case.
 - **Guard in `setup`:** `sprt=true` requires `games=26568` and `shards=18`, the cap the simulation
   validated. `calibration=true` lifts this guard, so a small null run can exercise all four waves
   (slice 3). Even then `sprt` needs R ≥ 4 after rounding, because R ≤ 3 leaves a wave with no
@@ -320,7 +324,8 @@ input ships before the docs adopt it, so the end-to-end checks in slice 3 can ru
   and one cap, with the LLR that `replay.py`'s `llr()` gives each. Run ids sit in the comments, as in
   `SELF_TEST_CASES`.
 - **The bounds.** Exact values, and inclusivity tested at the computed thresholds, not at rounded
-  literals. Also v = 0, both directions of the cap fallback, and `continue` before W.
+  literals. Also v = 0, both directions of the cap fallback, `continue` before W, and review B1's
+  disagreement case, where H0 at wave 4 wins over `Elo − err > 0`.
 - **The plan.** Cuts for (R, W) = (738, 4), (900, 1) and (7, 4). For several (S, R, offset, W),
   every shard's slices must tile its range contiguously and disjointly. The R ≥ 4 guard refuses
   R = 3 and accepts R = 4.
@@ -512,7 +517,7 @@ Then read A3 and A4 from the first waved Full runs and record them under the iss
 |---|---|
 | Wave orchestration, artifact names, decide outputs (D1, D4, D6) | `Docs/CI.md` → Strength lab; header comment of `strength-wave.yml` |
 | Why fixed runs are one wave (D2) | `Docs/CI.md` → Strength lab |
-| LLR formula, bounds, cap fallback and why they cannot disagree (D5) | `sprt.py` docstring |
+| LLR formula, bounds, cap fallback and why a crossing takes priority over it (D5) | `sprt.py` docstring |
 | Repair blocks; per-run limit arithmetic (D8) | `plan_repair.py` docstring; `strength-lab.md` → Repairing a lost shard |
 | Ship rule and dispatch (D5, D10) | `measure-strength` → `reference/strength-lab.md` |
 | Stopped-run ledger rules (D9) | `Measurements/README.md` |
