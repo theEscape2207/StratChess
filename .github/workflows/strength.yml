@@ -8,7 +8,9 @@ name: Strength lab
 #
 # The batch is sharded across parallel matrix jobs and pooled at the end. Each
 # shard plays a disjoint slice of the opening book, so the shards are one batch
-# split up rather than several batches averaged.
+# split up rather than several batches averaged. The shard jobs, their repair and
+# the job that closes them live in strength-wave.yml, called here as wave-1; a
+# fixed-size run is that workflow's one-wave case.
 #
 # workflow_dispatch only, deliberately: a measurement harness that is wrong is
 # worse than none, because its output looks exactly like a measurement. It gets
@@ -109,8 +111,9 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
-      shard_list: ${{ steps.plan.outputs.shard_list }}
       rounds_per_shard: ${{ steps.plan.outputs.rounds_per_shard }}
+      waves: ${{ steps.waves.outputs.waves }}
+      wave_plan: ${{ steps.waves.outputs.wave_plan }}
       games_per_shard: ${{ steps.plan.outputs.games_per_shard }}
       actual_games: ${{ steps.plan.outputs.actual_games }}
       reference_sha: ${{ steps.reference.outputs.reference_sha }}
@@ -247,9 +250,7 @@ jobs:
             echo "::warning::Requested $GAMES games; playing $actual_games so every shard gets $rounds_per_shard whole pairs."
           fi
 
-          shard_list=$(seq 0 $(( SHARDS - 1 )) | jq -sRc 'split("\n") | map(select(length > 0) | tonumber)')
           {
-            echo "shard_list=$shard_list"
             echo "rounds_per_shard=$rounds_per_shard"
             echo "games_per_shard=$games_per_shard"
             echo "actual_games=$actual_games"
@@ -304,6 +305,22 @@ jobs:
           echo "shard_arms=$shard_arms" >> "$GITHUB_OUTPUT"
           python3 .github/scripts/plan_arms.py list --arms "$CANDIDATE_ARMS"
 
+      # Fixed before any game, so no result can choose which pairs a wave plays.
+      # Every run is fixed-size here: one wave, whose slices are the whole shards.
+      - name: Plan the waves
+        id: waves
+        env:
+          SHARDS: ${{ inputs.shards }}
+          ROUNDS: ${{ steps.plan.outputs.rounds_per_shard }}
+          OPENING_OFFSET: ${{ inputs.opening_offset }}
+        run: |
+          set -euo pipefail
+          # opening_offset was checked by Plan the arms.
+          waves=1
+          echo "waves=$waves" >> "$GITHUB_OUTPUT"
+          python3 .github/scripts/sprt.py plan --shards "$SHARDS" --rounds "$ROUNDS" \
+            --opening-offset "$OPENING_OFFSET" --waves "$waves" --output "$GITHUB_OUTPUT"
+
   # ---------------------------------------------------------------------------
   # Build both engines and stage the harness ONCE. Across 18 shards this saves
   # ~1 hour of duplicated runner time, but the real argument is correctness:
@@ -319,6 +336,7 @@ jobs:
       cand_name: ${{ steps.stage.outputs.cand_name }}
       ref_name: ${{ steps.stage.outputs.ref_name }}
       openings: ${{ steps.stage.outputs.openings }}
+      book_file: ${{ steps.stage.outputs.book_file }}
     steps:
       # fetch-depth: 0 for the tags and history the reference checkout needs.
       - uses: actions/checkout@v7
@@ -421,6 +439,7 @@ jobs:
             echo "cand_name=candidate-$cand_sha"
             echo "ref_name=reference-$ref_sha"
             echo "openings=$openings"
+            echo "book_file=$BOOK_FILE"
           } >> "$GITHUB_OUTPUT"
 
       # Resolve defaults even with empty overrides, against the staged binaries
@@ -480,176 +499,43 @@ jobs:
           retention-days: 1
 
   # ---------------------------------------------------------------------------
-  # One job per shard. Each plays a disjoint, contiguous slice of the book, so
-  # the shards of one arm together are exactly the batch a single job would
-  # have played.
+  # The run's shard jobs, their repair and the job that closes them, as one wave
+  # (strength-wave.yml). The scope granted here is the most its repair planner can
+  # hold: it reads the run's jobs, their annotations and its artifacts.
   # ---------------------------------------------------------------------------
-  match:
+  wave-1:
     needs: [setup, build]
-    runs-on: ubuntu-26.04
-    # A 1110-game shard at 10+0.1 with concurrency 3 runs ~172 min. This leaves
-    # headroom without touching the 6 h job cap. Shard time scales with
-    # games / concurrency, so concurrency 1 needs a third of the games.
-    timeout-minutes: 340
-    strategy:
-      # One shard failing must not cancel the rest: the aggregator refuses to
-      # pool a partial batch anyway, and the surviving PGNs are still worth
-      # having for diagnosis.
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(needs.setup.outputs.shard_list) }}
-    steps:
-      - name: Download the toolkit
-        uses: actions/download-artifact@v8
-        with:
-          name: strength-${{ github.run_id }}-toolkit
-          path: ${{ runner.temp }}/tools
-
-      - name: Run shard ${{ matrix.shard }}
-        id: match
-        # Inputs reach the shell as environment variables rather than through
-        # ${{ }} interpolation into the command line, which would splice their
-        # text into the script.
-        env:
-          SHARD: ${{ matrix.shard }}
-          ROUNDS: ${{ needs.setup.outputs.rounds_per_shard }}
-          CANDIDATE_TC: ${{ inputs.candidate_tc }}
-          REFERENCE_TC: ${{ inputs.reference_tc }}
-          MATCH_CONCURRENCY: ${{ inputs.concurrency }}
-          THREADS: ${{ inputs.threads }}
-          CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
-          REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
-          ARM_LABEL: ${{ fromJSON(needs.setup.outputs.shard_arms)[matrix.shard].label }}
-          ARM_OPTIONS: ${{ fromJSON(needs.setup.outputs.shard_arms)[matrix.shard].options }}
-          OPENING_OFFSET: ${{ inputs.opening_offset }}
-          CAND_NAME: ${{ needs.build.outputs.cand_name }}
-          REF_NAME: ${{ needs.build.outputs.ref_name }}
-        run: |
-          set -euo pipefail
-          # Disjointness is arithmetic, not file surgery: with order=sequential,
-          # shard i starting at i*ROUNDS+1 and playing ROUNDS pairs consumes
-          # openings [i*R+1, (i+1)*R], which cannot overlap another shard's.
-          # start= is 1-based. The offset moves the whole batch, keeping it
-          # disjoint from another run's.
-          START=$(( OPENING_OFFSET + SHARD * ROUNDS + 1 ))
-          export START
-          bash "$RUNNER_TEMP/tools/play_shard.sh"
-
-      # Always runs, so a killed or crashed shard still yields its PGN -- the
-      # games played up to that point are the evidence of what went wrong.
-      # The name must be unique per shard: upload-artifact@v4+ errors on a
-      # duplicate name within a run.
-      - name: Upload shard PGN and log
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: strength-${{ github.run_id }}-shard-${{ matrix.shard }}
-          path: |
-            ${{ runner.temp }}/match/match.pgn
-            ${{ runner.temp }}/match/match.log
-            ${{ runner.temp }}/match/cpu.tsv
-          if-no-files-found: warn
-          retention-days: 90
-
-  # ---------------------------------------------------------------------------
-  # Decide whether the failed shards were runners lost to infrastructure. A replay
-  # at the same openings completes the batch designed rather than selecting from
-  # it, so it does not carry the bias that discards a partial batch. Only attempt 1
-  # repairs, so nothing has to say which attempt produced which artifact. Criteria:
-  # plan_repair.py. !cancelled() because a job's implicit success() is false once a
-  # shard has failed.
-  # ---------------------------------------------------------------------------
-  repair-plan:
-    needs: [setup, build, match]
-    if: ${{ !cancelled() && needs.match.result == 'failure' && github.run_attempt == '1' }}
-    runs-on: ubuntu-26.04
-    timeout-minutes: 5
     permissions:
       actions: read
       checks: read
       contents: read
-    outputs:
-      status: ${{ steps.plan.outputs.status }}
-      reason: ${{ steps.plan.outputs.reason }}
-      slices: ${{ steps.plan.outputs.slices }}
-      lost_a: ${{ steps.plan.outputs.lost_a }}
-      lost_b: ${{ steps.plan.outputs.lost_b }}
-      replayed: ${{ steps.plan.outputs.replayed }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Plan the repair
-        id: plan
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHARDS: ${{ inputs.shards }}
-          ROUNDS: ${{ needs.setup.outputs.rounds_per_shard }}
-          OPENING_OFFSET: ${{ inputs.opening_offset }}
-          CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
-        run: |
-          set -euo pipefail
-          python3 .github/scripts/plan_repair.py plan \
-            --repo "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID" --shards "$SHARDS" --rounds "$ROUNDS" \
-            --opening-offset "$OPENING_OFFSET" --arms "$CANDIDATE_ARMS" --output "$GITHUB_OUTPUT"
-
-  # ---------------------------------------------------------------------------
-  # Replay the lost shards' pairs as small jobs, from the batch's own toolkit, so
-  # binaries, book and settings are the same by construction. A lost replay is not
-  # retried: it discards the batch, and the manual repair still works.
-  # ---------------------------------------------------------------------------
-  repair:
-    needs: [setup, build, match, repair-plan]
-    if: ${{ !cancelled() && needs.repair-plan.result == 'success' && needs.repair-plan.outputs.status == 'repair' }}
-    name: repair (${{ matrix.slice.shard }}.${{ matrix.slice.index }})
-    runs-on: ubuntu-26.04
-    timeout-minutes: 340
-    strategy:
-      fail-fast: false
-      matrix:
-        slice: ${{ fromJSON(needs.repair-plan.outputs.slices) }}
-    steps:
-      - name: Download the toolkit
-        uses: actions/download-artifact@v8
-        with:
-          name: strength-${{ github.run_id }}-toolkit
-          path: ${{ runner.temp }}/tools
-
-      - name: Replay shard ${{ matrix.slice.shard }} slice ${{ matrix.slice.index }}
-        env:
-          SHARD: ${{ matrix.slice.shard }}.${{ matrix.slice.index }}
-          START: ${{ matrix.slice.start }}
-          ROUNDS: ${{ matrix.slice.pairs }}
-          CANDIDATE_TC: ${{ inputs.candidate_tc }}
-          REFERENCE_TC: ${{ inputs.reference_tc }}
-          MATCH_CONCURRENCY: ${{ inputs.concurrency }}
-          THREADS: ${{ inputs.threads }}
-          CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
-          REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
-          # The planner refuses a multi-arm run.
-          ARM_LABEL: ""
-          ARM_OPTIONS: ""
-          CAND_NAME: ${{ needs.build.outputs.cand_name }}
-          REF_NAME: ${{ needs.build.outputs.ref_name }}
-        run: bash "$RUNNER_TEMP/tools/play_shard.sh"
-
-      - name: Upload slice PGN and log
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: strength-${{ github.run_id }}-replay-${{ matrix.slice.shard }}-${{ matrix.slice.index }}
-          path: |
-            ${{ runner.temp }}/match/match.pgn
-            ${{ runner.temp }}/match/match.log
-            ${{ runner.temp }}/match/cpu.tsv
-          if-no-files-found: warn
-          retention-days: 90
+    uses: ./.github/workflows/strength-wave.yml
+    with:
+      wave: 1
+      waves: ${{ fromJSON(needs.setup.outputs.waves) }}
+      wave_plan: ${{ needs.setup.outputs.wave_plan }}
+      slices: ${{ toJSON(fromJSON(needs.setup.outputs.wave_plan)[0]) }}
+      prior_lost: 0
+      sprt: false
+      book_file: ${{ needs.build.outputs.book_file }}
+      opening_offset: ${{ inputs.opening_offset }}
+      candidate_tc: ${{ inputs.candidate_tc }}
+      reference_tc: ${{ inputs.reference_tc }}
+      concurrency: ${{ inputs.concurrency }}
+      threads: ${{ inputs.threads }}
+      candidate_uci_options: ${{ inputs.candidate_uci_options }}
+      reference_uci_options: ${{ inputs.reference_uci_options }}
+      candidate_arms: ${{ inputs.candidate_arms }}
+      shard_arms: ${{ needs.setup.outputs.shard_arms }}
+      cand_name: ${{ needs.build.outputs.cand_name }}
+      ref_name: ${{ needs.build.outputs.ref_name }}
 
   # ---------------------------------------------------------------------------
   # Pool the shards into one figure per arm. Runs even when a shard failed, so the
   # summary explains the discard rather than leaving a red X with no reason.
   # ---------------------------------------------------------------------------
   aggregate:
-    needs: [setup, build, match, repair-plan, repair]
+    needs: [setup, build, wave-1]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 15
@@ -661,28 +547,26 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # A biased subset wearing a full batch's error bar is worse than no
-      # result: if three shards of twenty died, the surviving seventeen are not
-      # a random sample of the batch -- they are the ones that happened not to
-      # hit whatever went wrong. Refuse before pooling anything. The one exception
-      # is a fully repaired batch, which has every designed pair; see repair-plan.
+      # The wave's decide job refused a partial wave or failed a check; either way
+      # nothing pools. Its outputs, not which artifacts exist, say which.
       - name: Refuse a partial batch
-        if: ${{ !(needs.match.result == 'success' || (needs.match.result == 'failure' && github.run_attempt == '1' && needs.repair-plan.result == 'success' && needs.repair-plan.outputs.status == 'repair' && needs.repair.result == 'success')) }}
+        if: ${{ needs.wave-1.outputs.status != 'complete' }}
         env:
-          PLAN_REASON: ${{ needs.repair-plan.outputs.reason }}
-          REPAIR_RESULT: ${{ needs.repair.result }}
+          WAVE_STATUS: ${{ needs.wave-1.outputs.status }}
+          WAVE_REASON: ${{ needs.wave-1.outputs.reason }}
+          WAVE_RESULT: ${{ needs.wave-1.result }}
         run: |
           {
             echo "## Strength lab — DISCARDED"
             echo
-            echo "Shard jobs reported \`${{ needs.match.result }}\`. A batch with a failed shard is"
-            echo "not a smaller batch, it is a biased one: the surviving shards are those that"
-            echo "happened to avoid whatever went wrong. No pooled figure is reported."
-            echo
-            if [ -n "$PLAN_REASON" ]; then echo "Not repaired: $PLAN_REASON."; fi
-            if [ "$REPAIR_RESULT" = "failure" ] || [ "$REPAIR_RESULT" = "cancelled" ]; then
-              echo "The repair was $REPAIR_RESULT."
+            if [ "$WAVE_STATUS" = "discarded" ]; then
+              echo "$WAVE_REASON"
+            else
+              echo "The wave ended \`$WAVE_RESULT\` without a decision: a check after the shards failed, or the run was cancelled."
             fi
+            echo
+            echo "A batch with a failed shard is not a smaller batch, it is a biased one: the surviving"
+            echo "shards are those that happened to avoid whatever went wrong. No pooled figure is reported."
             echo "Check the individual shard logs. A manual repair may still apply: measure-strength, strength-lab.md."
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
@@ -702,29 +586,14 @@ jobs:
           name: strength-${{ github.run_id }}-comparison
           path: evidence
 
-      - name: Download the replayed slices
-        if: needs.repair.result == 'success'
-        uses: actions/download-artifact@v8
-        with:
-          pattern: strength-${{ github.run_id }}-replay-*
-          path: replays
-
-      # The verify and pool below then see the designed batch, unchanged, and count
-      # a replay as the one shard it replaces.
-      - name: Assemble the replayed shards
-        if: needs.repair.result == 'success'
+      # Replayed shards were assembled, verified and uploaded under their shard
+      # names by the wave's decide job; this is the plan the marker carries.
+      - name: Record the repair plan
+        if: needs.wave-1.outputs.lost_a != ''
         env:
-          SLICES: ${{ needs.repair-plan.outputs.slices }}
-          ROUNDS: ${{ needs.setup.outputs.rounds_per_shard }}
-          OPENING_OFFSET: ${{ inputs.opening_offset }}
-          CAND_NAME: ${{ needs.build.outputs.cand_name }}
-          REF_NAME: ${{ needs.build.outputs.ref_name }}
+          SLICES: ${{ needs.wave-1.outputs.slices }}
         run: |
           set -euo pipefail
-          python3 .github/scripts/plan_repair.py assemble \
-            --slices "$SLICES" --run "$GITHUB_RUN_ID" --rounds "$ROUNDS" --opening-offset "$OPENING_OFFSET" \
-            --candidate-name "$CAND_NAME" --reference-name "$REF_NAME" --book "evidence/$BOOK_FILE" \
-            --replays replays --shards shards
           printf '%s\n' "$SLICES" > repair-plan.json
 
       - name: Verify the complete batch
@@ -784,30 +653,9 @@ jobs:
           mv /tmp/pooled.pending.md /tmp/pooled.md
           cat /tmp/pooled.md
 
-      # Under the shard name, so PGN sync and the analysis scripts see a complete
-      # batch. One step per shard because the name is per artifact; the planner
-      # repairs at most two.
-      - name: Upload the first replayed shard
-        if: steps.pool.outcome == 'success' && needs.repair-plan.outputs.lost_a != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: strength-${{ github.run_id }}-shard-${{ needs.repair-plan.outputs.lost_a }}
-          path: shards/strength-${{ github.run_id }}-shard-${{ needs.repair-plan.outputs.lost_a }}
-          if-no-files-found: error
-          retention-days: 90
-
-      - name: Upload the second replayed shard
-        if: steps.pool.outcome == 'success' && needs.repair-plan.outputs.lost_b != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: strength-${{ github.run_id }}-shard-${{ needs.repair-plan.outputs.lost_b }}
-          path: shards/strength-${{ github.run_id }}-shard-${{ needs.repair-plan.outputs.lost_b }}
-          if-no-files-found: error
-          retention-days: 90
-
       # Last: a repaired run stays red, and this marker is what tells PGN sync it pooled.
       - name: Mark the run as repaired
-        if: steps.pool.outcome == 'success' && needs.repair-plan.outputs.lost_a != ''
+        if: steps.pool.outcome == 'success' && needs.wave-1.outputs.lost_a != ''
         uses: actions/upload-artifact@v7
         with:
           name: strength-${{ github.run_id }}-repair
@@ -830,7 +678,7 @@ jobs:
           THREADS: ${{ inputs.threads }}
           BUILD_RESULT: ${{ needs.build.result }}
           POOL_RESULT: ${{ steps.pool.outcome }}
-          REPLAYED: ${{ needs.repair-plan.outputs.replayed }}
+          REPLAYED: ${{ needs.wave-1.outputs.replayed }}
         run: |
           {
             if [ "$POOL_RESULT" = "success" ]; then

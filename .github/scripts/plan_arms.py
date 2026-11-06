@@ -13,6 +13,7 @@ shards only, so an arm is just a smaller batch against the shared reference.
                                               the logs of LABEL's shards, one per line
   plan_arms.py verify --arms STR --shards N --rounds-per-shard N --opening-offset N
                      --candidate-name STR --reference-name STR --book PATH --shard-root PATH
+                     [--pairs-per-shard N]
                                               validate the whole batch before pooling
 
 An empty --arms is the single-candidate run: matrix gives every shard an empty
@@ -152,14 +153,20 @@ def same_start(actual, assigned):
     return actual[:3] == assigned[:3] and actual[3] in (assigned[3], "-")
 
 
-def verify_batch(arms, shards, rounds, offset, candidate, reference, book, root):
+def verify_batch(arms, shards, rounds, offset, candidate, reference, book, root, pairs=None):
     """Assert artifact, routing, assigned-start and completion consistency for every shard.
+
+    Shard i starts at opening offset + i*rounds and played `pairs` of them, rounds by default; a wave
+    slice plays fewer pairs than the shard's spacing.
 
     Only round one's opening assignment is checked; this does not establish move
     legality, every opening's assignment, or tamper-proof artifact provenance.
     """
+    pairs = rounds if pairs is None else pairs
     if shards <= 0 or rounds <= 0 or offset < 0:
         raise PlanError("shards and rounds-per-shard must be positive; opening-offset nonnegative")
+    if not 0 < pairs <= rounds:
+        raise PlanError(f"pairs-per-shard must be in 1..{rounds}, got {pairs}")
     if not candidate or not reference or candidate == reference:
         raise PlanError("distinct nonempty candidate-name and reference-name are required")
     routing = matrix(arms, shards)
@@ -206,10 +213,10 @@ def verify_batch(arms, shards, rounds, offset, candidate, reference, book, root)
         pgn = os.path.join(directory, "match.pgn")
         if not os.path.isfile(log) or not os.path.isfile(pgn):
             raise PlanError(f"{directory}: both match.log and match.pgn are required")
-        pool_pentanomial.read_shard(log, rounds)
+        pool_pentanomial.read_shard(log, pairs)
         games = read_pgn_headers(pgn)
-        if len(games) != 2 * rounds:
-            raise PlanError(f"{pgn}: expected {2 * rounds} games, got {len(games)}")
+        if len(games) != 2 * pairs:
+            raise PlanError(f"{pgn}: expected {2 * pairs} games, got {len(games)}")
         arm = routing[shard]["label"]
         expected_candidate = candidate + (f"-arm{arm}" if arm else "")
         expected_colours = {(expected_candidate, reference), (reference, expected_candidate)}
@@ -222,11 +229,11 @@ def verify_batch(arms, shards, rounds, offset, candidate, reference, book, root)
             if not re.fullmatch(r"[1-9][0-9]*", round_text):
                 raise PlanError(f"{pgn}: missing or invalid Round header {round_text!r}")
             round_number = int(round_text)
-            if round_number > rounds:
-                raise PlanError(f"{pgn}: round {round_number} outside 1..{rounds}")
+            if round_number > pairs:
+                raise PlanError(f"{pgn}: round {round_number} outside 1..{pairs}")
             by_round.setdefault(round_number, []).append(game)
-        if set(by_round) != set(range(1, rounds + 1)):
-            raise PlanError(f"{pgn}: missing round(s) {sorted(set(range(1, rounds + 1)) - set(by_round))}")
+        if set(by_round) != set(range(1, pairs + 1)):
+            raise PlanError(f"{pgn}: missing round(s) {sorted(set(range(1, pairs + 1)) - set(by_round))}")
         for round_number, pair in by_round.items():
             if len(pair) != 2 or {(game["White"], game["Black"]) for game in pair} != expected_colours:
                 raise PlanError(f"{pgn}: round {round_number} requires two opposite-colour games")
@@ -403,6 +410,15 @@ def self_test():
     cli_case("CLI omitted book refused", omitted=["--book"])
     for flag, value in (("--rounds-per-shard", "0"), ("--shards", "0"), ("--opening-offset", "-1")):
         cli_case(f"CLI invalid {flag} refused", overrides=[flag, value])
+    # A wave slice: each shard played its first pair only, starts still spaced by the shard's rounds.
+    first_pair_only = [(log0, "[0, 0, 2", "[0, 0, 1"), (log1, "[0, 0, 2", "[0, 0, 1")] + [
+        (pgn, game(2, white, black, second_fen), "") for pgn in (pgn0, pgn1)
+        for white, black in ((candidate, reference), (reference, candidate))]
+    cli_case("CLI wave slice verifies with --pairs-per-shard", replacements=first_pair_only,
+             overrides=["--pairs-per-shard", "1"], success=True)
+    cli_case("CLI wave slice refused without --pairs-per-shard", replacements=first_pair_only)
+    cli_case("CLI --pairs-per-shard above the spacing refused", overrides=["--pairs-per-shard", "3"])
+    cli_case("CLI full shards refused at --pairs-per-shard 1", overrides=["--pairs-per-shard", "1"])
 
     with tempfile.TemporaryDirectory() as root:
         book = os.path.join(root, "book.epd")
@@ -452,6 +468,8 @@ def main():
     parser.add_argument("--shards", type=int, default=0)
     parser.add_argument("--arm", default="")
     parser.add_argument("--rounds-per-shard", type=pool_pentanomial.positive_int)
+    parser.add_argument("--pairs-per-shard", type=pool_pentanomial.positive_int,
+                        help="pairs each shard played, for a wave slice; defaults to --rounds-per-shard")
     parser.add_argument("--opening-offset", type=int)
     parser.add_argument("--candidate-name")
     parser.add_argument("--reference-name")
@@ -482,8 +500,9 @@ def main():
             if missing:
                 raise PlanError("verify requires " + ", ".join(missing))
             verify_batch(arms, args.shards, args.rounds_per_shard, args.opening_offset,
-                         args.candidate_name, args.reference_name, args.book, args.shard_root)
-            print(f"Verified {args.shards} shards with {args.rounds_per_shard} pairs each.")
+                         args.candidate_name, args.reference_name, args.book, args.shard_root,
+                         args.pairs_per_shard)
+            print(f"Verified {args.shards} shards with {args.pairs_per_shard or args.rounds_per_shard} pairs each.")
     except (PlanError, OSError, ValueError) as error:
         # stderr, so the annotation survives the workflow capturing stdout with $(...).
         print(f"::error::{error}", file=sys.stderr)

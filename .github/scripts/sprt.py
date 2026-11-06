@@ -3,6 +3,7 @@
 
   sprt.py plan    cut every shard into W wave slices, fixed before any game is played
   sprt.py decide  the SPRT decision on the pooled counts of waves 1..k
+  sprt.py shape   print "S R P OFFSET" for verifying wave k at batch level
 
 A waved run plays each shard's R pairs in W slices cut at ceil(k*R/W), so wave k always holds the
 first k/W of every shard in planned order, whatever the games' speed. W = 1 is a fixed-size run: its
@@ -78,6 +79,21 @@ def wave_plan(shards, rounds, offset, waves):
         plan.append([{"shard": i, "start": offset + i * rounds + before + 1, "pairs": cut - before}
                      for i in range(shards)])
     return plan
+
+
+def wave_shape(plan, wave, slices):
+    """(shards, R, pairs, offset) for verifying wave k at batch level: shard i's slice starts at book
+    entry offset + i*R and plays `pairs` pairs. Refuses slices that are not wave k of the plan."""
+    if not 1 <= wave <= len(plan):
+        raise ValueError(f"wave {wave} is outside 1..{len(plan)}")
+    if plan[wave - 1] != slices:
+        raise ValueError(f"slices is not wave {wave} of the plan")
+    if [piece["shard"] for piece in slices] != list(range(len(slices))):
+        raise ValueError("the wave's slices are not shards 0..S-1 in order")
+    sizes = {piece["pairs"] for piece in slices}
+    if len(sizes) != 1:
+        raise ValueError(f"the wave's slices differ in size: {sorted(sizes)}")
+    return len(slices), sum(planned[0]["pairs"] for planned in plan), sizes.pop(), slices[0]["start"] - 1
 
 
 def checked_counts(counts):
@@ -268,6 +284,15 @@ def self_test():
           wave_plan(2, 740, 7, 1) == [[{"shard": 0, "start": 8, "pairs": 740},
                                         {"shard": 1, "start": 748, "pairs": 740}]])
 
+    full = wave_plan(FULL_SHARDS, 738, 0, WAVES)
+    check("wave shape: Full wave 2 verifies 184 pairs from entry 185, spacing 738",
+          wave_shape(full, 2, full[1]) == (18, 738, 184, 185))
+    one = wave_plan(2, 2, 1, 1)
+    check("wave shape: a fixed run is its whole shards", wave_shape(one, 1, one[0]) == (2, 2, 2, 1))
+    check("wave shape refuses another wave's slices or a wave outside the plan",
+          raises(lambda: wave_shape(full, 2, full[0])) and raises(lambda: wave_shape(full, 5, full[0]))
+          and raises(lambda: wave_shape(full, 0, full[0])))
+
     check("artifact names at W = 1 keep the pre-wave form",
           slice_artifact(42, 1, 1, 3) == "strength-42-shard-3"
           and replay_artifact(42, 1, 1, 3, 0) == "strength-42-replay-3-0")
@@ -307,6 +332,13 @@ def self_test():
         code, values, clean = cli("decide", "--counts", "[0,0,1,0,0]", "--wave", "1", "--waves", "1")
         check("CLI decide writes fixed with an empty LLR", code == 0 and clean
               and values == {"decision": "fixed", "llr": "", "counts": "[0,0,1,0,0]"})
+        shape = subprocess.run([sys.executable, os.path.abspath(__file__), "shape", "--wave-plan", compact(full),
+                                "--wave", "2", "--slices", compact(full[1])], capture_output=True, text=True)
+        check("CLI shape prints S R P OFFSET", shape.returncode == 0 and shape.stdout.split() == ["18", "738", "184", "185"])
+        shape = subprocess.run([sys.executable, os.path.abspath(__file__), "shape", "--wave-plan", compact(full),
+                                "--wave", "1", "--slices", compact(full[1])], capture_output=True, text=True)
+        check("CLI shape refuses mismatched slices cleanly", shape.returncode == 1 and not shape.stdout
+              and "Traceback" not in shape.stderr)
         for bad in ("[1,2,3,4]", "not json", "[0,0,0,0,0]"):
             code, values, clean = cli("decide", "--counts", bad, "--wave", "1", "--waves", "4")
             check(f"CLI decide refuses {bad!r} cleanly, writing nothing", code == 1 and clean and not values)
@@ -333,10 +365,19 @@ def main():
     deciding.add_argument("--waves", type=int, required=True)
     deciding.add_argument("--output", required=True, help="the file GitHub reads step outputs from")
 
+    shaping = commands.add_parser("shape", help='print "shards rounds pairs offset" for plan_arms.py verify')
+    shaping.add_argument("--wave-plan", required=True, help="sprt.py plan's whole plan, as JSON")
+    shaping.add_argument("--wave", type=int, required=True)
+    shaping.add_argument("--slices", required=True, help="this wave's slices, as JSON")
+
     args = parser.parse_args()
     if args.self_test:
         return self_test()
     try:
+        if args.command == "shape":
+            # Printed rather than written as outputs: the calling step reads it at once.
+            print(*wave_shape(json.loads(args.wave_plan), args.wave, json.loads(args.slices)))
+            return 0
         if args.command == "plan":
             plan = wave_plan(args.shards, args.rounds, args.opening_offset, args.waves)
             write_outputs(args.output, {"wave_plan": compact(plan)})

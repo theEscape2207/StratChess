@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Repair a lab batch that lost a shard to its hosted runner, inside the same run.
+"""Repair a lab wave that lost a shard to its hosted runner, inside the same run.
 
-  plan_repair.py plan      decide from the run's jobs and artifacts whether to replay, and which slices
-  plan_repair.py assemble  verify the replayed slices and build the shard directories they replace
+  plan_repair.py plan      decide from the wave's jobs and artifacts whether to replay, and which pieces
+  plan_repair.py assemble  verify the replayed pieces and build the wave slices they replace
+
+A wave is the run's unit of repair: a fixed-size run is one wave, whose slices are its whole shards
+(sprt.py). A lost shard's range is its planned wave slice, and the next wave starts only after this
+wave's repair, so a speculative wave never competes with the repair for job slots.
 
 A shard is lost only when its job failed, the runner-loss annotation is its only failure annotation,
 and it left no artifact. A toolkit failure also leaves no artifact, and an artifact means the runner
@@ -11,9 +15,14 @@ hold exactly one finished record per shard. A lost job's log is gone, so a fatal
 the loss cannot be seen: an accepted risk, since a runner-caused time loss only taints games that get
 replaced, and an engine bug common enough to move Elo also shows in the other shards.
 
-Each slice is checked alone by the unchanged verify_batch and read_shard, then the slices of a shard
-are joined into strength-<run>-shard-<N>, so the workflow's verify and pool see the designed batch
-and count a replay as the one shard it replaces. The raw slices stay as strength-<run>-replay-<N>-<i>.
+Each piece is checked alone and the pieces of a shard are joined (batch_slices.py) into the wave
+slice's own artifact name, so the workflow's verify and pool see the designed wave and count a replay
+as the one slice it replaces. The raw pieces keep their replay artifact names (sprt.py names both).
+
+The limit of 2 lost shards counts per run, across waves (--prior-lost). It is an alarm that the run's
+infrastructure is wrong, not a budget. If losses come per runner-hour a waved run sees as many as a
+fixed one; if they come per job, 3 or more losses in a waved run's 72 jobs have probability 0.0253%
+at the inherited 1 in 600 (strength-lab.md). A per-wave limit would allow 8 before the alarm.
 """
 
 import argparse
@@ -25,25 +34,29 @@ import sys
 import tempfile
 from pathlib import Path
 
-import plan_arms
+import batch_slices
 import pool_pentanomial
+import sprt
 
 LOSS_ANNOTATION = "The hosted runner lost communication with the server"
-# Three independent losses in a batch essentially never happen, so they mean something is wrong with
+# Three independent losses in a run essentially never happen, so they mean something is wrong with
 # the run, and it stops for a person. Rates: strength-lab.md.
 MAX_LOST_SHARDS = 2
-JOB_RE = re.compile(r"match \((\d+)\)")
+
+Refused = batch_slices.Refused
 
 
-class Refused(Exception):
-    pass
+def job_re(prefix):
+    """A wave's shard jobs: a called workflow's jobs are listed as "<caller job> / <job>"."""
+    return re.compile(re.escape(prefix) + r"match \((\d+)\)")
 
 
-def lost_shards(jobs, annotations, artifact_names, run, shards):
-    """The lost shards, or raise Refused naming why the batch cannot be repaired."""
+def lost_shards(jobs, annotations, artifact_names, run, shards, wave=1, waves=1, prefix="", prior_lost=0):
+    """The wave's lost shards, or raise Refused naming why the wave cannot be repaired."""
+    pattern = job_re(prefix)
     records = {}
     for job in jobs:
-        match = JOB_RE.fullmatch(job.get("name", ""))
+        match = pattern.fullmatch(job.get("name", ""))
         if match:
             records.setdefault(int(match.group(1)), []).append(job)
     for shard in range(shards):
@@ -64,25 +77,38 @@ def lost_shards(jobs, annotations, artifact_names, run, shards):
                     if note.get("annotation_level") == "failure"]
         if len(failures) != 1 or not failures[0].startswith(LOSS_ANNOTATION):
             raise Refused(f"shard {shard} failed without the runner-loss annotation alone")
-        if f"strength-{run}-shard-{shard}" in artifact_names:
+        if sprt.slice_artifact(run, wave, waves, shard) in artifact_names:
             raise Refused(f"shard {shard} left an artifact, so its runner outlived the games")
         lost.append(shard)
     if not lost:
         raise Refused("no shard job failed")
-    if len(lost) > MAX_LOST_SHARDS:
-        raise Refused(f"{len(lost)} shards lost, more than the {MAX_LOST_SHARDS} repaired automatically")
+    if prior_lost + len(lost) > MAX_LOST_SHARDS:
+        earlier = f" ({prior_lost} in earlier waves)" if prior_lost else ""
+        raise Refused(f"{prior_lost + len(lost)} shards lost in the run{earlier}, "
+                      f"more than the {MAX_LOST_SHARDS} repaired automatically")
     if len(lost) == shards:
         raise Refused("every shard was lost")
     return lost
 
 
-def plan_slices(lost, shards, rounds, offset):
-    """Contiguous slices covering each lost shard, sizes within one pair, never more jobs than the batch."""
-    count = min(shards // len(lost), rounds)
+def planned_by_shard(planned):
+    """The wave's planned slices by shard, refusing a plan that is not one slice for each of 0..S-1."""
+    by_shard = {piece["shard"]: piece for piece in planned}
+    if len(by_shard) != len(planned) or set(by_shard) != set(range(len(planned))):
+        raise Refused("the wave plan does not hold one slice for each shard")
+    return by_shard
+
+
+def plan_slices(lost, planned):
+    """Contiguous pieces covering each lost shard's planned slice, sizes within one pair, never more jobs
+    than the wave."""
+    by_shard = planned_by_shard(planned)
     slices = []
     for shard in lost:
-        size, extra = divmod(rounds, count)
-        start = offset + shard * rounds + 1
+        pairs = by_shard[shard]["pairs"]
+        count = min(len(planned) // len(lost), pairs)
+        size, extra = divmod(pairs, count)
+        start = by_shard[shard]["start"]
         for index in range(count):
             pairs = size + (1 if index < extra else 0)
             slices.append({"shard": shard, "index": index, "start": start, "pairs": pairs})
@@ -90,15 +116,16 @@ def plan_slices(lost, shards, rounds, offset):
     return slices
 
 
-def plan(jobs, annotations, artifact_names, run, shards, rounds, offset, arms):
+def plan(jobs, annotations, artifact_names, run, planned, arms, wave=1, waves=1, prefix="", prior_lost=0):
     """The planner's verdict: status `repair` with slices, or `discard` with the reason."""
     try:
         if arms.strip():
             raise Refused("a multi-arm run is not repaired automatically")
-        lost = lost_shards(jobs, annotations, artifact_names, run, shards)
+        planned_by_shard(planned)
+        lost = lost_shards(jobs, annotations, artifact_names, run, len(planned), wave, waves, prefix, prior_lost)
     except Refused as error:
         return {"status": "discard", "reason": str(error), "lost": [], "slices": []}
-    slices = plan_slices(lost, shards, rounds, offset)
+    slices = plan_slices(lost, planned)
     return {"status": "repair", "reason": "", "lost": lost, "slices": slices}
 
 
@@ -116,12 +143,13 @@ def gh_lines(path, jq):
     return [json.loads(line) for line in output.splitlines() if line.strip()]
 
 
-def fetch_inventory(repo, run, read=gh_lines):
+def fetch_inventory(repo, run, prefix="", read=gh_lines):
     jobs = read(f"repos/{repo}/actions/runs/{run}/jobs?filter=latest&per_page=100",
                 ".jobs[] | {id, name, status, conclusion, check_run_url}")
     annotations = {}
+    pattern = job_re(prefix)
     for job in jobs:
-        if JOB_RE.fullmatch(job.get("name", "")) and job.get("conclusion") != "success":
+        if pattern.fullmatch(job.get("name", "")) and job.get("conclusion") != "success":
             path = job["check_run_url"].removeprefix("https://api.github.com/")
             annotations[job["id"]] = read(f"{path}/annotations?per_page=100", ".[] | {annotation_level, message}")
     artifacts = read(f"repos/{repo}/actions/runs/{run}/artifacts?per_page=100", ".artifacts[] | {name}")
@@ -140,60 +168,39 @@ def write_outputs(result, path):
         handle.write(f"replayed={text}\n")
 
 
-def slices_by_shard(slices, rounds, offset):
-    """Each lost shard's slices in order, refusing any that do not cover its pairs exactly."""
+def slices_by_shard(slices, planned):
+    """Each lost shard's pieces in order, refusing any that do not cover its planned slice exactly."""
+    plan_for = planned_by_shard(planned)
     by_shard = {}
     for piece in sorted(slices, key=lambda piece: (piece["shard"], piece["index"])):
         by_shard.setdefault(piece["shard"], []).append(piece)
     for shard, pieces in by_shard.items():
-        expected = offset + shard * rounds + 1
+        if shard not in plan_for:
+            raise Refused(f"shard {shard} is not in the wave plan")
+        expected = plan_for[shard]["start"]
         for piece in pieces:
             if piece["start"] != expected:
                 raise Refused(f"shard {shard} slice {piece['index']} starts at {piece['start']}, expected {expected}")
             expected += piece["pairs"]
-        if expected != offset + (shard + 1) * rounds + 1:
-            raise Refused(f"the slices of shard {shard} do not cover its {rounds} pairs")
+        if expected != plan_for[shard]["start"] + plan_for[shard]["pairs"]:
+            raise Refused(f"the slices of shard {shard} do not cover its {plan_for[shard]['pairs']} planned pairs")
     return by_shard
 
 
-def verified_counts(piece, directory, run, names, book):
-    """The slice's pair counts, after the batch's own checks of its PGN and of its log's total."""
-    try:
-        with tempfile.TemporaryDirectory() as root:
-            shutil.copytree(directory, Path(root) / f"strength-{run}-shard-0")
-            plan_arms.verify_batch([], 1, piece["pairs"], piece["start"] - 1, *names, str(book), root)
-        counts = pool_pentanomial.read_shard(str(directory / "match.log"))
-    except (plan_arms.PlanError, ValueError, OSError) as error:
-        raise Refused(f"{directory}: {error}") from error
-    return counts
-
-
-def assemble(slices, run, rounds, offset, names, book, replays, shard_root):
-    """Build strength-<run>-shard-<N> from each lost shard's verified slices."""
-    for shard, pieces in slices_by_shard(slices, rounds, offset).items():
-        target = Path(shard_root) / f"strength-{run}-shard-{shard}"
+def assemble(slices, planned, run, wave, waves, names, book, replays, shard_root):
+    """Build each lost shard's wave-slice artifact from its verified replayed pieces."""
+    for shard, pieces in slices_by_shard(slices, planned).items():
+        target = Path(shard_root) / sprt.slice_artifact(run, wave, waves, shard)
         if target.exists():
             raise Refused(f"{target} exists, but shard {shard} was planned as lost")
-        total = [0, 0, 0, 0, 0]
-        pgn = []
-        logs = []
-        played = 0
+        verified = []
         for piece in pieces:
-            directory = Path(replays) / f"strength-{run}-replay-{shard}-{piece['index']}"
+            directory = Path(replays) / sprt.replay_artifact(run, wave, waves, shard, piece["index"])
             if not directory.is_dir():
                 raise Refused(f"{directory} is missing")
-            counts = verified_counts(piece, directory, run, names, book)
-            total = [a + b for a, b in zip(total, counts)]
-            base = played
-            pgn.append(re.sub(r'^\[Round "(\d+)"\]', lambda m: f'[Round "{int(m.group(1)) + base}"]',
-                              (directory / "match.pgn").read_text(encoding="utf-8"), flags=re.M))
-            logs.append((directory / "match.log").read_text(encoding="utf-8", errors="replace"))
-            played += piece["pairs"]
-        target.mkdir(parents=True)
-        (target / "match.pgn").write_text("".join(pgn), encoding="utf-8")
-        # The pool reads a log's last Ptnml line. No cpu.tsv: these samples come from several runners,
-        # so the report's per-shard figures would describe no one shard. They stay in the slices.
-        (target / "match.log").write_text("".join(logs) + f"\nPtnml(0-2): {total}\n", encoding="utf-8")
+            counts = batch_slices.verify_piece(directory, piece["start"], piece["pairs"], run, names, book)
+            verified.append((directory, piece["pairs"], counts))
+        played, total = batch_slices.join_slices(verified, target)
         print(f"Assembled shard {shard} from {len(pieces)} verified slices, {played} pairs: {total}")
 
 
@@ -210,21 +217,25 @@ def self_test():
             "runner process, starves it for CPU/Memory, or blocks its network access can cause this error.")
     fatal = "Shard 2: harness/engine failures detected -- batch is not measurable."
 
-    def job(shard, conclusion="success", status="completed"):
-        return {"id": 100 + shard, "name": f"match ({shard})", "status": status, "conclusion": conclusion,
-                "check_run_url": f"https://api.github.com/repos/o/r/check-runs/{100 + shard}"}
+    # A called workflow's job is listed as "<caller job> / <job>", as probe run 42265828549 showed.
+    def job(shard, conclusion="success", status="completed", prefix="wave-1 / ", base=100):
+        return {"id": base + shard, "name": f"{prefix}match ({shard})", "status": status, "conclusion": conclusion,
+                "check_run_url": f"https://api.github.com/repos/o/r/check-runs/{base + shard}"}
 
     def note(message, level="failure"):
         return {"annotation_level": level, "message": message}
 
-    def verdict(failed=None, artifacts=None, jobs=None, arms="", shards=18, rounds=558, offset=0):
+    def verdict(failed=None, artifacts=None, jobs=None, arms="", shards=18, rounds=558, offset=0,
+                wave=1, waves=1, prior_lost=0):
         """failed maps a shard to (conclusion, its annotations); the rest succeeded and uploaded."""
         failed = failed or {}
+        prefix = f"wave-{wave} / "
         listed = jobs if jobs is not None else [
-            job(shard, failed[shard][0] if shard in failed else "success") for shard in range(shards)]
+            job(shard, failed[shard][0] if shard in failed else "success", prefix=prefix) for shard in range(shards)]
         notes = {100 + shard: failed[shard][1] for shard in failed}
-        names = {f"strength-1-shard-{shard}" for shard in range(shards) if shard not in failed}
-        return plan(listed, notes, names | set(artifacts or ()), 1, shards, rounds, offset, arms)
+        names = {sprt.slice_artifact(1, wave, waves, shard) for shard in range(shards) if shard not in failed}
+        planned = sprt.wave_plan(shards, rounds, offset, waves)[wave - 1]
+        return plan(listed, notes, names | set(artifacts or ()), 1, planned, arms, wave, waves, prefix, prior_lost)
 
     lost = ("failure", [note(loss)])
     one = verdict({6: lost})
@@ -264,16 +275,46 @@ def self_test():
     expect("other jobs in the listing are ignored",
            verdict({6: lost}, jobs=[{"id": 1, "name": "build", "status": "completed", "conclusion": "success"}]
                    + [job(s, "failure" if s == 6 else "success") for s in range(18)])["status"] == "repair")
+    discards("an unprefixed job listing is not this wave's", "shard 0",
+             jobs=[job(s, "failure" if s == 6 else "success", prefix="") for s in range(18)])
 
-    for shards, rounds, lost_list in [(18, 558, [6]), (18, 740, [6]), (20, 900, [0]), (18, 7, [17]),
-                                      (6, 36, [1]), (3, 10, [0, 2]), (18, 41, [2, 3])]:
-        slices = plan_slices(lost_list, shards, rounds, 5)
+    # Waves: a lost shard's range is its planned wave slice, its artifact the wave slice's.
+    wave_two = verdict({6: lost}, rounds=738, wave=2, waves=4)
+    expect("a lost wave slice is replayed from its own planned range",
+           wave_two["status"] == "repair" and wave_two["slices"][0]["start"] == 6 * 738 + 185 + 1
+           and sum(s["pairs"] for s in wave_two["slices"]) == 184 and len(wave_two["slices"]) == 18)
+    other_waves = [job(s, "failure" if s == 6 else "success", prefix="wave-1 / ", base=300) for s in range(18)]
+    expect("another wave's failed jobs are ignored",
+           verdict({6: lost}, rounds=738, wave=2, waves=4, jobs=other_waves + [
+               job(s, "failure" if s == 6 else "success", prefix="wave-2 / ") for s in range(18)])["status"] == "repair")
+    discards("the wave slice's own artifact discards", "left an artifact", {6: lost}, rounds=738, wave=2, waves=4,
+             artifacts={"strength-1-wave-2-shard-6"})
+    expect("another wave's artifact of the shard does not",
+           verdict({6: lost}, rounds=738, wave=2, waves=4,
+                   artifacts={"strength-1-wave-1-shard-6", "strength-1-shard-6"})["status"] == "repair")
+    expect("one earlier loss and one now repairs", verdict({6: lost}, prior_lost=1)["status"] == "repair")
+    discards("the limit counts the run's earlier losses", "3 shards lost in the run (1 in earlier waves)",
+             {6: lost, 7: lost}, prior_lost=1)
+    discards("two earlier losses leave none to repair", "3 shards lost in the run (2 in earlier waves)",
+             {6: lost}, prior_lost=2)
+    for bad in ([{"shard": 0, "start": 1, "pairs": 5}, {"shard": 0, "start": 6, "pairs": 5}],
+                [{"shard": 1, "start": 1, "pairs": 5}]):
+        result = plan([job(0, "failure")], {100: [note(loss)]}, set(), 1, bad, "")
+        expect(f"a malformed wave plan discards {bad}", result["status"] == "discard" and "wave plan" in result["reason"])
+
+    for shards, rounds, lost_list, waves, wave in [
+            (18, 558, [6], 1, 1), (18, 740, [6], 1, 1), (20, 900, [0], 1, 1), (18, 7, [17], 1, 1),
+            (6, 36, [1], 1, 1), (3, 10, [0, 2], 1, 1), (18, 41, [2, 3], 1, 1),
+            (18, 738, [6], 4, 2), (18, 738, [0, 17], 4, 4), (2, 7, [1], 4, 3)]:
+        planned = sprt.wave_plan(shards, rounds, 5, waves)[wave - 1]
+        slices = plan_slices(lost_list, planned)
         for shard in lost_list:
             pieces = [s for s in slices if s["shard"] == shard]
             sizes = {s["pairs"] for s in pieces}
-            slices_by_shard(pieces, rounds, 5)
-            expect(f"{shards}x{rounds} lost {shard}: covers, even, within slots",
-                   sum(sizes_ := [s["pairs"] for s in pieces]) == rounds and max(sizes) - min(sizes) <= 1
+            slices_by_shard(pieces, planned)
+            expect(f"{shards}x{rounds} wave {wave}/{waves} lost {shard}: covers, even, within slots",
+                   sum(sizes_ := [s["pairs"] for s in pieces]) == planned[shard]["pairs"]
+                   and pieces[0]["start"] == planned[shard]["start"] and max(sizes) - min(sizes) <= 1
                    and sizes_ == sorted(sizes_, reverse=True) and len(slices) <= shards)
 
     pages = []
@@ -281,15 +322,17 @@ def self_test():
     def fake_read(path, _jq):
         pages.append(path)
         if "/jobs" in path:
-            return [job(0), job(1, "failure")]
+            return [job(0), job(1, "failure"), job(0, "failure", prefix="wave-2 / ", base=200)]
         if "/annotations" in path:
             return [note(loss)]
         return [{"name": "strength-1-shard-0"}]
 
-    jobs, notes, names = fetch_inventory("o/r", 1, fake_read)
-    expect("annotations are read only for failed shards", notes == {101: [note(loss)]} and len(pages) == 3)
+    jobs, notes, names = fetch_inventory("o/r", 1, "wave-1 / ", read=fake_read)
+    expect("annotations are read only for this wave's failed shards",
+           notes == {101: [note(loss)]} and len(pages) == 3)
     expect("the job's own check run is read", any(p.startswith("repos/o/r/check-runs/101/annotations") for p in pages))
-    expect("the inventory plans", plan(jobs, notes, names, 1, 2, 4, 0, "")["lost"] == [1])
+    expect("the inventory plans", plan(jobs, notes, names, 1, sprt.wave_plan(2, 4, 0, 1)[0], "",
+                                       prefix="wave-1 / ")["lost"] == [1])
 
     expect("the report names one replay", replayed_text([6], one["slices"]) == "shard 6, 18 slices (runner lost)")
     expect("the report names two", replayed_text([3, 9], two["slices"]) == "shards 3 and 9, 18 slices (runners lost)")
@@ -303,8 +346,8 @@ def self_test():
     book_lines = [f"8/8/8/8/8/8/{rank}/4k3 w - -" for rank in ["4K3", "3K4", "2K5", "1K6", "K7", "5K2", "6K1", "7K"]]
     names = ("candidate-abc1234", "reference-abc1234")
 
-    def write_slice(root, shard, index, opening, pairs, counts, candidate=names[0]):
-        directory = Path(root) / "replays" / f"strength-1-replay-{shard}-{index}"
+    def write_slice(root, shard, index, opening, pairs, counts, candidate=names[0], waves=1, wave=1):
+        directory = Path(root) / "replays" / sprt.replay_artifact(1, wave, waves, shard, index)
         directory.mkdir(parents=True)
         pgn = ""
         for number in range(1, pairs + 1):
@@ -320,17 +363,19 @@ def self_test():
     # Shard 1 of 3 shards of 3 pairs at offset 1: openings 4, 5, 6 (0-based) replayed as slices of 2 and 1.
     good = [{"shard": 1, "index": 0, "start": 5, "pairs": 2}, {"shard": 1, "index": 1, "start": 7, "pairs": 1}]
 
-    def attempt(mutate=None, slices=good):
+    def attempt(mutate=None, slices=good, waves=1):
         with tempfile.TemporaryDirectory() as root:
             book = Path(root) / "book.epd"
             book.write_text("\n".join(book_lines) + "\n", encoding="utf-8")
-            write_slice(root, 1, 0, 4, 2, [0, 0, 1, 1, 0])
-            write_slice(root, 1, 1, 6, 1, [0, 0, 0, 1, 0])
+            write_slice(root, 1, 0, 4, 2, [0, 0, 1, 1, 0], waves=waves)
+            write_slice(root, 1, 1, 6, 1, [0, 0, 0, 1, 0], waves=waves)
             (Path(root) / "shards").mkdir()
             if mutate:
                 mutate(Path(root))
-            assemble(slices, 1, 3, 1, names, book, Path(root) / "replays", Path(root) / "shards")
-            target = Path(root) / "shards" / "strength-1-shard-1"
+            # 3 shards x 3 pairs at offset 1; at waves > 1 only the names differ.
+            planned = sprt.wave_plan(3, 3, 1, 1)[0]
+            assemble(slices, planned, 1, 1, waves, names, book, Path(root) / "replays", Path(root) / "shards")
+            target = Path(root) / "shards" / sprt.slice_artifact(1, 1, waves, 1)
             return ((target / "match.pgn").read_text(encoding="utf-8"), (target / "match.log").read_text(encoding="utf-8"),
                     (target / "cpu.tsv").exists())
 
@@ -341,6 +386,8 @@ def self_test():
     expect("the raw logs are kept", log.count("Results of") == 2)
     expect("the assembled log names one revision pair", pool_pentanomial.parse_revisions(log) == ("abc1234", "abc1234"))
     expect("no CPU samples from mixed runners", not has_cpu)
+    waved_pgn, waved_log, _ = attempt(waves=4)
+    expect("a waved run assembles under the wave slice's names", waved_pgn == pgn and waved_log == log)
 
     def refused(name, reason, mutate=None, slices=good):
         try:
@@ -391,20 +438,23 @@ def main():
     parser.add_argument("--self-test", action="store_true")
     commands = parser.add_subparsers(dest="command")
 
-    planning = commands.add_parser("plan", help="classify the run's failed shards and plan the replay")
+    def wave_arguments(command):
+        command.add_argument("--slices", required=True, help="this wave's planned slices from sprt.py plan, as JSON")
+        command.add_argument("--run", required=True)
+        command.add_argument("--wave", type=int, required=True)
+        command.add_argument("--waves", type=int, required=True)
+
+    planning = commands.add_parser("plan", help="classify the wave's failed shards and plan the replay")
+    wave_arguments(planning)
     planning.add_argument("--repo", required=True)
-    planning.add_argument("--run", required=True)
-    planning.add_argument("--shards", type=int, required=True)
-    planning.add_argument("--rounds", type=int, required=True)
-    planning.add_argument("--opening-offset", type=int, required=True)
+    planning.add_argument("--job-prefix", required=True, help='the caller job name and " / ", e.g. "wave-1 / "')
+    planning.add_argument("--prior-lost", type=int, required=True, help="shards lost in the run's earlier waves")
     planning.add_argument("--arms", default="")
     planning.add_argument("--output", required=True, help="the file GitHub reads step outputs from")
 
-    assembling = commands.add_parser("assemble", help="verify the slices and build the shards they replace")
-    assembling.add_argument("--slices", required=True, help="the planner's slices, as JSON")
-    assembling.add_argument("--run", required=True)
-    assembling.add_argument("--rounds", type=int, required=True)
-    assembling.add_argument("--opening-offset", type=int, required=True)
+    assembling = commands.add_parser("assemble", help="verify the pieces and build the wave slices they replace")
+    wave_arguments(assembling)
+    assembling.add_argument("--pieces", required=True, help="the planner's replay pieces (its slices output), as JSON")
     assembling.add_argument("--candidate-name", required=True)
     assembling.add_argument("--reference-name", required=True)
     assembling.add_argument("--book", required=True)
@@ -415,14 +465,15 @@ def main():
     if args.self_test:
         return self_test()
     if args.command == "plan":
-        jobs, annotations, names = fetch_inventory(args.repo, args.run)
-        result = plan(jobs, annotations, names, args.run, args.shards, args.rounds, args.opening_offset, args.arms)
+        jobs, annotations, names = fetch_inventory(args.repo, args.run, args.job_prefix)
+        result = plan(jobs, annotations, names, args.run, json.loads(args.slices), args.arms, args.wave, args.waves,
+                      args.job_prefix, args.prior_lost)
         write_outputs(result, args.output)
         print(json.dumps(result, indent=2))
         return 0
     if args.command == "assemble":
         try:
-            assemble(json.loads(args.slices), args.run, args.rounds, args.opening_offset,
+            assemble(json.loads(args.pieces), json.loads(args.slices), args.run, args.wave, args.waves,
                      (args.candidate_name, args.reference_name), args.book, args.replays, args.shards)
         except Refused as error:
             print(f"REFUSED: {error}", file=sys.stderr)
