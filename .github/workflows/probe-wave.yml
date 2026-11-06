@@ -1,0 +1,80 @@
+name: Probe wave (caller)
+
+# THROWAWAY PROBE for #963 slice 2. Never merged.
+# A1: wave-1's match fails, its decide still emits; wave-2 gates on that output.
+# A2: called jobs' names and the planner's reads under the caller's scope (inventory job).
+# A6: retry-1 fails shard 0 on attempt 1 only; `gh run rerun --failed` must rerun
+#     downstream and retry-aggregate must pool both shards.
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  wave-1:
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    uses: ./.github/workflows/probe-wave-call.yml
+    with:
+      wave: "1"
+      fail_shard: "1"
+      fail_mode: always
+
+  wave-2:
+    needs: wave-1
+    if: ${{ !cancelled() && needs.wave-1.outputs.decision == 'continue' }}
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    uses: ./.github/workflows/probe-wave-call.yml
+    with:
+      wave: "2"
+      fail_shard: "-1"
+      fail_mode: always
+
+  wave-report:
+    needs: [wave-1, wave-2]
+    if: ${{ always() }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: printf '%s\n' "$NEEDS"
+
+  retry-1:
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    uses: ./.github/workflows/probe-wave-call.yml
+    with:
+      wave: "9"
+      fail_shard: "0"
+      fail_mode: attempt1
+
+  retry-aggregate:
+    needs: retry-1
+    if: ${{ always() }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: printf 'attempt=%s\n%s\n' "$GITHUB_RUN_ATTEMPT" "$NEEDS"
+      - name: Refuse a partial batch
+        if: ${{ needs.retry-1.outputs.status != 'complete' }}
+        run: exit 1
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: probe-${{ github.run_id }}-w9-shard-*
+          path: shards
+      - run: |
+          set -euo pipefail
+          ls -R shards
+          python3 .github/scripts/pool_pentanomial.py --expect-shards 2 --expect-pairs-per-shard 4 shards/*/match.log

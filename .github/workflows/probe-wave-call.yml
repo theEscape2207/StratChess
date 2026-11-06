@@ -1,0 +1,116 @@
+name: Probe wave (called)
+
+# THROWAWAY PROBE for #963 slice 2 (A1, A2, A6). Never merged.
+
+on:
+  workflow_call:
+    inputs:
+      wave:
+        type: string
+        required: true
+      fail_shard:
+        type: string
+        required: true
+      fail_mode:
+        description: "always, or attempt1 (fail only on run attempt 1)"
+        type: string
+        required: true
+    outputs:
+      status:
+        value: ${{ jobs.decide.outputs.status }}
+      decision:
+        value: ${{ jobs.decide.outputs.decision }}
+      match_result:
+        value: ${{ jobs.decide.outputs.match_result }}
+
+jobs:
+  match:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
+    steps:
+      - name: Play shard ${{ matrix.shard }}
+        env:
+          SHARD: ${{ matrix.shard }}
+          FAIL_SHARD: ${{ inputs.fail_shard }}
+          FAIL_MODE: ${{ inputs.fail_mode }}
+        run: |
+          set -euo pipefail
+          echo "run_id=$GITHUB_RUN_ID attempt=$GITHUB_RUN_ATTEMPT job=$GITHUB_JOB"
+          if [ "$SHARD" = "$FAIL_SHARD" ] && { [ "$FAIL_MODE" = always ] || [ "$GITHUB_RUN_ATTEMPT" = 1 ]; }; then
+            echo "::error::probe failure in shard $SHARD"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/match"
+          printf 'Results of candidate-abc1234 vs reference-abc1234 (10+0.1, 1t, 192MB, book.epd):\nPtnml(0-2): [0, 1, 2, 1, 0]\n' \
+            > "$RUNNER_TEMP/match/match.log"
+
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: probe-${{ github.run_id }}-w${{ inputs.wave }}-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/match/match.log
+          if-no-files-found: error
+          retention-days: 1
+
+  # A2: the repair planner's reads, from inside a called workflow, under the caller's scope.
+  inventory:
+    needs: match
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read jobs, annotations and artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd .github/scripts
+          python3 - <<'EOF'
+          import os, plan_repair
+          repo, run = os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_RUN_ID"]
+          jobs = plan_repair.gh_lines(f"repos/{repo}/actions/runs/{run}/jobs?filter=latest&per_page=100",
+                                      ".jobs[] | {id, name, status, conclusion, check_run_url}")
+          for job in jobs:
+              print("JOB", repr(job["name"]), job["status"], job["conclusion"])
+          for job in jobs:
+              if " / match (" in job["name"] and job["conclusion"] == "failure":
+                  path = job["check_run_url"].removeprefix("https://api.github.com/")
+                  notes = plan_repair.gh_lines(f"{path}/annotations?per_page=100", ".[] | {annotation_level, message}")
+                  print("ANNOTATIONS", job["name"], notes)
+          artifacts = plan_repair.gh_lines(f"repos/{repo}/actions/runs/{run}/artifacts?per_page=100", ".artifacts[] | {name}")
+          print("ARTIFACTS", sorted(a["name"] for a in artifacts))
+          EOF
+
+  # A1: a decide-like job that emits outputs although match failed.
+  decide:
+    needs: [match, inventory]
+    if: ${{ always() }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      status: ${{ steps.d.outputs.status }}
+      decision: ${{ steps.d.outputs.decision }}
+      match_result: ${{ steps.d.outputs.match_result }}
+    steps:
+      - id: d
+        env:
+          MATCH_RESULT: ${{ needs.match.result }}
+        run: |
+          set -euo pipefail
+          status=discarded
+          if [ "$MATCH_RESULT" = success ]; then status=complete; fi
+          {
+            echo "status=$status"
+            echo "decision=continue"
+            echo "match_result=$MATCH_RESULT"
+          } >> "$GITHUB_OUTPUT"
+          echo "attempt=$GITHUB_RUN_ATTEMPT match=$MATCH_RESULT status=$status"
