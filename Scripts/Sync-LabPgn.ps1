@@ -125,29 +125,41 @@ function Get-MissingRun {
     return @($Run | Where-Object { $_.Id -notin $LocalId } | Sort-Object { $_.Created })
 }
 
+function ConvertFrom-ArtifactPage {
+    <#
+      .SYNOPSIS
+        A run's artifacts from `gh api --paginate --slurp` output, a JSON list of listing pages.
+      .DESCRIPTION
+        A page holds at most 100 artifacts, and a four-wave run with repairs holds more, so a reader of
+        the first page alone misses shards and the marker.
+    #>
+    param([Parameter(Mandatory)][string]$PagesJson)
+
+    $pages = @($PagesJson | ConvertFrom-Json)
+    return @($pages | ForEach-Object { $_.artifacts })
+}
+
 function Get-ShardCount {
     <#
       .SYNOPSIS
-        Live shard artifacts in a run's artifact-list JSON, by name. Expired ones cannot be downloaded.
+        Live shard artifacts among a run's artifacts, by name. Expired ones cannot be downloaded.
     #>
-    param([Parameter(Mandatory)][string]$ArtifactsJson)
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Artifact)
 
-    $list = ($ArtifactsJson | ConvertFrom-Json).artifacts
-    return @($list | Where-Object { $_.name -match '^strength-\d+-shard-\d+$' -and -not $_.expired }).Count
+    return @($Artifact | Where-Object { $_.name -match '^strength-\d+-shard-\d+$' -and -not $_.expired }).Count
 }
 
 function Test-RepairedRun {
     <#
       .SYNOPSIS
-        Whether a failed run's artifact-list JSON holds the marker a repaired batch uploads last.
+        Whether a failed run's artifacts hold the marker a repaired batch uploads last.
     #>
     param(
-        [Parameter(Mandatory)][string]$ArtifactsJson,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Artifact,
         [Parameter(Mandatory)][string]$RunId
     )
 
-    $list = ($ArtifactsJson | ConvertFrom-Json).artifacts
-    return @($list | Where-Object { $_.name -ceq "strength-$RunId-repair" -and -not $_.expired }).Count -gt 0
+    return @($Artifact | Where-Object { $_.name -ceq "strength-$RunId-repair" -and -not $_.expired }).Count -gt 0
 }
 
 function Get-FirstAttemptRun {
@@ -266,16 +278,30 @@ function Invoke-SelfTest {
     # A run that never copied is the falsification: it must be reported, not assumed present.
     Assert-Equal 'a new run is missing' ((Get-MissingRun $runs @('1', '2')).Id -join ',') '3'
 
-    $artifacts = '{"artifacts":[{"name":"strength-9-shard-0","expired":false},{"name":"strength-9-shard-1","expired":false},' +
-    '{"name":"strength-9-shard-2","expired":true},{"name":"strength-9-comparison","expired":false},' +
-    '{"name":"strength-9-toolkit","expired":false}]}'
+    $artifacts = @(ConvertFrom-ArtifactPage ('[{"artifacts":[{"name":"strength-9-shard-0","expired":false},' +
+        '{"name":"strength-9-shard-1","expired":false},{"name":"strength-9-shard-2","expired":true},' +
+        '{"name":"strength-9-comparison","expired":false},{"name":"strength-9-toolkit","expired":false}]}]'))
     Assert-Equal 'shards: live only, shards only' (Get-ShardCount $artifacts) 2
-    Assert-Equal 'shards: none' (Get-ShardCount '{"artifacts":[{"name":"strength-9","expired":false}]}') 0
-    Assert-Equal 'shards: empty list' (Get-ShardCount '{"artifacts":[]}') 0
+    Assert-Equal 'shards: none' (Get-ShardCount @(ConvertFrom-ArtifactPage '[{"artifacts":[{"name":"strength-9","expired":false}]}]')) 0
+    Assert-Equal 'shards: empty list' (Get-ShardCount @(ConvertFrom-ArtifactPage '[{"artifacts":[]}]')) 0
+    # A waved run's wave slices and its one-day joined batch are not shards; its joined shards are.
+    $waved = @(ConvertFrom-ArtifactPage ('[{"artifacts":[{"name":"strength-9-wave-2-shard-0","expired":false},' +
+        '{"name":"strength-9-wave-2-replay-0-1","expired":false},{"name":"strength-9-joined","expired":false},' +
+        '{"name":"strength-9-shard-0","expired":false}]}]'))
+    Assert-Equal 'shards: wave slices and the joined batch are not shards' (Get-ShardCount $waved) 1
 
-    $repaired = '{"artifacts":[{"name":"strength-9-shard-0","expired":false},{"name":"strength-9-repair","expired":false}]}'
-    $discarded = '{"artifacts":[{"name":"strength-9-shard-0","expired":false},{"name":"strength-9-replay-6-0","expired":false}]}'
-    $expiredMarker = '{"artifacts":[{"name":"strength-9-repair","expired":true}]}'
+    # The falsification of a first-page read: the shards and the marker on page 2 still count.
+    $firstPage = (0..99 | ForEach-Object { '{"name":"strength-9-wave-1-shard-' + $_ + '","expired":false}' }) -join ','
+    $split = @(ConvertFrom-ArtifactPage ('[{"artifacts":[' + $firstPage + ']},{"artifacts":[' +
+        '{"name":"strength-9-shard-0","expired":false},{"name":"strength-9-shard-1","expired":false},' +
+        '{"name":"strength-9-repair","expired":false}]}]'))
+    Assert-Equal 'pages: every page is read' $split.Count 103
+    Assert-Equal 'pages: shards past the first 100 count' (Get-ShardCount $split) 2
+    Assert-Equal 'pages: a marker past the first 100 counts' (Test-RepairedRun $split '9') $true
+
+    $repaired = @(ConvertFrom-ArtifactPage '[{"artifacts":[{"name":"strength-9-shard-0","expired":false},{"name":"strength-9-repair","expired":false}]}]')
+    $discarded = @(ConvertFrom-ArtifactPage '[{"artifacts":[{"name":"strength-9-shard-0","expired":false},{"name":"strength-9-replay-6-0","expired":false}]}]')
+    $expiredMarker = @(ConvertFrom-ArtifactPage '[{"artifacts":[{"name":"strength-9-repair","expired":true}]}]')
     Assert-Equal 'repaired: the marker counts' (Test-RepairedRun $repaired '9') $true
     # The falsification: a discarded run keeps its shards and slices, and must not be copied.
     Assert-Equal 'repaired: a discarded run has no marker' (Test-RepairedRun $discarded '9') $false
@@ -361,6 +387,13 @@ function Get-LabRun {
     return @($runs)
 }
 
+function Get-RunArtifact {
+    param([Parameter(Mandatory)][string]$RunId)
+
+    $pages = Invoke-Gh -Argument @('api', '--paginate', '--slurp', "repos/$Repo/actions/runs/$RunId/artifacts?per_page=100")
+    return @(ConvertFrom-ArtifactPage $pages)
+}
+
 function Get-RepairedRun {
     # Only a repaired run is ever copied, so a local failed run is one, and is kept for its README row.
     # The artifact listing is per run, so only the others are asked.
@@ -368,7 +401,7 @@ function Get-RepairedRun {
 
     return @(Get-FirstAttemptRun @(Get-LabRun 'failure') | Where-Object {
             $_.Id -in $LocalId -or
-            (Test-RepairedRun (Invoke-Gh -Argument @('api', "repos/$Repo/actions/runs/$($_.Id)/artifacts?per_page=100")) $_.Id)
+            (Test-RepairedRun @(Get-RunArtifact $_.Id) $_.Id)
         })
 }
 
@@ -455,7 +488,7 @@ foreach ($name in $unrowed) {
 $copyable = @()
 $unavailable = @()
 foreach ($run in $missing) {
-    $shards = Get-ShardCount (Invoke-Gh -Argument @('api', "repos/$Repo/actions/runs/$($run.Id)/artifacts?per_page=100"))
+    $shards = Get-ShardCount @(Get-RunArtifact $run.Id)
     $left = Get-DaysLeft $run.Created $utcNow
     $entry = [pscustomobject]@{ Run = $run; Shards = $shards; DaysLeft = $left }
     if ($shards -gt 0) { $copyable += $entry } else { $unavailable += $entry }
