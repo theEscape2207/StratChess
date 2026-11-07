@@ -495,14 +495,18 @@ do not.**
 **Two deliberate differences from the local setup.** The book is `UHO_4060_v3.epd` (242,201
 openings — 4060 names the evaluation band the positions were selected from, not their count),
 downloaded per run from a pinned commit of `official-stockfish/books` rather than committed. And
-the lab runs a **fixed N with no SPRT**: a sequential test does not shard across runners, so it
-buys resolution with games instead, which is affordable because the minutes are free.
+the lab's SPRT **looks four times, not after every game**. Actions cannot report from inside a
+running job, so a Full `sprt` run is cut into four waves, each a matrix of jobs followed by a job that
+decides. Simulated at production wave sizes (#963), it passes a change as often as the fixed Full
+batch it replaces, within half a point at every true Elo, while a clear gain or loss stops after about 1 h of 4. Unlike the local SPRT, a
+run undecided at the cap falls back to the fixed-batch rule `Elo − err > 0`. Night runs stay
+fixed-size: they use a lab nobody is waiting for, and the simulation validated only the Full cap.
 
 Every run uploads the annotated PGN of every game it played, retained 90 days.
 [`MoveQuality.md`](MoveQuality.md) is the method for reading them: the pooled Elo says whether a
 change helped, that scan says where.
 
-At the default 18 shards, a strength run occupies 18 of the 20 concurrent-job slots for ~3 hours.
+At the default 18 shards, a strength run occupies 18 of the 20 concurrent-job slots for ~3 hours, or 1–4 h for an `sprt` run.
 It can delay other CI, but leaves two slots; choosing 20 shards consumes the allowance. This is why
 the lab is not wired to trigger automatically.
 
