@@ -11,6 +11,8 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-11-06 | 4a29cd0b, `QuietPawnEscapeBonus=1024` for ordinary quiets leaving enemy pawn coverage (#960; run `42237625821`) | 64172f4e | 26568 | 10+0.1 | **-1.70 +/- 3.03** | inconclusive @ 26568; fails keep rule, experiment abandoned |
+| 2026-11-06 | c1d8a9eb, `QuietPawnThreatPenalty=1024` for ordinary quiets onto enemy pawn coverage (#960; run `42130451831`) | 64172f4e | 36000 | 10+0.1 | **-2.11 +/- 2.63** | inconclusive @ 36000; fails keep rule, experiment abandoned |
 | 2026-11-03 | b38fa3a, `LateMovePruningDepth3=true`: late move pruning at parent depth 3 from index 8, with UPPER stored at alpha on a fail-low that skipped a move (#895; PR #951 merged default-off, option-only run on `main`, runs `41631693815` + `41669865683` replaying lost shard 6, 18 of 18 shards favour it, zero forfeits) | b38fa3a (same commit, flag off) | 26640 | 10+0.1 | **+12.47 +/- 3.02** | gain; passes the rule, default flips on |
 | 2026-11-03 | 2d9cce2, `QuietSeePruningMargin=10`: depth 3 threshold -90 cp instead of -180, so quiet moves losing a pawn are also pruned (#946; no PR, option-only run on `main`, run `41541183202`, 7 of 18 shards favour it, zero forfeits) | 2d9cce2 (same commit, margin 20) | 26640 | 10+0.1 | **-0.00 +/- 3.02** | inconclusive @ 26640; fails the rule, default stays 20 |
 | 2026-11-02 | 2eb52f6, `QuietSeePruningMaxDepth=4`: quiet SEE pruning extended to depth 4, threshold -320 cp (#943; no PR, option-only run on `main`, run `41486305457`, 9 of 18 shards favour it, zero forfeits) | 2eb52f6 (same commit, `MaxDepth=3`) | 26640 | 10+0.1 | **+0.64 +/- 3.02** | inconclusive @ 26640; fails the rule, default stays 3 |
@@ -116,6 +118,20 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-11-06 -- 4a29cd0b, `QuietPawnEscapeBonus=1024` (#960) (26568 games)
+
+Ptnml [978, 3179, 5044, 3161, 922]. Opening offset 18,000 uses a disjoint slice from the
+destination-penalty arm. The replay of the escape-only rule gained +0.199 ranks per observed
+ordinary quiet cutoff, with a 95% root-cluster interval [+0.021, +0.427].
+[Lab report](https://github.com/theEscape2207/StratChess/actions/runs/42237625821/job/128086374627)
+
+### 2026-11-06 -- c1d8a9eb, `QuietPawnThreatPenalty=1024` (#960) (36000 games)
+
+Ptnml [1381, 4302, 6821, 4147, 1349]. Opening offset 0. The predeclared arm used one
+1024-history-unit penalty for ordinary knight, bishop, rook and queen quiets onto geometric
+enemy pawn coverage.
+[Lab report](https://github.com/theEscape2207/StratChess/actions/runs/42130451831/job/127710732880)
 
 ### 2026-11-03 -- b38fa3a, `LateMovePruningDepth3=true` (#895) (26640 games)
 
