@@ -23,6 +23,22 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-07: Full lab runs stop at the first SPRT decision, in four waves (#963)
+
+### Changed
+
+- The ship gate is a Full lab run with `sprt=true`. It plays its 26,568 games as four waves of about
+  1 h, and a pentanomial SPRT [0, 3] (α = β = 0.05) after each wave stops it at H1 or H0. A run with
+  no decision by the cap falls back to `Elo − err > 0`. The #962 replay of 62 archived runs saved an
+  estimated 29% of lab time and reached the same decision on all 62. Simulated at production wave
+  sizes, the pass probability stays within 0.005 of the fixed Full rule's from −15 to +15 Elo.
+- Every lab run now goes through the reusable `strength-wave.yml`, a fixed-size run as its one wave,
+  with the same games, report and artifact names as before. Night, Normal and multi-arm runs stay
+  fixed-size.
+- Accepted: a run that stops early reports its Elo at the stop, which reads high near the bounds (a
+  true +3 stopped early reads about +6), so its row records a decision, not a size. A discarded waved
+  run is re-dispatched rather than rerun with `--failed`.
+
 ## 2026-11-05: Version 0.9.0
 
 ### Changed

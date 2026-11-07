@@ -67,7 +67,8 @@ Tier 2 table, which score exactly the rows the oracle judged. Their instrument i
 
 | Verdict | Means |
 |---|---|
-| `gain` | an interval excluding zero on the positive side, or an accepted H1 on a `Gain`/`Custom` SPRT |
+| `gain` | an interval excluding zero on the positive side, or an accepted H1 on a `Gain`/`Custom` SPRT; the lab's SPRT writes it `gain (SPRT H1 [0, 3])` |
+| `no gain (SPRT H0 [0, 3])` | an accepted H0 on the lab's SPRT; the sign stays unresolved |
 | `non-regression` | an accepted H1 on a `NonRegression` SPRT, or an interval tight enough to bound any regression |
 | `regression` | an interval excluding zero on the negative side |
 | `inconclusive @ N` | the run hit its N-game cap without crossing a bound |
@@ -79,6 +80,22 @@ Tier 2 table, which score exactly the rows the oracle judged. Their instrument i
 looks like. An SPRT that *did* cross a bound gives a decision, not a size: quote it as "worth more
 than `elo1`", never as its point estimate, which carries optional-stopping inflation. Only a fixed
 batch gives a size.
+
+**A lab `sprt` run is recorded by what it played:**
+
+- **Games** is the games played at the stop: 6660, 13284 or 19944 after waves 1–3.
+- **Elo** is the pooled figure at the stop, marked `(at stop)`: `**+9.52 +/- 4.27** (at stop)`. It
+  is the only figure the run has, and it reads high near the bounds: the simulation put a true +3
+  stopped early at about +6.
+- **Verdict** is `gain (SPRT H1 [0, 3])` or `no gain (SPRT H0 [0, 3])`, never "more than +3" or "less
+  than +3": at these error rates an H1 can happen at a true +3 or below.
+- **A crossing at wave 4** played every planned game, so it takes the SPRT verdict without `(at stop)`.
+- **No crossing by the cap** gives the interval verdicts from the full batch, as a fixed run does.
+  This is not the local rule, where a cap-stopped SPRT is `inconclusive @ N`: the owner set
+  `Elo − err > 0` as the lab's fallback.
+
+A magnitude that matters, such as an anchor step or a choice between two candidates, needs a
+fixed-size run.
 
 **Discard the batch, not the game**, on any time loss, illegal move played, disconnect or stall. On
 a shared runner a time loss most likely means the box was oversubscribed, which invalidates

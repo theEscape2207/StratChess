@@ -10,7 +10,7 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
   strength; the candidate's own SHA is a null test only when build configuration, effective options
   and playing conditions also match.
 - **One run at a time, repository-wide** (concurrency group `strength-lab`), occupying 18 of 20
-  concurrent job slots for ~3 h. A second dispatch queues behind the running one, so two lab runs
+  concurrent job slots for ~1–4 h. A second dispatch queues behind the running one, so two lab runs
   never overlap.
 - **A failed shard discards the whole batch**, not just itself: the survivors are the ones that
   happened to avoid whatever went wrong, so pooling them would be a biased subset wearing a full
@@ -18,7 +18,8 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
   replayed inside the run**, because the same openings complete the batch designed rather than
   selecting from it: [Repairing a lost shard](#repairing-a-lost-shard).
 - **Judge a run by its report heading, not its colour.** A repaired run stays red, since `wave-1 / match (N)`
-  failed, and its report still says `## Strength lab` with a `Replayed` row.
+  failed, and its report still says `## Strength lab` with a `Replayed` row. A waved run's heading
+  also names its verdict.
 - **Screening several settings in one run:** `candidate_arms` splits the shards among K option sets,
   each pooled alone at about √K times the full run's error bar. Confirm the winner in a
   single-candidate run with its own `opening_offset`. The best of K noisy arms reads high, so the
@@ -30,8 +31,28 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
 | Use | `games` | Shards x pairs | Time | Error bar |
 |---|---|---|---|---|
 | Normal (the default) | 20088 | 18 x 558 | ~3 h | ±3.48 |
-| Full | 26568 | 18 x 738 | ~4 h | ±3.02 |
+| Full, the ship gate with `sprt=true` | 26568 | 18 x 738, as 4 waves | ~1–4 h; ~4 h fixed | ±3.02 at the cap |
 | Night only, CI unused | 36000 | 20 x 900 | ~4 h 55 (estimated, worst shard ~292 of the job's 340 min) | ±2.60 |
+
+## The ship rule
+
+**A change ships on a Full run with `sprt=true`.** The run plays four waves of about 1 h. After each
+one, a pentanomial SPRT [0, 3] with α = β = 0.05 either stops it or plays the next wave:
+
+- H1 stops the run, and the change passes.
+- H0 stops the run, and the change does not pass.
+- A run with no decision after wave 4 passes only if Elo − err > 0 on all 26,568 games, as a fixed
+  Full run would.
+
+The report heading carries the verdict. A clear gain or loss stops after about 1 h, and a change near
++3 runs to the cap. At every true Elo simulated from −15 to +15, the pass probability is within 0.005
+of the fixed Full run's (#963).
+
+- **A stopped run gives a decision, not a size.** How to record it: `Measurements/README.md`.
+- **Re-dispatch a discarded waved run.** Neither the manual repair below nor `--failed` applies: a
+  rerun replays the failed wave and every wave after it. Each wave still repairs lost shards itself.
+- **Night, Normal and multi-arm runs stay fixed-size.** `setup` refuses `sprt` with `candidate_arms`
+  or at another size.
 
 ## Repairing a lost shard
 
@@ -52,7 +73,8 @@ surviving shards ran the same binaries for the full duration.
 
 **Manual, the fallback** for a single lost shard the job didn't repair: a repair job was itself lost,
 or GitHub reworded the annotation. Three or more lost shards get `gh run rerun <run> --failed` instead,
-as does a multi-arm run. Only attempt 1 repairs automatically.
+as does a multi-arm run. A waved run gets neither: re-dispatch it. Only attempt 1 repairs
+automatically.
 
 1. **Wait for the batch to finish**, then pool the survivors with `pool_pentanomial.py`, read as a
    preview rather than a result.

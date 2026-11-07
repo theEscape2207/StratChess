@@ -28,7 +28,7 @@ series against the merge base, and the baseline build that silently skews it:
 
 | Question | Instrument | Cost | Gives you |
 |---|---|---|---|
-| Is this worth shipping? | **CI strength lab** (`strength.yml`) | ~3 h, 18 of 20 CI slots | **±3.5 Elo** — a number, decisive |
+| Is this worth shipping? | **CI strength lab** (`strength.yml`), Full with `sprt=true` | ~1–4 h, 18 of 20 CI slots | **SPRT [0, 3] decision**, or ±3.0 Elo at the cap — decisive |
 
 **The lab is the gate for anything meant to gain Elo.** A local SPRT's floor is ±10 Elo and most
 eval terms are worth 5-25, so it returns inconclusive more often than not: the ledgers run 15
@@ -96,9 +96,11 @@ earlier. I'll wait for your go.` The launch heads-up still gives the approximate
 The lab is `workflow_dispatch` only — it gates nothing and nothing triggers it automatically:
 
 ```
-gh workflow run strength.yml --ref <branch> -f reference_ref=<merge-base|tag|sha>
+gh workflow run strength.yml --ref <branch> -f reference_ref=<merge-base|tag|sha> -f games=26568 -f sprt=true
 ```
 
+That is the ship gate: a Full run that stops at the first SPRT decision. Drop `sprt` when the size
+matters, such as an anchor step or a choice between two candidates.
 `reference_ref` defaults to `merge-base`, which attributes the result to **this change alone**; a
 tag like `elo-reference-v2` measures cumulative strength instead. A feature that ships default-off is
 measured with `-f candidate_uci_options="Name=Value"` rather than a probe branch, so the binary that
