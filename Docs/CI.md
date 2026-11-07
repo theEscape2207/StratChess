@@ -359,15 +359,17 @@ in `Measurements/ci-calibration.md`.
 (`.github/scripts/sprt.py plan`), and self-tests the pooling formula, comparison preflight and shard
 verifier before anything expensive runs. `build` compiles both engines, resolves the intended
 comparison, and stages them with fastchess and the book as **one artifact**, so every shard provably
-plays the same two binaries against the same book. `wave-1` calls the reusable
+plays the same two binaries against the same book. `wave-1` to `wave-4` each call the reusable
 **`strength-wave.yml`**, which holds one wave's jobs: `match` is the slice matrix; when it fails,
 `repair-plan` decides whether the shards were lost to their runners, and `repair` replays those
 pairs as small jobs from the same toolkit (`.github/scripts/plan_repair.py`); `decide` refuses a
 partial wave, verifies and pools the wave, and emits the outputs `strength.yml` reads (the contract
-is the header comment of `strength-wave.yml`). `aggregate` reads those outputs, verifies the whole
-batch and pools each arm. `match` and `repair` run the one `.github/scripts/play_shard.sh`, staged in
-the toolkit because shards do not check out the repository, so a replay cannot drift from the shard
-it replaces.
+is the header comment of `strength-wave.yml`). A wave runs only once the one before decided
+`continue`, so a fixed-size run calls `wave-1` alone. `aggregate` reads every wave's outputs
+(`sprt.py summarize`), verifies the whole batch, pools each arm and reports. `publish` and `mark`
+follow it: the first uploads a waved run's joined shards, the second the repair marker, last.
+`match` and `repair` run the one `.github/scripts/play_shard.sh`, staged in the toolkit because
+shards do not check out the repository, so a replay cannot drift from the shard it replaces.
 
 A fixed-size run is one wave: its slice per shard is the whole shard, its jobs are listed as
 `wave-1 / match (N)`, and its artifacts carry no wave — `strength-<run>-shard-<N>` per shard,
@@ -375,6 +377,16 @@ A fixed-size run is one wave: its slice per shard is the whole shard, its jobs a
 runs share the wave path rather than keeping a second one, so there is one repair planner and one
 discard rule. A waved run's names carry the wave (`strength-<run>-wave-<k>-shard-<N>`);
 `sprt.py` names both forms, and `test_strength_workflow.py` checks the workflow agrees.
+
+An `sprt` run cuts each shard into four slices fixed in `setup`, so wave *k* always holds the first
+*k*/4 of every shard in planned order, whatever the games' speed. Each wave's `decide` adds its
+counts to those the previous wave handed on and takes the SPRT decision (`sprt.py`). `aggregate`
+joins each shard's slices of the waves played (`batch_slices.py join`), verifies and pools them,
+and refuses unless the pooled counts equal the deciding wave's, so the figure reported is the one the
+decision was taken on. Its report names the outcome in the heading and adds a row per wave played.
+The joined shards are uploaded under the fixed-run names, `strength-<run>-shard-<N>`, so PGN sync and
+the analysis scripts read a stopped run as they read a fixed one. A planned stop, a discard and a
+repair are told apart by the waves' outputs, never by which artifacts exist.
 The normal PR gate also runs these Python self-tests and workflow boundary fixtures in its Linux
 Release leg, so harness failures can be checked without dispatching a strength match.
 
@@ -399,6 +411,7 @@ layout as well as the Python helpers: a misplaced retained book must fail locall
 | `shards` | Parallel match jobs, default 18. 18×1116 games is ~3 h and leaves 2 of the 20 concurrent-job slots free, so a run no longer blocks every other PR; 20 consumes the whole allowance for the duration. Below ~16 a shard can exceed the 340-minute job timeout |
 | `candidate_tc` / `reference_tc` | Per-side time control, finite decimal `seconds+increment`, base > 0 and increment >= 0; normalized so spelling cannot create a difference. Halve the **base** for a handicap run — an increment under 0.1 s makes the engine play near-instantly at the bottom of its clock |
 | `concurrency` | Concurrent games **per shard**. Validated at 3; raising it causes contention, adding shards does not |
+| `sprt` | Boolean, default false. Plays the batch as four waves and stops at the first pentanomial SPRT [0, 3] decision, α = β = 0.05; a run undecided at the cap passes only if Elo − err > 0. `setup` refuses it with `candidate_arms`, and outside `games=26568 shards=18`, the cap the simulation validated, unless `calibration` is set |
 | `threads` | UCI `Threads` on **both** engines, default 1. `setup` refuses `threads` × `concurrency` above the runner's 4 vCPU, so `Threads=4` needs `concurrency` 1 — a third of the game rate, so cut `games` to keep a shard inside the job timeout. Unvalidated for time losses above 1 |
 
 **One run at a time, repository-wide.** The workflow's concurrency group is the constant
@@ -469,10 +482,11 @@ whatever went wrong, so pooling them would be a biased subset wearing a full bat
 The exception is a shard lost to its runner: on attempt 1, the batch replays it at the same openings,
 which completes the batch designed rather than selecting from it, and pools it with a `Replayed` row in
 the report. The wave's `decide` verifies each slice alone, assembles them into
-`strength-<run>-shard-<N>` (`.github/scripts/batch_slices.py`) and uploads it once the wave pools, so
+`strength-<run>-shard-<N>`, or the wave's slice name in a waved run
+(`.github/scripts/batch_slices.py`), and uploads it once the wave pools, so
 `aggregate`'s verify and pool count it as the one shard it replaces; the raw slices stay as
 `strength-<run>-replay-<N>-<i>`. Such a run stays red, and its `strength-<run>-repair` artifact,
-uploaded last by `aggregate`, is what tells `Sync-LabPgn.ps1` it pooled. Rules and the manual fallback, `pool_repaired_batch.py`:
+uploaded last by `mark`, is what tells `Sync-LabPgn.ps1` it pooled. Rules and the manual fallback, `pool_repaired_batch.py`:
 `measure-strength` → `reference/strength-lab.md`.
 Numbers land in `Measurements/ci-per-change.md` or `ci-anchor.md`, which must never be compared
 against the local clang-cl rows. **Ratios transfer between the two instruments; absolute values

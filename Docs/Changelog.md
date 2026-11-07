@@ -23,7 +23,7 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
-## 2026-11-04: Version 0.9.0
+## 2026-11-05: Version 0.9.0
 
 ### Changed
 - `project(VERSION)` is 0.9.0, ahead of the `v0.9.0` tag. MINOR, for the measured strength gains from

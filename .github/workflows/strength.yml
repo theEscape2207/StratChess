@@ -9,8 +9,9 @@ name: Strength lab
 # The batch is sharded across parallel matrix jobs and pooled at the end. Each
 # shard plays a disjoint slice of the opening book, so the shards are one batch
 # split up rather than several batches averaged. The shard jobs, their repair and
-# the job that closes them live in strength-wave.yml, called here as wave-1; a
-# fixed-size run is that workflow's one-wave case.
+# the job that closes them live in strength-wave.yml, called here as wave-1 to
+# wave-4. A fixed-size run is that workflow's one-wave case; an sprt run plays up
+# to four waves and stops at the first SPRT decision.
 #
 # workflow_dispatch only, deliberately: a measurement harness that is wrong is
 # worse than none, because its output looks exactly like a measurement. It gets
@@ -60,6 +61,10 @@ on:
       threads:
         description: "UCI Threads on BOTH engines. threads x concurrency must fit the runner's 4 vCPU, so Threads=4 needs concurrency 1 -- a third of the default game rate, so cut games to keep a shard inside the job timeout"
         default: "1"
+      sprt:
+        description: "Play the batch as 4 waves and stop at the first pentanomial SPRT [0, 3] decision; a run undecided at the cap falls back to Elo - err > 0. Needs games=26568 shards=18 (calibration lifts this) and no candidate_arms"
+        type: boolean
+        default: false
 
 # One strength run at a time, repository-wide. The group is deliberately a
 # constant rather than keyed on the ref: a run takes 18 of the 20 concurrent
@@ -305,21 +310,25 @@ jobs:
           echo "shard_arms=$shard_arms" >> "$GITHUB_OUTPUT"
           python3 .github/scripts/plan_arms.py list --arms "$CANDIDATE_ARMS"
 
-      # Fixed before any game, so no result can choose which pairs a wave plays.
-      # Every run is fixed-size here: one wave, whose slices are the whole shards.
+      # Fixed before any game, so no result can choose which pairs a wave plays. A
+      # fixed-size run is one wave, whose slices are the whole shards; an sprt run
+      # is refused here unless it is at the cap the simulation validated (sprt.py).
       - name: Plan the waves
         id: waves
         env:
+          SPRT: ${{ inputs.sprt }}
+          CALIBRATION: ${{ inputs.calibration }}
+          GAMES: ${{ inputs.games }}
           SHARDS: ${{ inputs.shards }}
           ROUNDS: ${{ steps.plan.outputs.rounds_per_shard }}
           OPENING_OFFSET: ${{ inputs.opening_offset }}
+          CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
         run: |
           set -euo pipefail
-          # opening_offset was checked by Plan the arms.
-          waves=1
-          echo "waves=$waves" >> "$GITHUB_OUTPUT"
-          python3 .github/scripts/sprt.py plan --shards "$SHARDS" --rounds "$ROUNDS" \
-            --opening-offset "$OPENING_OFFSET" --waves "$waves" --output "$GITHUB_OUTPUT"
+          # games and shards were checked by Plan the shards, opening_offset by Plan the arms.
+          python3 .github/scripts/sprt.py plan --sprt "$SPRT" --calibration "$CALIBRATION" --games "$GAMES" \
+            --shards "$SHARDS" --rounds "$ROUNDS" --opening-offset "$OPENING_OFFSET" --arms "$CANDIDATE_ARMS" \
+            --output "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
   # Build both engines and stage the harness ONCE. Across 18 shards this saves
@@ -499,9 +508,13 @@ jobs:
           retention-days: 1
 
   # ---------------------------------------------------------------------------
-  # The run's shard jobs, their repair and the job that closes them, as one wave
-  # (strength-wave.yml). The scope granted here is the most its repair planner can
-  # hold: it reads the run's jobs, their annotations and its artifacts.
+  # The run's shard jobs, their repair and the job that closes them, one call of
+  # strength-wave.yml per wave. A wave starts only once the one before decided to
+  # continue; !cancelled() because a repaired wave's failed shard job fails its
+  # call, which still hands on its outputs. The calls differ only in the wave's
+  # number, its slice of the plan and what the earlier waves hand on. The scope
+  # granted is the most a wave's repair planner can hold: it reads the run's jobs,
+  # their annotations and its artifacts.
   # ---------------------------------------------------------------------------
   wave-1:
     needs: [setup, build]
@@ -516,6 +529,88 @@ jobs:
       wave_plan: ${{ needs.setup.outputs.wave_plan }}
       slices: ${{ toJSON(fromJSON(needs.setup.outputs.wave_plan)[0]) }}
       prior_lost: 0
+      prior_counts: ""
+      book_file: ${{ needs.build.outputs.book_file }}
+      candidate_tc: ${{ inputs.candidate_tc }}
+      reference_tc: ${{ inputs.reference_tc }}
+      concurrency: ${{ inputs.concurrency }}
+      threads: ${{ inputs.threads }}
+      candidate_uci_options: ${{ inputs.candidate_uci_options }}
+      reference_uci_options: ${{ inputs.reference_uci_options }}
+      candidate_arms: ${{ inputs.candidate_arms }}
+      shard_arms: ${{ needs.setup.outputs.shard_arms }}
+      cand_name: ${{ needs.build.outputs.cand_name }}
+      ref_name: ${{ needs.build.outputs.ref_name }}
+
+  wave-2:
+    needs: [setup, build, wave-1]
+    if: ${{ !cancelled() && needs.wave-1.outputs.decision == 'continue' }}
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    uses: ./.github/workflows/strength-wave.yml
+    with:
+      wave: 2
+      waves: ${{ fromJSON(needs.setup.outputs.waves) }}
+      wave_plan: ${{ needs.setup.outputs.wave_plan }}
+      slices: ${{ toJSON(fromJSON(needs.setup.outputs.wave_plan)[1]) }}
+      prior_lost: ${{ fromJSON(needs.wave-1.outputs.lost_total) }}
+      prior_counts: ${{ needs.wave-1.outputs.counts }}
+      book_file: ${{ needs.build.outputs.book_file }}
+      candidate_tc: ${{ inputs.candidate_tc }}
+      reference_tc: ${{ inputs.reference_tc }}
+      concurrency: ${{ inputs.concurrency }}
+      threads: ${{ inputs.threads }}
+      candidate_uci_options: ${{ inputs.candidate_uci_options }}
+      reference_uci_options: ${{ inputs.reference_uci_options }}
+      candidate_arms: ${{ inputs.candidate_arms }}
+      shard_arms: ${{ needs.setup.outputs.shard_arms }}
+      cand_name: ${{ needs.build.outputs.cand_name }}
+      ref_name: ${{ needs.build.outputs.ref_name }}
+
+  wave-3:
+    needs: [setup, build, wave-2]
+    if: ${{ !cancelled() && needs.wave-2.outputs.decision == 'continue' }}
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    uses: ./.github/workflows/strength-wave.yml
+    with:
+      wave: 3
+      waves: ${{ fromJSON(needs.setup.outputs.waves) }}
+      wave_plan: ${{ needs.setup.outputs.wave_plan }}
+      slices: ${{ toJSON(fromJSON(needs.setup.outputs.wave_plan)[2]) }}
+      prior_lost: ${{ fromJSON(needs.wave-2.outputs.lost_total) }}
+      prior_counts: ${{ needs.wave-2.outputs.counts }}
+      book_file: ${{ needs.build.outputs.book_file }}
+      candidate_tc: ${{ inputs.candidate_tc }}
+      reference_tc: ${{ inputs.reference_tc }}
+      concurrency: ${{ inputs.concurrency }}
+      threads: ${{ inputs.threads }}
+      candidate_uci_options: ${{ inputs.candidate_uci_options }}
+      reference_uci_options: ${{ inputs.reference_uci_options }}
+      candidate_arms: ${{ inputs.candidate_arms }}
+      shard_arms: ${{ needs.setup.outputs.shard_arms }}
+      cand_name: ${{ needs.build.outputs.cand_name }}
+      ref_name: ${{ needs.build.outputs.ref_name }}
+
+  wave-4:
+    needs: [setup, build, wave-3]
+    if: ${{ !cancelled() && needs.wave-3.outputs.decision == 'continue' }}
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    uses: ./.github/workflows/strength-wave.yml
+    with:
+      wave: 4
+      waves: ${{ fromJSON(needs.setup.outputs.waves) }}
+      wave_plan: ${{ needs.setup.outputs.wave_plan }}
+      slices: ${{ toJSON(fromJSON(needs.setup.outputs.wave_plan)[3]) }}
+      prior_lost: ${{ fromJSON(needs.wave-3.outputs.lost_total) }}
+      prior_counts: ${{ needs.wave-3.outputs.counts }}
       book_file: ${{ needs.build.outputs.book_file }}
       candidate_tc: ${{ inputs.candidate_tc }}
       reference_tc: ${{ inputs.reference_tc }}
@@ -529,11 +624,12 @@ jobs:
       ref_name: ${{ needs.build.outputs.ref_name }}
 
   # ---------------------------------------------------------------------------
-  # Pool the shards into one figure per arm. Runs even when a shard failed, so the
-  # summary explains the discard rather than leaving a red X with no reason.
+  # Pool the waves played into one figure per arm. Runs even when a wave was
+  # discarded, so the summary explains the discard rather than leaving a red X
+  # with no reason.
   # ---------------------------------------------------------------------------
   aggregate:
-    needs: [setup, build, wave-1]
+    needs: [setup, build, wave-1, wave-2, wave-3, wave-4]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 15
@@ -542,28 +638,40 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+    outputs:
+      pooled: ${{ steps.pool.outcome }}
+      joined: ${{ steps.joined.outcome == 'success' }}
+      repair_plan: ${{ steps.summary.outputs.repair_plan }}
+    env:
+      # A waved run's slices carry their wave (sprt.slice_artifact) and are joined
+      # into shards below; a fixed run's slices are its shards.
+      SLICE_PREFIX: ${{ needs.setup.outputs.waves > 1 && 'wave-*-' || '' }}
+      SLICE_ROOT: ${{ needs.setup.outputs.waves > 1 && 'slices' || 'shards' }}
     steps:
       - uses: actions/checkout@v7
 
-      # The wave's decide job refused a partial wave or failed a check; either way
-      # nothing pools. Its outputs, not which artifacts exist, say which.
-      - name: Refuse a partial batch
-        if: ${{ needs.wave-1.outputs.status != 'complete' }}
+      # Every wave's outputs, not which artifacts exist, say whether the run
+      # stopped as planned, was discarded or was repaired.
+      - name: Summarize the waves
+        id: summary
         env:
-          WAVE_STATUS: ${{ needs.wave-1.outputs.status }}
-          WAVE_REASON: ${{ needs.wave-1.outputs.reason }}
-          WAVE_RESULT: ${{ needs.wave-1.result }}
+          NEEDS: ${{ toJSON(needs) }}
+          CALIBRATION: ${{ inputs.calibration }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/sprt.py summarize --needs "$NEEDS" --calibration "$CALIBRATION" \
+            --report /tmp/sprt.md --output "$GITHUB_OUTPUT"
+
+      # A wave refused a partial batch or failed a check; either way nothing pools.
+      - name: Refuse a discarded run
+        if: steps.summary.outputs.outcome == 'discarded'
+        env:
+          REASON: ${{ steps.summary.outputs.reason }}
         run: |
           {
             echo "## Strength lab — DISCARDED"
             echo
-            if [ "$WAVE_STATUS" = "discarded" ]; then
-              echo "$WAVE_REASON"
-            elif [ "$WAVE_RESULT" = "skipped" ]; then
-              echo "No shard ran: setup or build did not complete."
-            else
-              echo "The wave ended \`$WAVE_RESULT\` without a decision: a check after the shards failed, or the run was cancelled."
-            fi
+            echo "$REASON"
             echo
             echo "A batch with a failed shard is not a smaller batch, it is a biased one: the surviving"
             echo "shards are those that happened to avoid whatever went wrong. No pooled figure is reported."
@@ -577,8 +685,8 @@ jobs:
         if: always()
         uses: actions/download-artifact@v8
         with:
-          pattern: strength-${{ github.run_id }}-shard-*
-          path: shards
+          pattern: strength-${{ github.run_id }}-${{ env.SLICE_PREFIX }}shard-*
+          path: ${{ env.SLICE_ROOT }}
 
       - name: Download comparison and opening evidence
         uses: actions/download-artifact@v8
@@ -586,20 +694,25 @@ jobs:
           name: strength-${{ github.run_id }}-comparison
           path: evidence
 
-      # Replayed shards were assembled, verified and uploaded under their shard
-      # names by the wave's decide job; this is the plan the marker carries.
-      - name: Record the repair plan
-        if: needs.wave-1.outputs.lost_a != ''
+      # Waves 1..k of every shard in planned order under the shard's own name, so
+      # the verify and pool below, PGN sync and the analysis scripts read a
+      # stopped run's batch as they read a fixed one. Replayed slices were
+      # assembled, verified and uploaded under their slice names by their wave.
+      - name: Join the waves
+        if: needs.setup.outputs.waves > 1
         env:
-          SLICES: ${{ needs.wave-1.outputs.slices }}
+          WAVE_PLAN: ${{ needs.setup.outputs.wave_plan }}
+          WAVE: ${{ steps.summary.outputs.wave }}
         run: |
           set -euo pipefail
-          printf '%s\n' "$SLICES" > repair-plan.json
+          python3 .github/scripts/batch_slices.py join --wave-plan "$WAVE_PLAN" --waves-played "$WAVE" \
+            --run "$GITHUB_RUN_ID" --slices slices --target shards
 
       - name: Verify the complete batch
         env:
           SHARDS: ${{ inputs.shards }}
           ROUNDS: ${{ needs.setup.outputs.rounds_per_shard }}
+          PAIRS: ${{ steps.summary.outputs.pairs }}
           CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
           OPENING_OFFSET: ${{ inputs.opening_offset }}
           CAND_NAME: ${{ needs.build.outputs.cand_name }}
@@ -608,7 +721,7 @@ jobs:
           set -euo pipefail
           test -s evidence/comparison.md
           python3 .github/scripts/plan_arms.py verify \
-            --arms "$CANDIDATE_ARMS" --shards "$SHARDS" --rounds-per-shard "$ROUNDS" \
+            --arms "$CANDIDATE_ARMS" --shards "$SHARDS" --rounds-per-shard "$ROUNDS" --pairs-per-shard "$PAIRS" \
             --opening-offset "$OPENING_OFFSET" --candidate-name "$CAND_NAME" --reference-name "$REF_NAME" \
             --book "evidence/$BOOK_FILE" --shard-root shards
 
@@ -616,15 +729,22 @@ jobs:
         id: pool
         env:
           SHARDS: ${{ inputs.shards }}
-          ROUNDS: ${{ needs.setup.outputs.rounds_per_shard }}
+          PAIRS: ${{ steps.summary.outputs.pairs }}
+          COUNTS: ${{ steps.summary.outputs.counts }}
           CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
         run: |
           set -euo pipefail
           # Publish only after every pool succeeds; a partial arm table is invalid.
           if [ -z "$CANDIDATE_ARMS" ]; then
             python3 .github/scripts/pool_pentanomial.py \
-              --expect-shards "$SHARDS" --expect-pairs-per-shard "$ROUNDS" \
+              --expect-shards "$SHARDS" --expect-pairs-per-shard "$PAIRS" \
               shards/*/match.log > /tmp/pooled.pending.md
+            # The figure reported must be the one the deciding wave decided on.
+            pooled=$(sed -n 's/^Pooled Ptnml(0-2): //p' /tmp/pooled.pending.md)
+            if [ "${pooled// /}" != "$COUNTS" ]; then
+              echo "::error::The batch pools to $pooled, but its deciding wave decided on $COUNTS."
+              exit 1
+            fi
           else
             arm_list=$(python3 .github/scripts/plan_arms.py list --arms "$CANDIDATE_ARMS")
             arm_count=$(printf '%s\n' "$arm_list" | wc -l)
@@ -637,7 +757,7 @@ jobs:
               echo "### Arm $arm: \`$options\`" >> /tmp/arms.pending.md
               echo >> /tmp/arms.pending.md
               python3 .github/scripts/pool_pentanomial.py \
-                --expect-shards $(( SHARDS / arm_count )) --expect-pairs-per-shard "$ROUNDS" \
+                --expect-shards $(( SHARDS / arm_count )) --expect-pairs-per-shard "$PAIRS" \
                 --label "$arm: \`$options\`" --summary-tsv /tmp/arms.tsv \
                 "${logs[@]}" >> /tmp/arms.pending.md
               echo >> /tmp/arms.pending.md
@@ -653,15 +773,17 @@ jobs:
           mv /tmp/pooled.pending.md /tmp/pooled.md
           cat /tmp/pooled.md
 
-      # Last: a repaired run stays red, and this marker is what tells PGN sync it pooled.
-      - name: Mark the run as repaired
-        if: steps.pool.outcome == 'success' && needs.wave-1.outputs.lost_a != ''
+      # One artifact, which the publish jobs split into the shards' own names: an
+      # upload step names one artifact.
+      - name: Upload the joined shards
+        id: joined
+        if: steps.pool.outcome == 'success' && needs.setup.outputs.waves > 1
         uses: actions/upload-artifact@v7
         with:
-          name: strength-${{ github.run_id }}-repair
-          path: repair-plan.json
+          name: strength-${{ github.run_id }}-joined
+          path: shards
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 1
 
       # Built once into a file and used twice, so the pull-request comment and
       # the job summary cannot drift apart.
@@ -678,11 +800,13 @@ jobs:
           THREADS: ${{ inputs.threads }}
           BUILD_RESULT: ${{ needs.build.result }}
           POOL_RESULT: ${{ steps.pool.outcome }}
-          REPLAYED: ${{ needs.wave-1.outputs.replayed }}
+          HEADING: ${{ steps.summary.outputs.heading }}
+          WAVED_GAMES: ${{ steps.summary.outputs.waved_games }}
+          REPLAYED: ${{ steps.summary.outputs.replayed }}
         run: |
           {
             if [ "$POOL_RESULT" = "success" ]; then
-              echo "## Strength lab"
+              echo "$HEADING"
             else
               echo "## Strength lab — DISCARDED"
             fi
@@ -695,7 +819,11 @@ jobs:
               echo "| Candidate | ${{ needs.build.outputs.cand_name }} @ \`${{ github.ref_name }}\`, tc=${{ inputs.candidate_tc }}, options \`${CANDIDATE_UCI_OPTIONS:-none}\` |"
             fi
             echo "| Reference | ${{ needs.build.outputs.ref_name }} (\`${{ inputs.reference_ref }}\` = \`${{ needs.setup.outputs.reference_sha }}\`), tc=${{ inputs.reference_tc }}, options \`${REFERENCE_UCI_OPTIONS:-none}\` |"
-            echo "| Games | ${{ needs.setup.outputs.actual_games }} = ${{ inputs.shards }} shards x ${{ needs.setup.outputs.games_per_shard }}, concurrency ${{ inputs.concurrency }} per shard |"
+            if [ "$POOL_RESULT" = "success" ] && [ -n "$WAVED_GAMES" ]; then
+              echo "| Games | $WAVED_GAMES |"
+            else
+              echo "| Games | ${{ needs.setup.outputs.actual_games }} = ${{ inputs.shards }} shards x ${{ needs.setup.outputs.games_per_shard }}, concurrency ${{ inputs.concurrency }} per shard |"
+            fi
             if [ "$POOL_RESULT" = "success" ] && [ -n "$REPLAYED" ]; then
               echo "| Replayed | $REPLAYED |"
             fi
@@ -719,6 +847,10 @@ jobs:
               echo "Comparison evidence is unavailable; see the build summary."
             fi
             if [ "$POOL_RESULT" = "success" ]; then
+              if [ -s /tmp/sprt.md ]; then
+                cat /tmp/sprt.md
+                echo
+              fi
               cat /tmp/pooled.md
             else
               echo "The batch did not pass all integrity checks. No pooled figure is reported."
@@ -727,7 +859,8 @@ jobs:
             echo "Error bar is pentanomial: pooled over colour-swapped PAIRS, which are the"
             echo "independent unit. Pooling raw W/L/D would understate the variance."
             echo
-            python3 .github/scripts/summarize_cpu.py shards/*/ || echo "Runner CPU summary unavailable."
+            # Each wave slice ran on its own runner; a joined shard has no samples.
+            python3 .github/scripts/summarize_cpu.py "$SLICE_ROOT"/*/ || echo "Runner CPU summary unavailable."
             echo
             echo "[Run ${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
           } > /tmp/report.md
@@ -762,3 +895,58 @@ jobs:
           fi
           gh pr comment "$prs" --body-file /tmp/report.md
           echo "Posted the result to pull request #$prs."
+
+  # ---------------------------------------------------------------------------
+  # A waved run's joined shards under the shards' own names, which PGN sync and
+  # the analysis scripts read; only once aggregate verified and pooled them.
+  # ---------------------------------------------------------------------------
+  publish:
+    needs: [setup, aggregate]
+    if: ${{ !cancelled() && needs.aggregate.outputs.joined == 'true' }}
+    name: publish (${{ matrix.slice.shard }})
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    strategy:
+      # Every shard that can be published is; the marker waits for all of them.
+      fail-fast: false
+      matrix:
+        slice: ${{ fromJSON(needs.setup.outputs.wave_plan)[0] }}
+    steps:
+      - name: Download the joined shards
+        uses: actions/download-artifact@v8
+        with:
+          name: strength-${{ github.run_id }}-joined
+          path: joined
+
+      - name: Upload the shard
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}-shard-${{ matrix.slice.shard }}
+          path: joined/strength-${{ github.run_id }}-shard-${{ matrix.slice.shard }}
+          if-no-files-found: error
+          retention-days: 90
+
+  # ---------------------------------------------------------------------------
+  # Last: a repaired run stays red, and this marker is what tells PGN sync it
+  # pooled and every shard it needs is published.
+  # ---------------------------------------------------------------------------
+  mark:
+    needs: [setup, aggregate, publish]
+    if: ${{ !cancelled() && needs.aggregate.outputs.pooled == 'success' && needs.aggregate.outputs.repair_plan != '' && (needs.setup.outputs.waves == 1 || needs.publish.result == 'success') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Record the repair plan
+        env:
+          REPAIR_PLAN: ${{ needs.aggregate.outputs.repair_plan }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$REPAIR_PLAN" > repair-plan.json
+
+      - name: Mark the run as repaired
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}-repair
+          path: repair-plan.json
+          if-no-files-found: error
+          retention-days: 90

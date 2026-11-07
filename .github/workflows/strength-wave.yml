@@ -9,9 +9,9 @@ name: Strength lab wave
 # decide's outputs are the contract with strength.yml:
 #   status        complete or discarded; empty if decide failed or never ran
 #   reason        why the wave was discarded; empty when complete
-#   decision      continue, H1, H0, cap or fixed; empty when discarded
+#   decision      continue, H1, H0, cap or fixed; empty unless status is complete
 #   llr           the cumulative LLR to two decimals; empty for fixed
-#   counts        the pooled Ptnml as compact JSON
+#   counts        waves 1..k's pooled Ptnml as compact JSON
 #   lost_total    shards lost so far in the run, this wave included
 #   replayed      the report's Replayed text; empty when nothing was replayed
 #   lost_a, lost_b, slices   the repair plan, for the run's repair marker
@@ -44,6 +44,10 @@ on:
       prior_lost:
         description: "Shards lost in the run's earlier waves"
         type: number
+        required: true
+      prior_counts:
+        description: "The previous wave's counts output, waves 1..k-1 pooled; empty for wave 1"
+        type: string
         required: true
       book_file:
         type: string
@@ -284,9 +288,9 @@ jobs:
     outputs:
       status: ${{ steps.partial.outputs.status || steps.record.outputs.status }}
       reason: ${{ steps.partial.outputs.reason }}
-      decision: ${{ steps.decide.outputs.decision }}
-      llr: ${{ steps.decide.outputs.llr }}
-      counts: ${{ steps.decide.outputs.counts }}
+      decision: ${{ steps.record.outputs.decision }}
+      llr: ${{ steps.record.outputs.llr }}
+      counts: ${{ steps.record.outputs.counts }}
       lost_total: ${{ steps.record.outputs.lost_total }}
       replayed: ${{ steps.record.outputs.replayed }}
       lost_a: ${{ steps.record.outputs.lost_a }}
@@ -380,8 +384,10 @@ jobs:
             --book "evidence/$BOOK_FILE" --shard-root shards
 
       # Every log is read with its planned pair count, so a short or excess log is
-      # refused. Across arms the counts are only summed for the decision; a fixed
-      # run's per-arm figures are pooled by aggregate.
+      # refused. The earlier waves were read the same way by their own decide, and
+      # aggregate re-pools them all against the deciding wave's counts. Across arms
+      # the counts are only summed for the decision; a fixed run's per-arm figures
+      # are pooled by aggregate.
       - name: Pool the wave
         id: decide
         if: steps.partial.outcome == 'skipped'
@@ -390,6 +396,7 @@ jobs:
           WAVES: ${{ inputs.waves }}
           WAVE_PLAN: ${{ inputs.wave_plan }}
           SLICES: ${{ inputs.slices }}
+          PRIOR_COUNTS: ${{ inputs.prior_counts }}
         run: |
           set -euo pipefail
           shape=$(python3 .github/scripts/sprt.py shape --wave-plan "$WAVE_PLAN" --wave "$WAVE" --slices "$SLICES")
@@ -397,11 +404,12 @@ jobs:
           python3 .github/scripts/pool_pentanomial.py \
             --expect-shards "$shards" --expect-pairs-per-shard "$pairs" shards/*/match.log > pooled-wave.md
           counts=$(sed -n 's/^Pooled Ptnml(0-2): //p' pooled-wave.md)
-          python3 .github/scripts/sprt.py decide --counts "$counts" --wave "$WAVE" --waves "$WAVES" --output "$GITHUB_OUTPUT"
+          python3 .github/scripts/sprt.py decide --counts "$counts" --prior-counts "$PRIOR_COUNTS" \
+            --wave "$WAVE" --waves "$WAVES" --output "$GITHUB_OUTPUT"
 
-      # Under the slice's own name, so PGN sync and the analysis scripts see a
-      # complete batch. One step per shard because the name is per artifact; the
-      # planner repairs at most two.
+      # Under the slice's own name: a fixed run's shard, which PGN sync and the
+      # analysis scripts read, or a waved run's slice, which aggregate joins. One step
+      # per shard because the name is per artifact; the planner repairs at most two.
       - name: Upload the first replayed shard
         if: steps.decide.outcome == 'success' && needs.repair-plan.outputs.lost_a != ''
         uses: actions/upload-artifact@v7
@@ -420,11 +428,15 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      # Last, so status=complete means every step above succeeded.
+      # Last, so status=complete means every step above succeeded, and a decision
+      # never reaches the caller without it.
       - name: Record the wave
         id: record
         if: steps.decide.outcome == 'success'
         env:
+          DECISION: ${{ steps.decide.outputs.decision }}
+          LLR: ${{ steps.decide.outputs.llr }}
+          COUNTS: ${{ steps.decide.outputs.counts }}
           WAVE: ${{ inputs.wave }}
           WAVES: ${{ inputs.waves }}
           PRIOR_LOST: ${{ inputs.prior_lost }}
@@ -440,6 +452,9 @@ jobs:
           if [ -n "$REPLAYED" ] && [ "$WAVES" -gt 1 ]; then REPLAYED="wave $WAVE: $REPLAYED"; fi
           {
             echo "status=complete"
+            echo "decision=$DECISION"
+            echo "llr=$LLR"
+            echo "counts=$COUNTS"
             echo "lost_total=$(( PRIOR_LOST + lost ))"
             echo "replayed=$REPLAYED"
             echo "lost_a=$LOST_A"

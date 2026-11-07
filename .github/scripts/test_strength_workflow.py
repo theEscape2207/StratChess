@@ -7,7 +7,8 @@ The small extractor recognizes the workflow's named Bash run blocks, not general
 YAML. The preflight CLI is covered by its own fixtures; its stub here captures
 output placement while real staging/copy commands exercise artifact layout.
 Directory uploads preserve paths relative to that directory. Complete and short
-single/multi-arm batches exercise the actual verify, pool and report commands.
+single/multi-arm batches exercise the actual verify, pool and report commands, and a
+four-wave run goes through every wave's decide and aggregate's join, pool and report.
 """
 from pathlib import Path
 import argparse
@@ -67,6 +68,36 @@ def outputs(path):
     """A GITHUB_OUTPUT file as a dict; the last write of a key wins, as in Actions."""
     return dict(line.split('=', 1) for line in path.read_text(encoding='utf-8').splitlines() if '=' in line)
 
+def run_needs(plan, *waves):
+    """strength.yml's needs as aggregate sees them: setup's plan, then each wave's (result, outputs)."""
+    jobs = {'setup': {'result': 'success', 'outputs': {'waves': str(len(plan)), 'wave_plan': json.dumps(plan)}},
+            'build': {'result': 'success', 'outputs': {}}}
+    for k in range(1, len(plan) + 1):
+        result, wave_outputs = waves[k - 1] if k <= len(waves) else ('skipped', {})
+        jobs[f'wave-{k}'] = {'result': result, 'outputs': wave_outputs}
+    return jobs
+
+def summarize(root, env, needs):
+    """aggregate's summary step, and the env its outputs give the steps after it."""
+    output = root / 'github-output'
+    output.unlink(missing_ok=True)
+    run(root, 'Summarize the waves', {**env, 'NEEDS': json.dumps(needs), 'GITHUB_OUTPUT': output.as_posix()})
+    summary = outputs(output)
+    names = {'outcome': 'OUTCOME', 'wave': 'WAVE', 'reason': 'REASON', 'counts': 'COUNTS', 'pairs': 'PAIRS',
+             'heading': 'HEADING', 'waved_games': 'WAVED_GAMES', 'replayed': 'REPLAYED', 'repair_plan': 'REPAIR_PLAN'}
+    assert set(summary) == set(names), summary
+    return {names[key]: value for key, value in summary.items()}
+
+def record_wave(root, env, **values):
+    """decide's last step after its pool, and the outputs the wave hands its caller."""
+    decided = outputs(root / 'github-output')
+    # Its own outputs only, as Actions keeps them per step: decide's job outputs read this step's.
+    (root / 'github-output').unlink()
+    run(root, 'Record the wave', {**env, 'DECISION': decided['decision'], 'LLR': decided['llr'],
+                                  'COUNTS': decided['counts'], 'PRIOR_LOST': '0', 'LOST_A': '', 'LOST_B': '',
+                                  'PIECES': '', 'REPLAYED': '', **values})
+    return outputs(root / 'github-output')
+
 def discard_rule():
     """decide's actual if: text against every outcome, since Actions expressions don't run locally."""
     expression = re.search(r"name: Refuse a partial wave\n\s+id: partial\n\s+if: \$\{\{ (.+) \}\}", wave_workflow)[1]
@@ -99,9 +130,76 @@ def discard_rule():
     guards = [re.search(r'(?m)^        if: (.+)$', step) for step in steps]
     assert len(steps) == 10 and all(guard and re.search(r'steps\.(partial|decide)\.outcome', guard[1])
                                     for guard in guards), steps
-    assert 'needs: [setup, build, wave-1]' in workflow, 'aggregate must wait for the wave'
-    assert "if: ${{ needs.wave-1.outputs.status != 'complete' }}" in workflow, 'aggregate must refuse an undecided wave'
+    # A decision reaches the caller only from the last step, so never without status=complete.
+    contract = decide.split('    outputs:\n')[1].split('    steps:\n')[0]
+    for key in ('decision', 'llr', 'counts', 'lost_total', 'replayed', 'lost_a', 'lost_b', 'slices'):
+        assert f'      {key}: ${{{{ steps.record.outputs.{key} }}}}\n' in contract, key
+    assert 'needs: [setup, build, wave-1, wave-2, wave-3, wave-4]\n    if: always()' in workflow, 'aggregate must wait for every wave'
+    assert "if: steps.summary.outputs.outcome == 'discarded'" in workflow, 'aggregate must refuse a discarded run'
     print(f'PASS: the discard rule refuses as designed in {len(table)} outcomes')
+
+def wave_calls():
+    """The four wave calls: D1's gate over every decision, and the inputs they must share."""
+    calls = {}
+    for k in range(1, 5):
+        section = workflow.split(f'\n  wave-{k}:\n')[1].split('\n\n')[0]
+        calls[k] = section
+        assert 'uses: ./.github/workflows/strength-wave.yml' in section
+        assert ('needs: [setup, build]' if k == 1 else f'needs: [setup, build, wave-{k - 1}]') in section
+    for k in range(2, 5):
+        gate = re.search(r'(?m)^    if: \$\{\{ (.+) \}\}$', calls[k])[1]
+        assert gate == f"!cancelled() && needs.wave-{k - 1}.outputs.decision == 'continue'", gate
+        python = gate.replace('!cancelled()', 'not cancelled').replace('&&', ' and ').replace(
+            f'needs.wave-{k - 1}.outputs.decision', 'decision')
+        for decision in ('continue', 'H1', 'H0', 'cap', 'fixed', ''):
+            for cancelled in (False, True):
+                assert eval(python, {}, dict(cancelled=cancelled, decision=decision)) == \
+                    (decision == 'continue' and not cancelled), (gate, decision, cancelled)
+    own = {'wave', 'slices', 'prior_lost', 'prior_counts'}
+
+    def inputs(k):
+        block = calls[k].split('    with:\n')[1]
+        return dict(line.strip().split(': ', 1) for line in block.splitlines())
+
+    for k in range(1, 5):
+        given = inputs(k)
+        assert given['wave'] == str(k) and given['slices'] == f'${{{{ toJSON(fromJSON(needs.setup.outputs.wave_plan)[{k - 1}]) }}}}'
+        assert (given['prior_lost'], given['prior_counts']) == (('0', '""') if k == 1 else (
+            f'${{{{ fromJSON(needs.wave-{k - 1}.outputs.lost_total) }}}}', f'${{{{ needs.wave-{k - 1}.outputs.counts }}}}'))
+        assert {key: value for key, value in given.items() if key not in own} == \
+            {key: value for key, value in inputs(1).items() if key not in own}, f'wave-{k} drifted from wave-1'
+    print('PASS: each wave runs only after the one before decided to continue, with the same settings')
+
+def publication_gates():
+    """publish and mark's if: texts: joined shards only after the pool, the marker only after every shard."""
+    def gate(job):
+        section = workflow.split(f'\n  {job}:\n')[1]
+        python = re.search(r'(?m)^    if: \$\{\{ (.+) \}\}$', section)[1]
+        for name, variable in (('!cancelled()', 'not cancelled'), ('&&', ' and '), ('||', ' or '),
+                               ('needs.aggregate.outputs.', ''), ('needs.publish.result', 'publish'),
+                               ('needs.setup.outputs.waves', 'waves')):
+            python = python.replace(name, variable)
+        return python
+
+    publish, mark = gate('publish'), gate('mark')
+    for joined in ('true', 'false'):
+        for cancelled in (False, True):
+            assert eval(publish, {}, dict(joined=joined, cancelled=cancelled)) == (joined == 'true' and not cancelled)
+    table = [  # pooled, repair_plan, waves, publish, marked
+        ('success', '[1]', 1, 'skipped', True),
+        ('success', '[1]', 4, 'success', True),
+        ('success', '[1]', 4, 'failure', False),
+        ('success', '[1]', 4, 'cancelled', False),
+        # The pool succeeded but the joined upload failed, so publish never ran.
+        ('success', '[1]', 4, 'skipped', False),
+        ('success', '', 1, 'skipped', False),
+        ('failure', '[1]', 1, 'skipped', False),
+        ('skipped', '[1]', 4, 'success', False)]
+    for pooled, repair_plan, waves, published, marked in table:
+        scope = dict(pooled=pooled, repair_plan=repair_plan, waves=waves, publish=published, cancelled=False)
+        assert eval(mark, {}, scope) == marked, (scope, mark)
+    assert 'needs: [setup, aggregate, publish]' in workflow.split('\n  mark:\n')[1].split('\n\n')[0]
+    print(f'PASS: joined shards publish after the pool, the marker after every shard, in {len(table)} outcomes')
 
 def artifact_names():
     """The workflows' artifact names and download patterns against sprt.py's, at one wave and at four."""
@@ -130,7 +228,18 @@ def artifact_names():
         assert fnmatch.fnmatchcase(replay_name, expand(replays, waves))
         for other in (sprt.slice_artifact(42, 1, 4, 7), sprt.replay_artifact(42, 1, 4, 7, 3)):
             assert not fnmatch.fnmatchcase(other, expand(slices, waves)) and not fnmatch.fnmatchcase(other, expand(replays, waves))
-    assert 'pattern: strength-${{ github.run_id }}-shard-*' in workflow, 'aggregate reads the canonical shard names'
+    # aggregate downloads every wave's slices; a waved run's joined shards take the pre-wave names.
+    assert "  SLICE_PREFIX: ${{ needs.setup.outputs.waves > 1 && 'wave-*-' || '' }}\n" in workflow
+    assert 'pattern: strength-${{ github.run_id }}-${{ env.SLICE_PREFIX }}shard-*' in workflow
+    for waves, prefix in ((1, ''), (4, 'wave-*-')):
+        pattern = f'strength-42-{prefix}shard-*'
+        assert all(fnmatch.fnmatchcase(sprt.slice_artifact(42, wave, waves, 7), pattern) for wave in range(1, waves + 1))
+        assert not fnmatch.fnmatchcase(sprt.replay_artifact(42, 2, waves, 7, 3), pattern)
+    assert not fnmatch.fnmatchcase(sprt.slice_artifact(42, 1, 1, 7), 'strength-42-wave-*-shard-*'), \
+        'a waved run must not download its own joined shards as slices'
+    publish = workflow.split('\n  publish:\n')[1]
+    assert re.search(r'(?m)^          name: (.+)$', publish.split('- name: Upload the shard')[1])[1] == \
+        'strength-${{ github.run_id }}-shard-${{ matrix.slice.shard }}', 'joined shards take the pre-wave names'
     assert '--job-prefix "wave-$WAVE / "' in shell_blocks['Plan the repair'] and 'wave-1:\n' in workflow, \
         'the planner reads the jobs of the caller job wave-<k>'
     print('PASS: artifact names and download patterns agree with sprt.py at W = 1 and W = 4')
@@ -222,14 +331,15 @@ def repaired_batch(root, env):
     run(root, 'Assemble the replayed shards', repair)
     run(root, 'Verify the wave', repair)
     run(root, 'Pool the wave', repair)
-    run(root, 'Record the wave', repair)
-    wave = outputs(output)
+    wave = record_wave(root, repair, LOST_A='1', PIECES=json.dumps(slices), REPLAYED='shard 1, 2 slices (runner lost)')
     assert wave['decision'] == 'fixed' and wave['counts'] == '[0,0,4,0,0]', wave
     assert wave['status'] == 'complete' and wave['lost_total'] == '1' and wave['lost_a'] == '1' and wave['lost_b'] == ''
     assert wave['replayed'] == 'shard 1, 2 slices (runner lost)', 'a one-wave run keeps the Replayed text'
     assert json.loads(wave['slices']) == slices
-    run(root, 'Record the repair plan', {**repair, 'SLICES': wave['slices']})
-    assert json.loads((root / 'repair-plan.json').read_text()) == slices, 'the marker carries the repair plan as today'
+    plan = json.loads(env['WAVE_PLAN'])
+    repair.update(summarize(root, repair, run_needs(plan, ('failure', wave))))
+    run(root, 'Record the repair plan', repair)
+    assert (root / 'repair-plan.json').read_text() == json.dumps(slices) + '\n', 'the marker carries the repair plan as today'
     run(root, 'Verify the complete batch', repair)
     run(root, 'Pool the result', repair)
     run(root, 'Report', repair)
@@ -252,27 +362,168 @@ def repaired_batch(root, env):
                                             'REPAIR_RESULT': repair_result})
         wave = outputs(output)
         assert wave['status'] == 'discarded' and 'decision' not in wave, wave
-        run(root, 'Refuse a partial batch', {**repair, 'WAVE_STATUS': wave['status'], 'WAVE_REASON': wave['reason'],
-                                             'WAVE_RESULT': 'failure'}, expected=1)
+        return refuse(('failure', wave))
+
+    def refuse(wave):
+        """aggregate's summary and refusal of a run whose one wave ended as given."""
+        summary.unlink(missing_ok=True)
+        run(root, 'Refuse a discarded run', {**repair, **summarize(root, repair, run_needs(plan, wave))}, expected=1)
         text = summary.read_text(encoding='utf-8')
-        assert 'DISCARDED' in text and f'Shard jobs reported `{match}`.' in text and '**Pooled:' not in text, text
+        assert text.startswith('## Strength lab — DISCARDED\n') and '**Pooled:' not in text, text
         return text
 
-    assert 'Not repaired: shard 2 failed.' in refused('failure', 'shard 2 failed', 'skipped')
+    assert 'Shard jobs reported `failure`. Not repaired: shard 2 failed.' in refused('failure', 'shard 2 failed', 'skipped')
     assert 'The repair was failure.' in refused('failure', '', 'failure')
-    summary.unlink()
-    run(root, 'Refuse a partial batch', {**repair, 'WAVE_STATUS': '', 'WAVE_REASON': '', 'WAVE_RESULT': 'failure'},
-        expected=1)
-    text = summary.read_text(encoding='utf-8')
-    assert 'DISCARDED' in text and 'ended `failure` without a decision' in text, 'a wave without outputs is a discard'
-    summary.unlink()
-    run(root, 'Refuse a partial batch', {**repair, 'WAVE_STATUS': '', 'WAVE_REASON': '', 'WAVE_RESULT': 'skipped'},
-        expected=1)
-    assert 'No shard ran: setup or build did not complete.' in summary.read_text(encoding='utf-8')
+    assert 'ended `failure` without a decision' in refuse(('failure', {})), 'a wave without outputs is a discard'
+    assert 'No shard ran: setup or build did not complete.' in refuse(('skipped', {}))
     run(root, 'Report', {**repair, 'POOL_RESULT': 'failure'})
     report = (root / 'outputs/report.md').read_text(encoding='utf-8')
     assert 'DISCARDED' in report and 'Replayed' not in report and '**Pooled:' not in report
     print('PASS: a failed slice, repair or decide reports DISCARDED with the reason and no figure')
+
+def write_slice(target, start, pairs, book, ptnml, candidate='candidate-x', reference='reference-y'):
+    """A slice as play_shard.sh leaves it: rounds 1..pairs from book entry `start` (1-based), and a log."""
+    target.mkdir(parents=True)
+    pgn = ''
+    for round_no in range(1, pairs + 1):
+        for white, black in [(candidate, reference), (reference, candidate)]:
+            pgn += (f'[Event "fixture"]\n[Round "{round_no}"]\n[White "{white}"]\n[Black "{black}"]\n'
+                    f'[FEN "{book[start + round_no - 2]} 0 9"]\n[Result "1/2-1/2"]\n\n1/2-1/2\n\n')
+    (target / 'match.pgn').write_text(pgn)
+    (target / 'match.log').write_text(f'Ptnml(0-2): {ptnml}\n')
+
+def waved_batch(base, base_env):
+    """A four-wave calibration run through every wave's decide and aggregate: a repaired wave, the cap,
+    an early stop, and the refusals that must leave no figure although every shard job was green."""
+    root = base / 'waved'
+    (root / 'outputs').mkdir(parents=True)
+    shutil.copytree(base / '.github', root / '.github')
+    (root / 'evidence').mkdir()
+    book = [f'8/8/8/8/8/8/{file or ""}K{7 - file or ""}/k7 {colour} - -' for colour in 'wb' for file in range(8)]
+    (root / 'evidence/book.epd').write_text('\n'.join(book) + '\n')
+    (root / 'evidence/comparison.md').write_text('Fixture comparison\n')
+    summary, output = root / 'summary.md', root / 'github-output'
+    env = {**base_env, 'GITHUB_OUTPUT': output.as_posix(), 'GITHUB_STEP_SUMMARY': summary.as_posix(), 'SHARDS': '2',
+           'ROUNDS': '4', 'OPENING_OFFSET': '1', 'GAMES': '16', 'ACTUAL_GAMES': '16', 'SPRT': 'true',
+           'CALIBRATION': 'true', 'CANDIDATE_ARMS': '', 'SLICE_ROOT': 'slices', 'WAVES': '4'}
+    for name, overrides in (('without calibration', {'CALIBRATION': 'false'}), ('with arms', {'CANDIDATE_ARMS': 'X=1;X=2'})):
+        output.unlink(missing_ok=True)
+        run(root, 'Plan the waves', {**env, **overrides}, expected=1)
+        assert not output.exists(), f'setup planned sprt {name}'
+    run(root, 'Plan the waves', env)
+    planned = outputs(output)
+    plan = json.loads(planned['wave_plan'])
+    assert planned['waves'] == '4' and plan == sprt.wave_plan(2, 4, 1, 4), planned
+    env['WAVE_PLAN'] = planned['wave_plan']
+
+    # One pair per slice; shard 0's wave-1 pair is a 2-0, every other pair is drawn.
+    for k, wave in enumerate(plan, 1):
+        for piece in wave:
+            ptnml = '[0, 0, 0, 0, 1]' if (k, piece['shard']) == (1, 0) else '[0, 0, 1, 0, 0]'
+            write_slice(root / f"slices/{sprt.slice_artifact(1, k, 4, piece['shard'])}", piece['start'], 1, book, ptnml)
+    waves, prior = [], {}
+    for k, wave in enumerate(plan, 1):
+        shutil.rmtree(root / 'shards', ignore_errors=True)
+        for piece in wave:
+            name = sprt.slice_artifact(1, k, 4, piece['shard'])
+            shutil.copytree(root / f'slices/{name}', root / f'shards/{name}')
+        decide = {**env, 'WAVE': str(k), 'SLICES': json.dumps(wave), 'PRIOR_COUNTS': prior.get('counts', '')}
+        repaired = {}
+        if k == 2:
+            # Wave 2 lost shard 1's runner; its pair is replayed as one piece under the wave's names.
+            lost = sprt.slice_artifact(1, 2, 4, 1)
+            pieces = [dict(shard=1, index=0, start=wave[1]['start'], pairs=1)]
+            shutil.move(root / f'shards/{lost}', root / f'replays/{sprt.replay_artifact(1, 2, 4, 1, 0)}')
+            decide['PIECES'] = json.dumps(pieces)
+            run(root, 'Assemble the replayed shards', decide)
+            assert (root / f'shards/{lost}/match.pgn').is_file(), 'the replayed slice takes its slice name'
+            repaired = dict(LOST_A='1', PIECES=json.dumps(pieces), REPLAYED='shard 1, 1 slice (runner lost)')
+        output.unlink(missing_ok=True)
+        run(root, 'Verify the wave', decide)
+        run(root, 'Pool the wave', decide)
+        prior = record_wave(root, decide, PRIOR_LOST=prior.get('lost_total', '0'), **repaired)
+        waves.append(('failure' if k == 2 else 'success', prior))
+    assert [w['decision'] for _, w in waves] == ['continue', 'continue', 'continue', 'cap'], waves
+    assert [w['counts'] for _, w in waves] == ['[0,0,1,0,1]', '[0,0,3,0,1]', '[0,0,5,0,1]', '[0,0,7,0,1]'], \
+        'each wave decides on the waves before it as well'
+    assert [w['lost_total'] for _, w in waves] == ['0', '1', '1', '1'], 'the lost-shard count runs across waves'
+    assert waves[1][1]['replayed'] == 'wave 2: shard 1, 1 slice (runner lost)'
+    print('PASS: four waves decide on their cumulative counts, a repaired wave included')
+
+    def summarized(*played):
+        shutil.rmtree(root / 'shards', ignore_errors=True)
+        return {**env, **summarize(root, env, run_needs(plan, *played))}
+
+    def aggregate(*played):
+        """aggregate's chain for a run that decided; its report."""
+        steps = summarized(*played)
+        for step in ('Join the waves', 'Verify the complete batch', 'Pool the result'):
+            run(root, step, steps)
+        run(root, 'Report', {**steps, 'POOL_RESULT': 'success'})
+        return steps, (root / 'outputs/report.md').read_text(encoding='utf-8')
+
+    steps, report = aggregate(*waves)
+    assert report.startswith('## Strength lab (calibration) — does not pass at the cap\n'), report
+    assert '| Games | 16 of 16 planned = 2 shards × 4 of 4 waves, undecided at the cap |' in report
+    assert '| Replayed | wave 2: shard 1, 1 slice (runner lost) |' in report and '**Pooled:' in report
+    assert 'cap 16 games' in report and len(re.findall(r'(?m)^\| [1-4] \| ', report)) == 4, report
+    joined = (root / 'shards/strength-1-shard-1/match.pgn').read_text()
+    assert re.findall(r'\[Round "(\d+)"\]', joined) == ['1', '1', '2', '2', '3', '3', '4', '4'], 'rounds renumbered'
+    run(root, 'Record the repair plan', steps)
+    assert json.loads((root / 'repair-plan.json').read_text()) == [{'wave': 2, 'slices': json.loads(waves[1][1]['slices'])}]
+    print('PASS: a run at the cap joins, verifies and pools all four waves, reports each and marks its repair')
+
+    # A stop at wave k: the later waves never ran, so their slices do not exist.
+    (root / 'later').mkdir()
+    for k, decision, heading, pooled in ((1, 'H1', 'passes (SPRT H1, wave 1 of 4)', '[0, 0, 1, 0, 1]'),
+                                         (2, 'H0', 'does not pass (SPRT H0, wave 2 of 4)', '[0, 0, 3, 0, 1]'),
+                                         (3, 'H1', 'passes (SPRT H1, wave 3 of 4)', '[0, 0, 5, 0, 1]')):
+        unplayed = [sprt.slice_artifact(1, j, 4, shard) for j in range(k + 1, 5) for shard in range(2)]
+        for name in unplayed:
+            shutil.move(root / f'slices/{name}', root / f'later/{name}')
+        steps, report = aggregate(*waves[:k - 1], (waves[k - 1][0], {**waves[k - 1][1], 'decision': decision}))
+        for name in unplayed:
+            shutil.move(root / f'later/{name}', root / f'slices/{name}')
+        assert report.startswith(f'## Strength lab (calibration) — {heading}\n'), report
+        assert f'| Games | {4 * k} of 16 planned = 2 shards × {k} of 4 waves, stopped by SPRT {decision} |' in report
+        assert len(re.findall(r'(?m)^\| [1-4] \| ', report)) == k and f'Pooled Ptnml(0-2): {pooled}' in report
+        assert ('| Replayed | wave 2: shard 1, 1 slice (runner lost) |' in report) == (k >= 2), report
+    print('PASS: stops at waves 1, 2 and 3 join, pool and report only the waves played')
+    (root / 'later').rmdir()
+
+    stopped = [waves[0], (waves[1][0], {**waves[1][1], 'decision': 'H1'})]
+    later = [sprt.slice_artifact(1, k, 4, shard) for k in (3, 4) for shard in range(2)]
+    steps = summarized(*stopped)
+    run(root, 'Join the waves', steps, expected=1)
+    assert not (root / 'shards').exists(), 'a refused join left shards behind'
+    (root / 'later').mkdir()
+    for name in later:
+        shutil.move(root / f'slices/{name}', root / f'later/{name}')
+    print('PASS: a slice of a wave after the decision refuses the join')
+
+    # Every shard job green, and still no figure.
+    steps = summarized(waves[0], (waves[1][0], {**stopped[1][1], 'counts': '[0,0,2,0,2]'}))
+    run(root, 'Join the waves', steps)
+    run(root, 'Verify the complete batch', steps)
+    (root / 'outputs/pooled.md').unlink()
+    run(root, 'Pool the result', steps, expected=1)
+    assert not (root / 'outputs/pooled.md').exists(), 'a pool that is not the decided one was published'
+    run(root, 'Report', {**steps, 'POOL_RESULT': 'failure'})
+    report = (root / 'outputs/report.md').read_text(encoding='utf-8')
+    assert report.startswith('## Strength lab — DISCARDED\n') and 'SPRT [' not in report and '| 1 |' not in report
+    assert 'stopped by' not in report and '**Pooled:' not in report, report
+    first = root / f'slices/{sprt.slice_artifact(1, 1, 4, 1)}/match.pgn'
+    first.write_text(first.read_text().replace(book[5], book[6]))
+    steps = summarized(*stopped)
+    run(root, 'Join the waves', steps)
+    run(root, 'Verify the complete batch', steps, expected=1)
+    summary.unlink(missing_ok=True)
+    steps = summarized(waves[0], waves[1], ('failure', {}))
+    run(root, 'Refuse a discarded run', steps, expected=1)
+    text = summary.read_text(encoding='utf-8')
+    assert 'Wave 3: The wave ended `failure` without a decision' in text and '**Pooled:' not in text, text
+    print('PASS: a counts mismatch, a slice outside the decided waves, a failed verify and a missing decision '
+          'each refuse with no figure')
 
 def self_test():
     (repo / 'build').mkdir(exist_ok=True)
@@ -303,6 +554,8 @@ def self_test():
         shutil.copytree(repo / '.github/scripts', root / '.github/scripts')
         (root / 'outputs').mkdir()
         discard_rule()
+        wave_calls()
+        publication_gates()
         artifact_names()
         replay_settings()
         play_script(root)
@@ -320,10 +573,12 @@ def self_test():
                    CANDIDATE_ARMS='', CANDIDATE_TC='10+0.1', REFERENCE_TC='10+0.1', THREADS='4')
         output = root / 'github-output'
         env['GITHUB_OUTPUT'] = output.as_posix()
+        env.update(SPRT='false', GAMES='8', GITHUB_RUN_ID='1')
         run(root, 'Plan the waves', env)
         planned = outputs(output)
         assert planned['waves'] == '1' and json.loads(planned['wave_plan']) == sprt.wave_plan(2, 2, 1, 1), planned
-        env.update(WAVE='1', WAVES='1', WAVE_PLAN=planned['wave_plan'], SLICES=json.dumps(json.loads(planned['wave_plan'])[0]))
+        env.update(WAVE='1', WAVES='1', WAVE_PLAN=planned['wave_plan'], SLICES=json.dumps(json.loads(planned['wave_plan'])[0]),
+                   PRIOR_COUNTS='', SLICE_ROOT='shards')
         print('PASS: setup plans a fixed run as one wave of whole shards')
         budget = {'RUNNER_VCPUS': '4'}
         for threads, concurrency, expected in [('1', '3', 0), ('4', '1', 0), ('2', '2', 0),
@@ -382,10 +637,15 @@ def self_test():
             run(root, 'Pool the wave', env)
             decided = outputs(output)
             assert decided == {'decision': 'fixed', 'llr': '', 'counts': '[0,0,4,0,0]'}, decided
+            wave = record_wave(root, env)
+            assert wave['status'] == 'complete' and wave['decision'] == 'fixed' and wave['lost_total'] == '0', wave
+            env.update(summarize(root, env, run_needs(json.loads(env['WAVE_PLAN']), ('success', wave))))
+            assert (env['OUTCOME'], env['PAIRS'], env['HEADING'], env['WAVED_GAMES']) == \
+                ('fixed', '2', '## Strength lab', ''), env
             run(root, 'Verify the complete batch', env)
             run(root, 'Pool the result', env)
             pooled = root / 'outputs/pooled.md'
-            run(root, 'Report', {**env, 'POOL_RESULT': 'success', 'REPLAYED': ''})
+            run(root, 'Report', {**env, 'POOL_RESULT': 'success'})
             report = (root / 'outputs/report.md').read_text(encoding='utf-8')
             assert report.startswith('## Strength lab\n') and '| Replayed |' not in report and '**Pooled:' in report, \
                 'a fixed run without a repair keeps the plain heading and no Replayed row'
@@ -410,6 +670,7 @@ def self_test():
             assert 'on 1 of 2 shards' in report and '| Busy, all vCPUs | 75.0% |' in report, 'CPU summary missing'
             print('PASS: failure summary contains no partial Elo')
         repaired_batch(root, env)
+        waved_batch(root, env)
         (root / 'evidence/comparison.md').unlink()
         run(root, 'Verify the complete batch', env, expected=1)
         print('PASS: absent comparison evidence refuses aggregation')
