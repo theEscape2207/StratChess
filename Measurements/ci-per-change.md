@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-11-07 | f864646d, `LateMovePruningDepth3MinIndex=12` (#970; run `42363219133`) | f864646d (same commit, index 8) | 26568 | 10+0.1 | **-0.25 +/- 3.06** | inconclusive @ 26568; fails keep rule, default stays 8 |
 | 2026-11-06 | 4a29cd0b, `QuietPawnEscapeBonus=1024` for ordinary quiets leaving enemy pawn coverage (#960; run `42237625821`) | 64172f4e | 26568 | 10+0.1 | **-1.70 +/- 3.03** | inconclusive @ 26568; fails keep rule, experiment abandoned |
 | 2026-11-06 | c1d8a9eb, `QuietPawnThreatPenalty=1024` for ordinary quiets onto enemy pawn coverage (#960; run `42130451831`) | 64172f4e | 36000 | 10+0.1 | **-2.11 +/- 2.63** | inconclusive @ 36000; fails keep rule, experiment abandoned |
 | 2026-11-03 | b38fa3a, `LateMovePruningDepth3=true`: late move pruning at parent depth 3 from index 8, with UPPER stored at alpha on a fail-low that skipped a move (#895; PR #951 merged default-off, option-only run on `main`, runs `41631693815` + `41669865683` replaying lost shard 6, 18 of 18 shards favour it, zero forfeits) | b38fa3a (same commit, flag off) | 26640 | 10+0.1 | **+12.47 +/- 3.02** | gain; passes the rule, default flips on |
@@ -118,6 +119,13 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-11-07 -- f864646d, `LateMovePruningDepth3MinIndex=12` (#970) (26568 games)
+
+Ptnml [995, 3139, 5045, 3100, 1005]. Full waved SPRT [0, 3] reached the cap at LLR -2.15,
+without crossing either boundary. Comparison preflight verified the intended option difference;
+no independent runtime readback was inspected for this near-zero result.
+[Lab report](https://github.com/theEscape2207/StratChess/actions/runs/42363219133/job/128428388161)
 
 ### 2026-11-06 -- 4a29cd0b, `QuietPawnEscapeBonus=1024` (#960) (26568 games)
 
