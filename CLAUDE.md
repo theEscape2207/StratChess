@@ -23,6 +23,7 @@ This file holds the rules that change what you do. Detail is pointed at, not dup
 | triaging, refining or recommending closure of an issue | skill `triage-issue` |
 | writing a design document | skill `write-design-doc` |
 | writing or changing a skill or `CLAUDE.md` | skill `writing-for-agents` |
+| explicitly asked to use Herdr to inspect or control panes or agents | skill `herdr` |
 | reviewing another agent's artifact, or answering a review | skill `cross-agent-review` |
 | issue tracker, triage labels, domain docs | `Docs/agents/` |
 | history | `Docs/Changelog.md` |
