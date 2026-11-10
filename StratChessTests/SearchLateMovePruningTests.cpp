@@ -86,6 +86,18 @@ namespace {
 		return fix;
 	}
 
+	AIPerlexTestFixture depth2_store_fixture()
+	{
+		auto fix = enabled_fixture(kFiftyMoveEdgeFen);
+		fix.set_late_move_pruning_depth2_store_upper(true);
+		fix.set_reverse_futility(false);
+		fix.set_quiet_see_pruning(false);
+		for (const char* uci : kFiftyMoveEdgeEarlyMoves)
+			fix.seed_history(uci, 1);
+		fix.store_main_entry(1234, /*depth=*/1, /*ply=*/1, BoundType::EXACT);
+		return fix;
+	}
+
 	// One depth-3 frame on its own. Index 64 keeps the depth-2 children from adding to lmp_skips(). With
 	// quiet SEE pruning off, its floor cannot stand in for the one under test, and a move LMP takes over
 	// still reaches LMR in the flag-off arm.
@@ -417,14 +429,8 @@ TEST_CASE("Late move pruning: enabled depth-2 store replaces a skipped fail-low 
           "[search][lmp][tt]")
 {
 	constexpr int kAlpha = 100;
-	auto fix = enabled_fixture(kFiftyMoveEdgeFen);
-	fix.set_late_move_pruning_depth2_store_upper(true);
-	fix.set_reverse_futility(false);
-	fix.set_quiet_see_pruning(false);
+	auto fix = depth2_store_fixture();
 	fix.set_iir(true, /*min_depth=*/3);
-	for (const char* uci : kFiftyMoveEdgeEarlyMoves)
-		fix.seed_history(uci, 1);
-	fix.store_main_entry(1234, /*depth=*/1, /*ply=*/1, BoundType::EXACT);
 
 	const Tally tally = late_moves(fix);
 	REQUIRE(tally.candidates == 2);
@@ -450,13 +456,7 @@ TEST_CASE("Late move pruning: enabled depth-2 store replaces a skipped fail-low 
 
 TEST_CASE("Late move pruning: enabled depth-2 store preserves an exclusion frame's parent entry", "[search][lmp][tt]")
 {
-	auto fix = enabled_fixture(kFiftyMoveEdgeFen);
-	fix.set_late_move_pruning_depth2_store_upper(true);
-	fix.set_reverse_futility(false);
-	fix.set_quiet_see_pruning(false);
-	for (const char* uci : kFiftyMoveEdgeEarlyMoves)
-		fix.seed_history(uci, 1);
-	fix.store_main_entry(1234, /*depth=*/1, /*ply=*/1, BoundType::EXACT);
+	auto fix = depth2_store_fixture();
 	REQUIRE(late_moves(fix).candidates == 2);
 
 	fix.search_node_excluding(/*depth=*/2, /*ply=*/1, "d4b3", /*alpha=*/100, /*beta=*/101);
@@ -473,13 +473,7 @@ TEST_CASE("Late move pruning: enabled depth-2 store preserves an exclusion frame
 
 TEST_CASE("Late move pruning: abort after depth-2 skips preserves the planted parent entry", "[search][lmp][tt]")
 {
-	auto fix = enabled_fixture(kFiftyMoveEdgeFen);
-	fix.set_late_move_pruning_depth2_store_upper(true);
-	fix.set_reverse_futility(false);
-	fix.set_quiet_see_pruning(false);
-	for (const char* uci : kFiftyMoveEdgeEarlyMoves)
-		fix.seed_history(uci, 1);
-	fix.store_main_entry(1234, /*depth=*/1, /*ply=*/1, BoundType::EXACT);
+	auto fix = depth2_store_fixture();
 	REQUIRE(late_moves(fix).candidates == 2);
 	// Parent + twelve drawn children poll first. Pawn skips do not poll; the next piece child does.
 	fix.arm_abort_after_polls(14);
