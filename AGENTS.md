@@ -21,6 +21,7 @@ Before doing repository work, read `CLAUDE.md` completely. Its project rules are
   `cross-agent-review` before the first related action.
 - Reading or editing GitHub issues outside triage: read the applicable files under `Docs/agents/`
   first.
+- Explicitly asked to use Herdr to inspect or control panes or agents: use skill `herdr`.
 
 Repository skills are exposed to Codex under `.agents/skills/`. Follow each entry's instructions;
 adapters point to canonical instructions under `.claude/skills/`. If a required skill cannot be
