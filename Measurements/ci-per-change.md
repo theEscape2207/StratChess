@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-11-10 | cae205d, `LateMovePruningDepth2StoreUpper=true` (#972; run `42849368403`; disposable PR #976) | cae205d (same commit, flag false) | 13284 | 10+0.1 | **+6.30 +/- 4.31** (at stop) | gain (SPRT H1 [0, 3]); advance to fresh production review, no default flip |
 | 2026-11-07 | f864646d, `LateMovePruningDepth3MinIndex=12` (#970; run `42363219133`) | f864646d (same commit, index 8) | 26568 | 10+0.1 | **-0.25 +/- 3.06** | inconclusive @ 26568; fails keep rule, default stays 8 |
 | 2026-11-06 | 4a29cd0b, `QuietPawnEscapeBonus=1024` for ordinary quiets leaving enemy pawn coverage (#960; run `42237625821`) | 64172f4e | 26568 | 10+0.1 | **-1.70 +/- 3.03** | inconclusive @ 26568; fails keep rule, experiment abandoned |
 | 2026-11-06 | c1d8a9eb, `QuietPawnThreatPenalty=1024` for ordinary quiets onto enemy pawn coverage (#960; run `42130451831`) | 64172f4e | 36000 | 10+0.1 | **-2.11 +/- 2.63** | inconclusive @ 36000; fails keep rule, experiment abandoned |
@@ -119,6 +120,25 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-11-10 -- cae205d, depth-2 LMP fail-low UPPER stores (#972) (13284 games)
+
+Ptnml [447, 1533, 2535, 1586, 541]. Both sides pinned
+`cae205d82db6acb7f3963761e6c47f2b455e9a99`, candidate flag `true` versus explicit reference
+`false`, with identical staged binary bytes; Full waved SPRT stopped at wave 2, LLR +2.98,
+so the at-stop figure supports a decision rather than an Elo magnitude or attribution to IIR avoidance.
+The separate flag-off vehicle versus main bench reported -0.32% nps, 95% t-interval
+[-0.57%, -0.07%], as built with placement unruled; this overhead is excluded by the same-commit
+lab comparison and remains evidence for production review, with metadata at
+`StratChessSupport/Bench/972-lmp-depth2-store-upper-20261110-depth14/metadata.json`.
+The [final experiment design](../.claude/plans/retained/lmp-depth2-store-upper.md) preserves D4,
+the exact inputs and evidence links; #976 stays unmerged while the evidence lands and a fresh
+production follow-up selects the approved code.
+
+[Lab report](https://github.com/theEscape2207/StratChess/pull/976#issuecomment-6775041009),
+[run](https://github.com/theEscape2207/StratChess/actions/runs/42849368403),
+[comparison artifact](https://github.com/theEscape2207/StratChess/actions/runs/42849368403/artifacts/13778464696),
+[joined logs and PGNs](https://github.com/theEscape2207/StratChess/actions/runs/42849368403/artifacts/13788373337).
 
 ### 2026-11-07 -- f864646d, `LateMovePruningDepth3MinIndex=12` (#970) (26568 games)
 
