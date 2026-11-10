@@ -71,7 +71,7 @@ namespace {
 		return fix.search_node(/*depth=*/2, /*ply=*/1, alpha, alpha + 1, /*is_pv_node=*/false);
 	}
 
-	// The positions below were built around index 12, the earlier default, so the fixtures pin it
+	// These positions put the moves under test behind index 12, so the fixtures pin it
 	// rather than follow the shipped default.
 	constexpr int kFixtureIndex = 12;
 

@@ -96,7 +96,7 @@ TUNING_FIELD(int,     frontier_futility_margin,  200,  0,     1000, true, "Front
 
 // Late move pruning at depth 2 and, behind its own flag, depth 3 (constants in AIPerplex.h).
 // LateMovePruning=false turns off both. The index is zero-based over legal moves: 8 makes the ninth
-// skippable (at depth 2, a lab-measured gain over 12). At least 1, so the first legal move is always
+// skippable. At least 1, so the first legal move is always
 // searched; 64 is past the move count of almost any position, so the cap only bounds a lab sweep.
 TUNING_FLAG(late_move_pruning_enabled,   true, false, true, true, "LateMovePruning",         true)
 TUNING_FIELD(int,     late_move_pruning_min_index, 8,    1,     64,   true, "LateMovePruningMinIndex", true)

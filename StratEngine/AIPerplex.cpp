@@ -816,9 +816,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	};
 
 	// Reverse futility pruning. A shallow non-PV node whose static evaluation already stands
-	// a margin above beta is reported as a fail-high without being searched. It sits exactly where
-	// the probe above measured this surface, and for the same reasons: a node the transposition
-	// table already resolved never reaches here, and in_check is free by now. The eligibility test
+	// a margin above beta is reported as a fail-high without being searched. A node the transposition
+	// table already resolved never reaches here, and in_check is available by now. The eligibility test
 	// leads so the Evaluate() call -- the feature's entire first-order cost -- is paid only on a
 	// node that could actually be cut.
 	if (reverse_futility_eligible(depth, beta, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe)) {
@@ -1065,8 +1064,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// The pre-move half of the late-move guards. legal_moves_searched is the index this move takes
 		// if DoMove() accepts it: every legal move counts, exempt and skipped ones included, and a
 		// rejected pseudo-legal move does not. The hash move sorts first, so its exemption is defence
-		// in depth. Depth 3 deliberately takes no mated or two-non-pawn guard from quiet SEE pruning: late
-		// moves in those frames were not measured to beat alpha markedly more often than the rest.
+		// in depth. Unlike quiet SEE pruning, LMP requires neither a non-mated searched score nor
+		// two non-pawn pieces.
 		const bool lmp_candidate = lmp_node && legal_moves_searched >= lmp_min_index && !MoveHelper::IsCapture(move) &&
 		                           !MoveHelper::IsPromote(move) && move != td.killers[ply][0] &&
 		                           move != td.killers[ply][1] && move != hash_move;
