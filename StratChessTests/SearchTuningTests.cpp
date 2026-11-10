@@ -63,6 +63,7 @@ namespace {
 		bool reverse_futility_enabled;
 		bool frontier_futility_enabled;
 		bool late_move_pruning_enabled;
+		bool late_move_pruning_depth2_store_upper;
 		bool late_move_pruning_depth3_enabled;
 		bool quiet_see_pruning_enabled;
 		bool iir_enabled;
@@ -101,6 +102,7 @@ namespace {
 	SAME_MEMBER(frontier_futility_enabled)
 	SAME_MEMBER(frontier_futility_margin)
 	SAME_MEMBER(late_move_pruning_enabled)
+	SAME_MEMBER(late_move_pruning_depth2_store_upper)
 	SAME_MEMBER(late_move_pruning_min_index)
 	SAME_MEMBER(late_move_pruning_depth3_enabled)
 	SAME_MEMBER(late_move_pruning_depth3_min_index)
@@ -170,6 +172,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.frontier_futility_margin == 200);
 	CHECK(tuning.late_move_pruning_enabled);
 	CHECK(tuning.late_move_pruning_min_index == 8);
+	CHECK_FALSE(tuning.late_move_pruning_depth2_store_upper);
 	CHECK(tuning.late_move_pruning_depth3_enabled);
 	CHECK(tuning.late_move_pruning_depth3_min_index == 8);
 	CHECK(tuning.quiet_see_pruning_enabled);
@@ -204,6 +207,19 @@ TEST_CASE("SearchTuning JSON requires each field's own type", "[tuning]")
 	const auto error = SearchTuningSchema::ParseJson(json::array(), tuning);
 	REQUIRE(error.has_value());
 	CHECK(error->code == Code::InvalidType);
+}
+
+TEST_CASE("SearchTuning JSON binds the depth-2 LMP store policy", "[tuning]")
+{
+	SearchTuning tuning;
+	SearchTuning expected;
+	expected.late_move_pruning_depth2_store_upper = true;
+	REQUIRE_FALSE(SearchTuningSchema::ParseJson(json{{"late_move_pruning_depth2_store_upper", true}}, tuning));
+	CHECK(tuning == expected);
+	REQUIRE_FALSE(SearchTuningSchema::ParseJson(json{{"late_move_pruning_depth2_store_upper", false}}, tuning));
+	CHECK(tuning == SearchTuning{});
+	CHECK(rejection("late_move_pruning_depth2_store_upper", 1) == Code::InvalidType);
+	CHECK(rejection("late_move_pruning_depth2_store_upper", "true") == Code::InvalidType);
 }
 
 TEST_CASE("SearchTuning JSON ignores keys the catalogue does not bind", "[tuning]")
@@ -428,6 +444,15 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(uci_rejection("LateMovePruningMinIndex", "65") == Code::OutOfRange);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("LateMovePruningDepth2StoreUpper", "true", tuning));
+	expected.late_move_pruning_depth2_store_upper = true;
+	CHECK(tuning == expected);
+	REQUIRE_FALSE(SearchTuningSchema::ParseUci("LateMovePruningDepth2StoreUpper", "false", tuning));
+	CHECK(tuning == SearchTuning{});
+	CHECK(uci_rejection("LateMovePruningDepth2StoreUpper", "1") == Code::InvalidType);
+	CHECK(uci_rejection("LateMovePruningDepth2StoreUpper", "0") == Code::InvalidType);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("LateMovePruningDepth3", "false", tuning));
 	expected.late_move_pruning_depth3_enabled = false;
 	CHECK(tuning == expected);
@@ -617,6 +642,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
 	    "option name LateMovePruning type check default true",
 	    "option name LateMovePruningMinIndex type spin default 8 min 1 max 64",
+	    "option name LateMovePruningDepth2StoreUpper type check default false",
 	    "option name LateMovePruningDepth3 type check default true",
 	    "option name LateMovePruningDepth3MinIndex type spin default 8 min 1 max 64",
 	    "option name QuietSeePruning type check default true",

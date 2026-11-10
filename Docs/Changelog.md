@@ -23,6 +23,16 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-10: Disposable depth-2 LMP UPPER-store vehicle (#972)
+
+### Added
+
+- Default-off `LateMovePruningDepth2StoreUpper` retains a selective UPPER bound at entry alpha after
+  completed effective-depth-2 LMP fail-lows, with the searched move and existing static-eval metadata.
+  Existing bound consumers stay enabled, so false selective cutoffs and replacement pressure are
+  accepted experiment risks. The vehicle stays unmerged pending a separately approved same-commit
+  on/off lab verdict; strength is unmeasured and production defaults are unchanged.
+
 ## 2026-11-07: Full lab runs stop at the first SPRT decision, in four waves (#963)
 
 ### Changed

@@ -6,10 +6,11 @@
 // extra skips. The hash-move term is the exception: the hash move sorts first, so it can never be
 // late, and no case claims it.
 //
-// The feature ships on. Every case still sets the flag, so each one names the configuration it
-// asserts about.
+// Depth-2/3 pruning ships on; the depth-2 UPPER store defaults off. Cases set the flags they vary
+// so each names the configuration it asserts about.
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include "SearchTestFixture.h"
 
 namespace {
@@ -365,11 +366,12 @@ TEST_CASE("Late move pruning: a skipped fail-low returns entry alpha and stores 
 
 TEST_CASE("Late move pruning: the same node without a skip fails high and stores", "[search][lmp][tt]")
 {
-	// The control for the case above: with the flag off, a pawn push is searched, fails high and
+	// With LMP off, a pawn push is searched, fails high and
 	// replaces the planted entry, so the case above is not passing on a store that never happens.
 	constexpr int kAlpha = 100;
 
 	AIPerlexTestFixture fix(kFiftyMoveEdgeFen);
+	fix.set_late_move_pruning_depth2_store_upper(GENERATE(false, true));
 	fix.set_late_move_pruning(false);
 	fix.set_reverse_futility(false);
 	fix.arm_clock();
@@ -392,6 +394,7 @@ TEST_CASE("Late move pruning: a searched cutoff after a skip stores LOWER", "[se
 	constexpr int kAlpha = -300;
 
 	auto fix = enabled_fixture(kPawnsThenDrawFen);
+	fix.set_late_move_pruning_depth2_store_upper(GENERATE(false, true));
 	const Tally tally = late_moves(fix);
 	REQUIRE(tally.candidates == 4);
 	REQUIRE(tally.late_draws == 2);
@@ -405,7 +408,93 @@ TEST_CASE("Late move pruning: a searched cutoff after a skip stores LOWER", "[se
 	CHECK(entry->depth == 2);
 	CHECK(entry->bound == BoundType::LOWER);
 	CHECK(entry->value == GameValues::Draw);
+	CHECK(entry->node_type == NodeType::CUT_NODE);
+	CHECK(fix.search_board_restored());
 	CHECK(fix.has_killer(1));
+}
+
+TEST_CASE("Late move pruning: enabled depth-2 store replaces a skipped fail-low with UPPER at alpha",
+          "[search][lmp][tt]")
+{
+	constexpr int kAlpha = 100;
+	auto fix = enabled_fixture(kFiftyMoveEdgeFen);
+	fix.set_late_move_pruning_depth2_store_upper(true);
+	fix.set_reverse_futility(false);
+	fix.set_quiet_see_pruning(false);
+	fix.set_iir(true, /*min_depth=*/3);
+	for (const char* uci : kFiftyMoveEdgeEarlyMoves)
+		fix.seed_history(uci, 1);
+	fix.store_main_entry(1234, /*depth=*/1, /*ply=*/1, BoundType::EXACT);
+
+	const Tally tally = late_moves(fix);
+	REQUIRE(tally.candidates == 2);
+	// The requested depth-3 arm reduces to effective depth 2 before pruning and storage.
+	const int depth = GENERATE(2, 3);
+	const int score = fix.search_node(depth, /*ply=*/1, kAlpha, kAlpha + 1, /*is_pv_node=*/false);
+
+	REQUIRE(fix.lmp_skips() == tally.candidates);
+	CHECK(score == kAlpha);
+	const auto entry = fix.probe_tt(/*ply=*/1);
+	REQUIRE(entry.has_value());
+	CHECK(entry->value == kAlpha);
+	CHECK(entry->depth == 2);
+	CHECK(entry->phase == SearchPhase::MAIN);
+	CHECK(entry->bound == BoundType::UPPER);
+	CHECK(entry->node_type == NodeType::ALL_NODE);
+	REQUIRE_FALSE(entry->best_move.is_null());
+	// Only piece moves were searched: both pawn pushes were skipped.
+	const std::string best_move = MoveFormatter::ToUCI(entry->best_move);
+	CHECK(std::ranges::any_of(kFiftyMoveEdgeEarlyMoves, [&](const char* uci) { return best_move == uci; }));
+	CHECK(fix.search_board_restored());
+}
+
+TEST_CASE("Late move pruning: enabled depth-2 store preserves an exclusion frame's parent entry", "[search][lmp][tt]")
+{
+	auto fix = enabled_fixture(kFiftyMoveEdgeFen);
+	fix.set_late_move_pruning_depth2_store_upper(true);
+	fix.set_reverse_futility(false);
+	fix.set_quiet_see_pruning(false);
+	for (const char* uci : kFiftyMoveEdgeEarlyMoves)
+		fix.seed_history(uci, 1);
+	fix.store_main_entry(1234, /*depth=*/1, /*ply=*/1, BoundType::EXACT);
+	REQUIRE(late_moves(fix).candidates == 2);
+
+	fix.search_node_excluding(/*depth=*/2, /*ply=*/1, "d4b3", /*alpha=*/100, /*beta=*/101);
+
+	CHECK(fix.lmp_skips() == 0);
+	const auto entry = fix.probe_tt(/*ply=*/1);
+	REQUIRE(entry.has_value());
+	CHECK(entry->value == 1234);
+	CHECK(entry->depth == 1);
+	CHECK(entry->bound == BoundType::EXACT);
+	CHECK(entry->best_move.is_null());
+	CHECK(fix.search_board_restored());
+}
+
+TEST_CASE("Late move pruning: abort after depth-2 skips preserves the planted parent entry", "[search][lmp][tt]")
+{
+	auto fix = enabled_fixture(kFiftyMoveEdgeFen);
+	fix.set_late_move_pruning_depth2_store_upper(true);
+	fix.set_reverse_futility(false);
+	fix.set_quiet_see_pruning(false);
+	for (const char* uci : kFiftyMoveEdgeEarlyMoves)
+		fix.seed_history(uci, 1);
+	fix.store_main_entry(1234, /*depth=*/1, /*ply=*/1, BoundType::EXACT);
+	REQUIRE(late_moves(fix).candidates == 2);
+	// Parent + twelve drawn children poll first. Pawn skips do not poll; the next piece child does.
+	fix.arm_abort_after_polls(14);
+
+	search_depth2(fix, /*alpha=*/100);
+
+	REQUIRE(fix.lmp_skips() > 0);
+	REQUIRE(fix.search_is_aborted());
+	const auto entry = fix.probe_tt(/*ply=*/1);
+	REQUIRE(entry.has_value());
+	CHECK(entry->value == 1234);
+	CHECK(entry->depth == 1);
+	CHECK(entry->bound == BoundType::EXACT);
+	CHECK(entry->best_move.is_null());
+	CHECK(fix.search_board_restored());
 }
 
 // ============================================================================
@@ -516,6 +605,7 @@ TEST_CASE("Late move pruning depth 3: a skipped fail-low returns alpha and store
 	constexpr int kAlpha = 100;
 
 	auto fix = depth3_fixture(kFiftyMoveEdgeFen);
+	fix.set_late_move_pruning_depth2_store_upper(GENERATE(false, true));
 	// White stands far above beta, so either would return before the move loop.
 	fix.set_reverse_futility(false);
 	fix.set_null_move_enabled(false);

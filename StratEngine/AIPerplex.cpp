@@ -1283,19 +1283,22 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	}
 
 	// A skipped move was judged to lose material, which bounds no score, so the searched subset proves
-	// nothing below alpha: the node claims alpha itself. Unlike depth-2 late move pruning's return below,
+	// nothing below alpha: the node claims alpha itself. Unlike default depth-2 LMP's return below,
 	// it still stores UPPER. This guard fires from the second legal move, so withholding the store would
 	// cost most shallow fail-lows their entry, and the best move in it that IIR relies on. The claim
 	// is selective like null move's. Within the band the threshold only widens with depth, so a move
 	// skipped here is also SEE-losing at any shallower eligible depth; a probe below the band and
 	// quiescence reuse the bound without that argument. A depth-2 node late move pruning also skipped
-	// still takes that return, since this leaves it at or below alpha.
+	// still takes that return unless its store policy is enabled, since this leaves it at or below alpha.
 	//
 	// A depth-3 late-move skip claims alpha and stores the same way: quiet SEE pruning already gives most
 	// depth-3 fail-lows this entry, and LMP takes over its skips there, so returning without a store
 	// would remove the entry and the IIR-blocking best move from nearly all of them. A depth-1 frame or
 	// quiescence reuses the bound without a matching skip, the same exposure as quiet SEE pruning's.
-	if (quiet_see_skipped || (lmp_skipped && depth == kLateMovePruningDepth3))
+	// The optional depth-2 LMP store makes the same selective alpha claim, using the common store.
+	if (quiet_see_skipped ||
+	    (lmp_skipped && (depth == kLateMovePruningDepth3 ||
+	                     (depth == kLateMovePruningDepth && tuning_.late_move_pruning_depth2_store_upper))))
 		best_value = std::max(best_value, original_alpha);
 
 	// Terminal node: no legal move could be played, so this position is checkmate or
@@ -1329,12 +1332,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		return terminal_value;
 	}
 
-	// A completed depth-2 fail-low that skipped a late move returns entry alpha and stores nothing.
+	// By default a completed depth-2 fail-low that skipped a late move returns alpha and stores nothing.
 	// Fail-hard, because the searched subset proves no fail-soft value below alpha; no UPPER, because
 	// the bound would rest on moves never searched. This is a selective result, not a proof. Depth 3
-	// stores instead, for the reason at the floor above. A searched cutoff after a skip falls through
-	// and stores LOWER as usual. An aborted frame returned in the loop.
-	if (lmp_skipped && depth == kLateMovePruningDepth && best_value <= original_alpha) {
+	// stores instead, as does depth 2 with its store policy enabled; see the floor above. A searched
+	// cutoff falls through and stores LOWER as usual. An aborted frame returned in the loop.
+	if (lmp_skipped && depth == kLateMovePruningDepth && !tuning_.late_move_pruning_depth2_store_upper &&
+	    best_value <= original_alpha) {
 		if constexpr (kSearchProfileCompiled)
 			td.telemetry.nodetypes.record_fail_low(ply, is_pv_node, depth);
 		return adjust_score_for_game_state(td, move_found, ply, original_alpha);
