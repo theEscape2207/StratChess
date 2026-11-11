@@ -131,9 +131,9 @@ The separate flag-off vehicle versus main bench reported -0.32% nps, 95% t-inter
 [-0.57%, -0.07%], as built with placement unruled; this overhead is excluded by the same-commit
 lab comparison and remains evidence for production review, with metadata at
 `StratChessSupport/Bench/972-lmp-depth2-store-upper-20261110-depth14/metadata.json`.
-The [final experiment design](../.claude/plans/retained/lmp-depth2-store-upper.md) preserves D4,
-the exact inputs and evidence links; #976 stays unmerged while the evidence lands and a fresh
-production follow-up selects the approved code.
+The [archived final experiment design](https://github.com/theEscape2207/StratChess/blob/a9b31f72ce755b2703140acf822e51f580619e10/.claude/plans/retained/lmp-depth2-store-upper.md)
+preserves D4, the exact inputs and evidence links. Production PR #978 shipped the selected policy
+with `LateMovePruningDepth2StoreUpper` retained and default true; #976 closed without merging.
 
 [Lab report](https://github.com/theEscape2207/StratChess/pull/976#issuecomment-6775041009),
 [run](https://github.com/theEscape2207/StratChess/actions/runs/42849368403),
