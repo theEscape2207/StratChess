@@ -269,6 +269,10 @@ class AIPerlexTestFixture {
 	void set_late_move_pruning(bool enabled) const { ai->tuning_.late_move_pruning_enabled = enabled; }
 	bool late_move_pruning_enabled() const { return ai->tuning_.late_move_pruning_enabled; }
 	void set_late_move_pruning_min_index(int index) const { ai->tuning_.late_move_pruning_min_index = index; }
+	void set_late_move_pruning_depth2_store_upper(bool enabled) const
+	{
+		ai->tuning_.late_move_pruning_depth2_store_upper = enabled;
+	}
 	void set_late_move_pruning_depth3(bool enabled) const { ai->tuning_.late_move_pruning_depth3_enabled = enabled; }
 	void set_late_move_pruning_depth3_min_index(int index) const
 	{

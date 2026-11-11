@@ -374,12 +374,13 @@ TEST_CASE("Quiet SEE pruning: a searched cutoff after a skip stores LOWER", "[se
 	CHECK(entry->bound == BoundType::LOWER);
 }
 
-TEST_CASE("Quiet SEE pruning: a node late move pruning also skipped stores nothing", "[search][quietsee][tt]")
+TEST_CASE("Quiet SEE pruning: disabling the depth-2 LMP store preserves the parent entry", "[search][quietsee][tt]")
 {
 	constexpr int16_t kPlantedValue = 1234;
 
 	auto fix = enabled_fixture(kQuietFen, 2);
 	fix.set_late_move_pruning(true);
+	fix.set_late_move_pruning_depth2_store_upper(false);
 	fix.set_late_move_pruning_min_index(4);
 	fix.seed_history("c3e4", 6);
 	fix.seed_history("c3d5", 4);

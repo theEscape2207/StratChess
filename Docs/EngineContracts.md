@@ -122,9 +122,14 @@ repeats the aborted-frame tripwire; change both together.
 - **`See::see_ge` takes quiet moves but not castling.** A quiet's gain is 0, so the answer is whether
   the opponent can profitably take the piece on `to`. Castling is a precondition, because the rook's
   move is invisible to the swap list. Quiet SEE pruning excludes it, and its fail-low stores UPPER at
-  alpha where depth-2 late move pruning stores nothing, because it fires from the second legal move.
+  alpha because it fires from the second legal move.
   Depth-3 late move pruning (`LateMovePruningDepth3`) takes over those skips, so it stores
-  UPPER at alpha too: see the comment at the floor in `pvs()`.
+  UPPER at alpha too. The default-on `LateMovePruningDepth2StoreUpper` gives completed effective-depth-2
+  LMP fail-lows the same selective alpha floor and common MAIN/UPPER/ALL_NODE store with a searched
+  move; searched cutoffs retain LOWER. Main search and quiescence reuse these selective bounds
+  without matching skips, and the move can prevent IIR or staged generation on later visits.
+  Disabling the depth-2 store returns entry alpha without storing that fail-low; searched cutoffs
+  still store LOWER. See the comment at the floor in `pvs()`.
 - **`pvs()` orders its move list lazily.** `MoveSorter::ScoreMovesBestFirst` orders only
   `scored_idx[0]`; the loop calls `OrderRemaining(…, 1, n)` at the top of its body when `si == 1`,
   before any `continue`. Until then nothing may read `scored_idx[i]` for `i ≥ 1` — a new reader before
