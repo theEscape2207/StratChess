@@ -857,6 +857,7 @@ TEST_CASE("cmd_uci: advertises the tuning options after Hash", "[uci][tuning]")
 	REQUIRE(hash < rfp);
 	REQUIRE(rfp < uciok);
 	REQUIRE(output.find("option name LateMovePruning type check default true\n") != std::string::npos);
+	REQUIRE(output.find("option name LateMovePruningDepth2StoreUpper type check default true\n") != std::string::npos);
 	REQUIRE(output.find("option name Contempt type spin default 0 min 0 max 100\n") != std::string::npos);
 }
 
@@ -892,15 +893,31 @@ TEST_CASE("cmd_setoption: a changed tuning value is applied, reported and clears
 	REQUIRE_FALSE(fix.has_tt_marker());
 }
 
+TEST_CASE("cmd_setoption: depth-2 LMP store policy applies both check values and clears old bounds",
+          "[uci][tuning][tt]")
+{
+	UciHandlerTestFixture fix;
+	for (const bool enabled : {false, true}) {
+		fix.store_tt_marker();
+		const std::string value = enabled ? "true" : "false";
+		const std::string output =
+		    fix.capture([&] { fix.setoption("setoption name LateMovePruningDepth2StoreUpper value " + value); });
+		CHECK(output == "info string LateMovePruningDepth2StoreUpper " + value + "\n");
+		CHECK(fix.ai_tuning().late_move_pruning_depth2_store_upper == enabled);
+		CHECK_FALSE(fix.has_tt_marker());
+	}
+}
+
 TEST_CASE("cmd_setoption: an invalid tuning value is reported and changes nothing", "[uci][tuning][tt]")
 {
 	UciHandlerTestFixture fix;
 	fix.ucinewgame();
 	fix.store_tt_marker();
 
-	for (const char* line :
-	     {"setoption name ReverseFutilityMargin value 1001", "setoption name ReverseFutilityMargin value 12x",
-	      "setoption name LateMovePruning value 1", "setoption name LateMovePruning"}) {
+	for (const char* line : {"setoption name ReverseFutilityMargin value 1001",
+	                         "setoption name ReverseFutilityMargin value 12x", "setoption name LateMovePruning value 1",
+	                         "setoption name LateMovePruning", "setoption name LateMovePruningDepth2StoreUpper value 1",
+	                         "setoption name LateMovePruningDepth2StoreUpper value 0"}) {
 		const std::string output = fix.capture([&] { fix.setoption(line); });
 		CAPTURE(line);
 		REQUIRE(output.starts_with("info string "));

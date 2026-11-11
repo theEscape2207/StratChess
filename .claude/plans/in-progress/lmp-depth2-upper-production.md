@@ -73,7 +73,7 @@ no new bench or equivalence claim is made for the changed default.
 
 ## Cost
 
-50–200 selected implementation/test/doc lines across about eight files; Engine tier, one
+Over 200 selected implementation/test/doc lines across ten files; Engine tier, one
 advertised option. Existing policy/design evidence is reused; full two-axis and search review
 remain required. No optional experiments or profiling.
 

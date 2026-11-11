@@ -23,6 +23,20 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-11: Store depth-2 LMP fail-lows at alpha (#940)
+
+### Changed
+
+- Completed depth-2 LMP skipped fail-lows now store selective UPPER bounds at entry alpha with
+  their best searched move. Retain `LateMovePruningDepth2StoreUpper` as a tuning option, default
+  true, for explicit rollback and paired controls; false keeps the no-store policy. Shallower
+  search and quiescence can reuse these bounds without matching skips, accepting false-bound
+  exposure and replacement pressure for the tested reuse benefit.
+- Lab: accepted SPRT H1 [0, 3] at 13,284 games (the at-stop figure is not a gain estimate);
+  [evidence and qualified bench cost](../Measurements/ci-per-change.md#2026-11-10----cae205d-depth-2-lmp-fail-low-upper-stores-972-13284-games).
+  Accept the earlier flag-off as-built -0.32% nps, 95% interval [-0.57%, -0.07%], placement unruled;
+  that overhead is excluded by the same-commit lab result and is not a production-binary speed measurement.
+
 ## 2026-11-07: Full lab runs stop at the first SPRT decision, in four waves (#963)
 
 ### Changed
