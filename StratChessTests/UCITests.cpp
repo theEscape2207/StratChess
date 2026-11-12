@@ -892,6 +892,21 @@ TEST_CASE("cmd_setoption: FrontierFutilityMaxDepth applies 1 and refuses 3", "[u
 	REQUIRE(fix.ai_tuning().frontier_futility_max_depth == 1);
 }
 
+TEST_CASE("cmd_setoption: ReverseFutilityTtRefine applies both check values", "[uci][tuning]")
+{
+	UciHandlerTestFixture fix;
+
+	// The lab measures the refinement through this option alone, so a value that failed to apply
+	// would silently measure the default.
+	for (const bool enabled : {true, false}) {
+		const std::string value = enabled ? "true" : "false";
+		const std::string output =
+		    fix.capture([&] { fix.setoption("setoption name ReverseFutilityTtRefine value " + value); });
+		CHECK(output == "info string ReverseFutilityTtRefine " + value + "\n");
+		CHECK(fix.ai_tuning().reverse_futility_tt_refine_enabled == enabled);
+	}
+}
+
 TEST_CASE("cmd_setoption: a changed tuning value is applied, reported and clears the TT", "[uci][tuning][tt]")
 {
 	UciHandlerTestFixture fix;

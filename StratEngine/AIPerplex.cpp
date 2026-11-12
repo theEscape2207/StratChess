@@ -617,6 +617,15 @@ namespace {
 		       (entry.bound == BoundType::UPPER && entry.value <= alpha);
 	}
 
+	// A searched MAIN value that may raise reverse futility's comparison: a lower bound or exact, and
+	// not a mate score, which the margin arithmetic cannot handle. A future rule-50 context guard on
+	// the TT cutoff must apply here too (#347).
+	bool tt_refines_reverse_futility(const std::optional<TTEntry>& entry) noexcept
+	{
+		return entry && entry->phase == SearchPhase::MAIN && entry->bound != BoundType::UPPER &&
+		       std::abs(static_cast<int>(entry->value)) < GameValues::Mate_Threshold;
+	}
+
 	void record_tt_store(ThreadData& td, TTStoreOutcome outcome) noexcept
 	{
 		if constexpr (kTTStatsCompiled)
@@ -732,6 +741,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const int original_alpha = alpha;
 	Move hash_move;
 
+	// This node's own probe result, a copy: the lock-free table may replace the slot under another
+	// thread. Empty for an exclusion frame, which does not probe.
+	std::optional<TTEntry> tt_entry;
+
 	// Singular eligibility inputs, filled from the same probe that supplies hash_move so the
 	// entry is read once. Meaningless unless tt_usable_for_singular is true.
 	bool tt_usable_for_singular = false;
@@ -752,7 +765,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	if (!is_exclusion_frame) {
 		if constexpr (kTTStatsCompiled)
 			++td.telemetry.tt.main_probes;
-		if (auto entry = tt.probe(key, ply)) {
+		tt_entry = tt.probe(key, ply);
+		if (const auto& entry = tt_entry) {
 			if constexpr (kTTStatsCompiled)
 				++td.telemetry.tt.main_hits;
 			if (entry->static_eval != kNoStaticEval) {
@@ -836,7 +850,16 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// as exactly its alpha -- no improvement, hence no killer, history or PV write, and a
 		// null-move child returns beta - 1, one below the cutoff that would otherwise store a
 		// LOWER bound. A fail-soft return would break all of that at once.
-		if (node_eval() - tuning_.reverse_futility_margin * depth >= beta) {
+		//
+		// A TT lower bound raises only this comparison, never static_eval: frontier futility's fail-low
+		// floor reports static_eval, and a raised one could exceed the alpha it skipped under. Any stored
+		// depth: an entry this deep that clears the margin has already cut off above, so a depth
+		// condition would leave nothing to refine. Read here, not in the probe, so a node that never
+		// reaches reverse futility pays nothing for it.
+		int rfp_eval = node_eval();
+		if (tuning_.reverse_futility_tt_refine_enabled && tt_refines_reverse_futility(tt_entry))
+			rfp_eval = std::max(rfp_eval, static_cast<int>(tt_entry->value));
+		if (rfp_eval - tuning_.reverse_futility_margin * depth >= beta) {
 			if constexpr (kSearchProfileCompiled)
 				td.telemetry.pruning.record_rfp(depth);
 			return beta;
