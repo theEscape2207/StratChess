@@ -121,6 +121,13 @@ namespace {
 		}
 	}
 
+	// Whether `move`, read on the board before it is made, puts `side`'s pawn one step from promotion.
+	bool pawn_push_to_seventh(const Board& board, const Move& move, eColor side) noexcept
+	{
+		const BITBOARD seventh = side == eColor::WHITE ? MASK_RANK_7 : MASK_RANK_2;
+		return PieceHelper::IsPawn(board.GetPiece(move.from())) && ((UNIT << move.to()) & seventh) != 0;
+	}
+
 } // namespace
 
 AIPerplex::AIPerplex(AIPerplexConfig config)
@@ -987,9 +994,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// pseudo-legal, so illegal moves sorted ahead of a legal one would inflate its index.
 	int legal_moves_searched = 0;
 
-	// Frontier futility pruning: at a depth-1 node, a quiet move is skipped when the parent's
-	// static evaluation stands a margin below alpha. Node-level guards here, move-level ones below.
+	// Frontier futility pruning: at a node within FrontierFutilityMaxDepth, a quiet move is skipped when
+	// the parent's static evaluation stands a margin below alpha. Node-level guards here, move-level ones
+	// below. Each ply above 1 widens the margin by a pawn; the guard and the floor read the same value.
 	const bool frontier_node = frontier_futility_eligible(depth, alpha, is_pv_node, in_check, is_exclusion_frame);
+	const int frontier_margin = tuning_.frontier_futility_margin + kFrontierFutilityMarginPerPly * (depth - 1);
 	bool frontier_skipped = false;
 
 	// Late move pruning: at a depth-2 null-window node, or depth 3 behind its flag, a late quiet move is
@@ -1055,11 +1064,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// so the evaluation read is the parent's. Only a move passing every cheap term pays for it.
 		// legal_moves_searched >= 1 keeps the first legal move searched, so a skip can never leave
 		// the node without a move and fabricate a mate or stalemate. The hash move sorts first, so
-		// excluding it is defence in depth behind that same term.
+		// excluding it is defence in depth behind that same term. From depth 2 a push to the seventh is
+		// kept: below the opponent's reply our quiescence promotes, a gain no margin covers. At depth 1 the
+		// opponent's quiescence stands pat first, so nothing is lost. LMP and quiet SEE may still skip such
+		// a push; a frame mixing their skips with frontier's then claims their alpha, not this floor.
 		const bool frontier_candidate = frontier_node && legal_moves_searched >= 1 && !MoveHelper::IsCapture(move) &&
 		                                !MoveHelper::IsPromote(move) && move != td.killers[ply][0] &&
 		                                move != td.killers[ply][1] && move != hash_move &&
-		                                node_eval() + tuning_.frontier_futility_margin <= alpha;
+		                                node_eval() + frontier_margin <= alpha &&
+		                                !(depth >= 2 && pawn_push_to_seventh(td.board, move, side));
 
 		// The pre-move half of the late-move guards. legal_moves_searched is the index this move takes
 		// if DoMove() accepts it: every legal move counts, exempt and skipped ones included, and a
@@ -1268,13 +1281,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	}
 
 	// A skipped move was not searched, only judged unable to beat static_eval + margin, so the node
-	// may claim no less. Quiescence fails high at exactly its beta, so a fail-low here is usually
-	// exactly alpha already; this binds when a searched child returned below alpha -- a draw, or a
-	// transposition hit whose stored value lies past the child's bound.
+	// may claim no less. At depth 1 the children are quiescence, which fails high at exactly its beta,
+	// so a fail-low here is usually exactly alpha already; this binds when a searched child returned
+	// below alpha -- a draw, or a transposition hit whose stored value lies past the child's bound. At
+	// depth 2 a child that refutes by searching hands back our quiescence value after its reply, usually
+	// below the floor, so binding is the common case there; it only ever raises the value.
 	// Still <= alpha, so the bound stays UPPER. Like null move's stored bound it comes from a
 	// selective search and is not reproducible: a skipped move may later be a killer and searched.
 	if (frontier_skipped) {
-		const int frontier_floor = static_eval + tuning_.frontier_futility_margin;
+		const int frontier_floor = static_eval + frontier_margin;
 		if constexpr (kSearchProfileCompiled)
 			if (frontier_floor > best_value)
 				td.telemetry.pruning.floor_binds++;
@@ -1988,7 +2003,7 @@ bool AIPerplex::frontier_futility_eligible(int depth, int alpha, bool is_pv_node
 		return false;
 	if (is_pv_node || in_check)
 		return false;
-	if (depth > 1)
+	if (depth > tuning_.frontier_futility_max_depth)
 		return false;
 	// The margin arithmetic is meaningless against a mate score.
 	return std::abs(alpha) < GameValues::Mate_Threshold;

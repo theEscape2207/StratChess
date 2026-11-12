@@ -33,6 +33,10 @@ namespace {
 	// capture: every legal move draws on the spot. Skipping them would turn a draw into a loss.
 	constexpr const char* kDrawingMovesFen = "7k/p6q/8/8/8/8/8/R3K3 w - - 99 1";
 
+	// kFiftyMoveEdgeFen plus a pawn on b6: b6-b7 also resets the clock and is a push to the seventh,
+	// which depth 2 keeps. It gives no check, and its target square is empty.
+	constexpr const char* kSeventhPushFen = "7k/8/1P6/8/8/8/P7/R3K3 w - - 99 1";
+
 	// White's only legal move is Kb1, quiet and not a check, and White is a queen down.
 	constexpr const char* kOneMoveFen = "q6k/8/8/8/8/p7/P7/K7 w - - 0 1";
 
@@ -57,6 +61,25 @@ namespace {
 	{
 		return fix.search_node(/*depth=*/1, /*ply=*/1, alpha, alpha + 1, /*is_pv_node=*/false);
 	}
+
+	// One depth-2 null-window node at ply 1.
+	int search_depth2(const AIPerlexTestFixture& fix, int alpha)
+	{
+		return fix.search_node(/*depth=*/2, /*ply=*/1, alpha, alpha + 1, /*is_pv_node=*/false);
+	}
+
+	// Depth-2 frontier futility on, with the pruners that share its candidates off unless a case
+	// turns one back on, so every skip counted is frontier's.
+	void enable_depth2_alone(const AIPerlexTestFixture& fix)
+	{
+		fix.set_frontier_futility(true);
+		fix.set_frontier_futility_max_depth(2);
+		fix.set_late_move_pruning(false);
+		fix.set_quiet_see_pruning(false);
+		fix.arm_clock();
+	}
+
+	constexpr int kDepth2Margin = 300;
 } // namespace
 
 // ============================================================================
@@ -118,6 +141,17 @@ TEST_CASE("Frontier futility: only depth 1 is pruned", "[search][futility]")
 
 	CHECK(eligible(fix, /*depth=*/1));
 	CHECK_FALSE(eligible(fix, /*depth=*/2));
+}
+
+TEST_CASE("Frontier futility: max depth 2 admits depth 2 and never depth 3", "[search][futility]")
+{
+	AIPerlexTestFixture fix(kBaselineFen);
+	fix.set_frontier_futility(true);
+	fix.set_frontier_futility_max_depth(2);
+
+	CHECK(eligible(fix, /*depth=*/1));
+	CHECK(eligible(fix, /*depth=*/2));
+	CHECK_FALSE(eligible(fix, /*depth=*/3));
 }
 
 TEST_CASE("Frontier futility: a mate-range alpha is never pruned", "[search][futility]")
@@ -372,4 +406,96 @@ TEST_CASE("Frontier futility: the floor only ever raises the value", "[search][f
 
 	REQUIRE(fix.frontier_skips() > 0);
 	CHECK(score == alpha);
+}
+
+// ============================================================================
+// Depth 2 (FrontierFutilityMaxDepth=2)
+// ============================================================================
+
+TEST_CASE("Frontier futility: depth 2 prunes at eval + 300 and not a centipawn inside", "[search][futility]")
+{
+	AIPerlexTestFixture inside(kRookUpFen);
+	enable_depth2_alone(inside);
+	const int threshold = inside.static_eval() + kDepth2Margin;
+
+	search_depth2(inside, threshold - 1);
+	CHECK(inside.frontier_skips() == 0);
+
+	AIPerlexTestFixture at(kRookUpFen);
+	enable_depth2_alone(at);
+	const int expected = at.count_frontier_candidates(/*ply=*/1);
+	REQUIRE(expected > 0);
+
+	search_depth2(at, threshold);
+	CHECK(at.frontier_skips() == expected);
+}
+
+TEST_CASE("Frontier futility: depth 2 keeps a push to the seventh that depth 1 skips", "[search][futility]")
+{
+	// a2-a3, a2-a4 and b6-b7 are the only moves that do not draw on the spot. A killer sorts a drawing
+	// king move first, so none of the three is the first legal move. A searched b6-b7 promotes below
+	// the opponent's reply, so alpha sits out of its reach and the loop runs to the end.
+	AIPerlexTestFixture shallow(kSeventhPushFen);
+	enable_depth2_alone(shallow);
+	shallow.store_killer_uci(/*ply=*/1, "e1e2");
+	search_depth1(shallow, kHighAlpha);
+	REQUIRE(shallow.frontier_skips() == 3);
+
+	AIPerlexTestFixture deep(kSeventhPushFen);
+	enable_depth2_alone(deep);
+	deep.store_killer_uci(/*ply=*/1, "e1e2");
+	search_depth2(deep, kHighAlpha);
+	CHECK(deep.frontier_skips() == 2);
+}
+
+TEST_CASE("Frontier futility: a depth-2 fail-low is floored at eval + 300 and stored as UPPER", "[search][futility]")
+{
+	// As the depth-1 floor case: every searched move draws and the two pawn pushes are skipped, so
+	// without the floor the node would report the draw. The floor reads the depth-2 margin.
+	AIPerlexTestFixture fix(kFiftyMoveEdgeFen);
+	enable_depth2_alone(fix);
+	const int floor = fix.static_eval() + kDepth2Margin;
+	REQUIRE(floor > GameValues::Draw);
+	fix.store_killer_uci(/*ply=*/1, "e1e2");
+
+	const int score = search_depth2(fix, floor + 100);
+
+	REQUIRE(fix.frontier_skips() == 2);
+	CHECK(score == floor);
+	const auto entry = fix.probe_tt(/*ply=*/1);
+	REQUIRE(entry.has_value());
+	CHECK(entry->bound == BoundType::UPPER);
+	CHECK(entry->value == floor);
+}
+
+TEST_CASE("Frontier futility: a depth-2 frame mixing frontier and LMP skips claims LMP's alpha", "[search][futility]")
+{
+	// Frontier skips a2-a3 and a2-a4; b6-b7 is exempt from frontier at depth 2, and LMP, from index 1
+	// here, skips it instead. The node then claims alpha, above the frontier floor, exactly as an
+	// LMP-skipping node does today.
+	for (const bool store_upper : {true, false}) {
+		CAPTURE(store_upper);
+		AIPerlexTestFixture fix(kSeventhPushFen);
+		enable_depth2_alone(fix);
+		fix.set_late_move_pruning(true);
+		fix.set_late_move_pruning_min_index(1);
+		fix.set_late_move_pruning_depth2_store_upper(store_upper);
+		fix.store_killer_uci(/*ply=*/1, "e1e2");
+		const int floor = fix.static_eval() + kDepth2Margin;
+		const int alpha = floor + 100;
+
+		const int score = search_depth2(fix, alpha);
+
+		REQUIRE(fix.frontier_skips() == 2);
+		REQUIRE(fix.lmp_skips() == 1);
+		CHECK(score == alpha);
+		const auto entry = fix.probe_tt(/*ply=*/1);
+		if (store_upper) {
+			REQUIRE(entry.has_value());
+			CHECK(entry->bound == BoundType::UPPER);
+			CHECK(entry->value == alpha);
+		} else {
+			CHECK_FALSE(entry.has_value());
+		}
+	}
 }

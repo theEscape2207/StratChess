@@ -15,9 +15,9 @@ default, so the lab can answer that on one SHA.
 ## Review focus
 
 - **D3, the precedence rule at depth 2.** Wherever the futility guard holds, every LMP and quiet-SEE
-  candidate is also a frontier candidate, and frontier is tested first. So neither of them fires at
-  that node: the node stores the fail-soft UPPER floor `max(best, static_eval + 300)` instead of their
-  `alpha`. That is a
+  candidate except a D6 push is also a frontier candidate, and frontier is tested first. A
+  frontier-only fail-low frame therefore stores the fail-soft UPPER floor `max(best, static_eval + 300)`
+  instead of their `alpha`. A mixed frame keeps today's alpha policy. That is a
   stronger claim, and it is made on depth-1 children rather than quiescence.
 - **D6, the 7th-rank push exemption.** It is the one guard depth 1 does not need. Without it, depth 2
   hides promotions that quiescence would find. It is narrow: a push threatening a capture is still
@@ -77,17 +77,26 @@ Depth 2 uses the depth-1 guards unchanged:
 Frontier is still tested before LMP and quiet SEE. Both of those guards' per-move terms are subsets of
 frontier's, and the post-move gates are identical. The eval term is constant across a non-PV node.
 
-So at a depth-2 node where the guard holds, frontier takes every move LMP or quiet SEE would skip
-(except D6's pushes), and neither of their alpha claims is made there. The node instead stores
-`max(best, static_eval + 300)` as UPPER. Both values are at most alpha, so the bound type is the same.
-Only the fail-soft value is lower, a tighter claim made under the futility premise, which is exactly
-the depth-1 behaviour.
+So at a depth-2 node where the guard holds, frontier takes every move LMP or quiet SEE would skip,
+except D6's 7th-rank pushes. Those pushes are exempt from frontier only: LMP (from index 8) or quiet
+SEE may still skip them, and frontier skips advance the legal index. That gives two kinds of frame,
+and each keeps today's result and store policy unchanged:
+
+| Skips in a completed fail-low frame | Result and store |
+|---|---|
+| Frontier only | UPPER at `max(best, static_eval + 300)` |
+| Frontier, plus LMP or quiet SEE on a D6 push | UPPER at original alpha; with `LateMovePruningDepth2StoreUpper=false` and an LMP skip, return alpha and store nothing |
+
+In a frontier-only frame the fail-soft value is lower than LMP's alpha. That is a tighter claim, made
+under the futility premise, and is exactly the depth-1 behaviour. With
+`LateMovePruningDepth2StoreUpper=false` (not the default), a frontier-only frame now stores where
+LMP's no-store return used to apply. That is accepted, and the option's comment will say so.
 
 - **Rejected: giving LMP precedence, or raising the floor to alpha** whenever a skipped move was past
   LMP's index. That adds a per-move branch to recover a weaker bound, and nothing shows the stronger
   bound misleads.
-- With `LateMovePruningDepth2StoreUpper=false` (not the default), such a node now stores instead of
-  taking LMP's no-store return. That is accepted, and the option's comment will say so.
+- **Rejected: a new precedence rule for mixed frames.** The existing floor-then-alpha ordering
+  already resolves them, and in the direction of the weaker claim.
 
 ### D4: the floor and store mirror depth 1
 
@@ -95,7 +104,7 @@ the depth-1 behaviour.
 UPPER.
 
 - **At depth 1** the floor rarely binds (0.29%, #529), because quiescence fails high at exactly beta.
-- **At depth 2 it should bind on most fail-lows.** A depth-1 child that cuts by searching hands back
+- **At depth 2 it is expected (unmeasured) to bind on most fail-lows.** A depth-1 child that cuts by searching hands back
   our quiescence value after its refutation, which usually sits below `eval + 300`.
 - **The exceptions** are a child cut by reverse futility, which is fail-hard and returns exactly
   alpha, and a child TT cut, which is fail-soft.
@@ -140,10 +149,17 @@ The gate is `strength.yml`, Full with `sprt=true` (SPRT [0, 3]), `reference_ref=
 
 ## Assumptions I cannot verify from the code
 
-- **The lab applies `candidate_uci_options` to the candidate only.** `strength.yml` checks the name
-  against the advertised option table before any shard starts, but a misspelt or ignored value would
-  read as a ~0 Elo result. *Verified* by checking that the run's PGN node and score comments differ
-  from the reference side's on the same opening; done when the run reports.
+None remain.
+
+- **Lab routing is verified from source.** `.github/scripts/play_shard.sh` builds separate candidate
+  and reference option arrays and attaches each to its own engine.
+- **Application is acknowledged in source.** `UciHandler::set_tuning_option` answers
+  `info string <name> <value>` only when the value is applied.
+- **A preflight before the lab spend** shows the option changes the search. A fresh process, at
+  `Threads=1` and fixed depth, is compared at max depth 1 versus 2 on a position that exercises the
+  guard. It must show the `info string FrontierFutilityMaxDepth 2` acknowledgement and a different
+  node count or `frontier skips` line.
+- **PGN differences are not used as proof.** Timed searches differ even under identical settings.
 
 ## Invariants
 
@@ -152,7 +168,9 @@ The gate is `strength.yml`, Full with `sprt=true` (SPRT [0, 3]), `reference_ref=
   rejects 3.
 - At depth 2, a push to the relative 7th rank is never frontier-skipped.
 - The first legal move is always searched.
-- Every node that skips a move stores a value at most alpha, as UPPER.
+- A completed frontier-skipping fail-low returns at most original alpha and stores UPPER, except where
+  the existing depth-2 LMP no-store policy applies. A later searched cutoff keeps its searched score
+  and its LOWER store.
 - A skip runs no child search and comes before every PV, killer, history and TT write, so the
   aborted-frame contract is untouched.
 
@@ -168,14 +186,21 @@ The gate is `strength.yml`, Full with `sprt=true` (SPRT [0, 3]), `reference_ref=
      does not;
   4. a depth-2 `pvs()` frame skips moves at max depth 2, and the existing "depth-2 node skips
      nothing" test holds at the default;
-  5. a depth-2 fail-low with children well below alpha returns and stores UPPER at exactly
-     `static_eval + 300`, falsified by reverting the floor margin;
-  6. at depth 2 a push to the 7th rank is searched while other quiets are skipped, and a depth-1
-     node still skips it;
-  7. the option advertisement line.
-- One `Run-Bench.ps1` pass at the default, which should match `main`'s nps within noise.
-- One flag-on pass, with per-position nodes reported for information only, so that an H0 can be read
-  against #634's endgame tree growth.
+  5. a frontier-only depth-2 fail-low, with children well below alpha, returns and stores UPPER at
+     exactly `static_eval + 300`, falsified by reverting the floor margin. LMP and quiet SEE are off,
+     so no competing skip interferes;
+  6. at depth 2 a push to the 7th rank is not frontier-skipped while other quiets are, and a depth-1
+     node still skips it. LMP and quiet SEE are off;
+  7. a mixed frame at depth 2, with a frontier skip and an LMP skip of a D6 push both observed. With
+     the store option on, the node returns exactly alpha, which lies above `eval + 300`, and stores
+     UPPER at alpha. With it off, it returns alpha and stores nothing;
+  8. the option advertisement line, plus a successful UCI application of 2.
+- **Default overhead:** `Compare-Bench.ps1` paired against the merge-base build from the same
+  compiler. This is the only nps claim.
+- **Flag-on, informational only:** per-position nodes at max depth 2, so an H0 can be read against
+  #634's endgame tree growth. They come from a throwaway scratchpad UCI driver that sends the option
+  and waits for each fixed-depth search to finish. `Run-Bench.ps1` cannot set tuning options. The same
+  driver runs the Assumptions preflight.
 - **The Elo gate is D5's lab run, on the owner's go.**
 
 ## Cost
@@ -191,7 +216,7 @@ The gate is `strength.yml`, Full with `sprt=true` (SPRT [0, 3]), `reference_ref=
 | Decision / rationale | Lands in |
 |---|---|
 | D2's margin formula and its #529 basis | comment on `frontier_futility_max_depth` in `SearchTuning.def` |
-| D3's precedence consequence | comment at the frontier guard, and on `LateMovePruningDepth2StoreUpper` |
+| D3's precedence consequence, qualified to frontier-only frames; mixed frames keep alpha | comment at the frontier guard and the floor, and on `LateMovePruningDepth2StoreUpper` |
 | D4's depth-2 floor reasoning | the rewritten floor comment in `pvs()` |
 | D6's promotion-reach reasoning | comment at the frontier guard's 7th-rank term |
 | D5's lab result | `Measurements/` ledger, plus a headline in `Docs/Changelog.md` |
