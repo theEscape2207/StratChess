@@ -617,13 +617,19 @@ namespace {
 		       (entry.bound == BoundType::UPPER && entry.value <= alpha);
 	}
 
-	// A searched MAIN value that may raise reverse futility's comparison: a lower bound or exact, and
-	// not a mate score, which the margin arithmetic cannot handle. A future rule-50 context guard on
-	// the TT cutoff must apply here too (#347).
+	// The entry claims the node is worth at least its value (LOWER or EXACT), and the value is not a
+	// mate score, against which margin arithmetic is meaningless.
+	bool tt_value_is_non_mate_lower_bound(const TTEntry& entry) noexcept
+	{
+		return (entry.bound == BoundType::LOWER || entry.bound == BoundType::EXACT) &&
+		       std::abs(static_cast<int>(entry.value)) < GameValues::Mate_Threshold;
+	}
+
+	// A searched MAIN value that may raise reverse futility's comparison. A rule-50 context guard added
+	// to the TT cutoff must apply here too.
 	bool tt_refines_reverse_futility(const std::optional<TTEntry>& entry) noexcept
 	{
-		return entry && entry->phase == SearchPhase::MAIN && entry->bound != BoundType::UPPER &&
-		       std::abs(static_cast<int>(entry->value)) < GameValues::Mate_Threshold;
+		return entry && entry->phase == SearchPhase::MAIN && tt_value_is_non_mate_lower_bound(*entry);
 	}
 
 	void record_tt_store(ThreadData& td, TTStoreOutcome outcome) noexcept
@@ -800,8 +806,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// margin arithmetic below is meaningless against one -- and was searched
 				// to nearly this depth.
 				tt_usable_for_singular = tuning_.singular_extensions_enabled && hash_move != Move::EmptyMove() &&
-				                         (entry->bound == BoundType::LOWER || entry->bound == BoundType::EXACT) &&
-				                         std::abs(static_cast<int>(entry->value)) < GameValues::Mate_Threshold &&
+				                         tt_value_is_non_mate_lower_bound(*entry) &&
 				                         entry->depth >= depth - tuning_.singular_tt_depth_margin;
 				tt_value_for_singular = entry->value;
 			}
@@ -851,11 +856,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// null-move child returns beta - 1, one below the cutoff that would otherwise store a
 		// LOWER bound. A fail-soft return would break all of that at once.
 		//
-		// A TT lower bound raises only this comparison, never static_eval: frontier futility's fail-low
-		// floor reports static_eval, and a raised one could exceed the alpha it skipped under. Any stored
-		// depth: an entry this deep that clears the margin has already cut off above, so a depth
-		// condition would leave nothing to refine. Read here, not in the probe, so a node that never
-		// reaches reverse futility pays nothing for it.
+		// A TT LOWER or EXACT value raises only this comparison, never static_eval: frontier futility's
+		// fail-low floor reports static_eval, and a raised one could exceed the alpha it skipped under.
+		// Any stored depth: an entry as deep as the pre-IIR depth that clears the margin has already cut
+		// off above, so refining entries are shallower -- or, after IIR, at the reduced depth. Read here,
+		// not in the probe, so a node that never reaches reverse futility pays nothing for it.
 		int rfp_eval = node_eval();
 		if (tuning_.reverse_futility_tt_refine_enabled && tt_refines_reverse_futility(tt_entry))
 			rfp_eval = std::max(rfp_eval, static_cast<int>(tt_entry->value));

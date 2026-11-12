@@ -144,8 +144,8 @@ Engine tier, search-behaviour change behind a default-off option.
    - No cut from `UPPER`, mate-range or QUIESCENCE entries.
    - A TT value at or below static evaluation does not stop a cut that static evaluation earns.
    - Frontier futility's floor tripwire: same score and stored entry with the flag on and off, at
-     depth 1 and at depth 2 (margin 300 since slice A). The planted value sits between `static_eval +
-     margin` and alpha, so a leak into `static_eval` would move the floor. Each case `REQUIRE`s a
+     depth 1 and at depth 2 (margin 300 since slice A). The planted value is alpha, 50 cp above
+     `static_eval + margin`, so a leak into `static_eval` would stop the skip. Each case `REQUIRE`s a
      frontier skip.
    - The IIR exception: a depth-4 node with a depth-3 LOWER entry, empty move, value ≥ `beta + 300`,
      cuts with the flag on and is searched with it off. The same entry carrying a best move does not

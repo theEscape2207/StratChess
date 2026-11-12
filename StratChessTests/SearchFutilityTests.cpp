@@ -407,8 +407,9 @@ TEST_CASE("Reverse futility: a TT value at or below static evaluation does not s
 		fix.arm_clock();
 
 		constexpr int kBeta = 1;
+		constexpr int kMarginAtDepth2 = 2 * 100;
 		const int eval = fix.static_eval();
-		REQUIRE(eval - 200 >= kBeta);
+		REQUIRE(eval - kMarginAtDepth2 >= kBeta);
 		fix.store_main_entry(static_cast<int16_t>(equal ? eval : 100), /*depth=*/1, /*ply=*/1, BoundType::LOWER);
 
 		const int64_t before = fix.mainnodes();
