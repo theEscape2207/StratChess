@@ -94,6 +94,7 @@ TEST_CASE("Frontier futility: shipped configuration prunes", "[search][futility]
 
 	// No set_frontier_futility call: this is what the shipping engine's tuning looks like.
 	CHECK(eligible(fix));
+	CHECK(eligible(fix, /*depth=*/2));
 }
 
 TEST_CASE("Frontier futility: the runtime flag off makes a node ineligible", "[search][futility]")
@@ -136,10 +137,11 @@ TEST_CASE("Frontier futility: an exclusion frame is never pruned", "[search][fut
 	CHECK_FALSE(eligible(fix, 1, 0, /*is_pv_node=*/false, /*in_check=*/false, /*is_exclusion_frame=*/true));
 }
 
-TEST_CASE("Frontier futility: only depth 1 is pruned", "[search][futility]")
+TEST_CASE("Frontier futility: max depth 1 prunes only depth 1", "[search][futility]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);
 	fix.set_frontier_futility(true);
+	fix.set_frontier_futility_max_depth(1);
 
 	CHECK(eligible(fix, /*depth=*/1));
 	CHECK_FALSE(eligible(fix, /*depth=*/2));
@@ -209,10 +211,11 @@ TEST_CASE("Frontier futility: a PV node skips nothing", "[search][futility]")
 	CHECK(fix.frontier_skips() == 0);
 }
 
-TEST_CASE("Frontier futility: a depth-2 node skips nothing", "[search][futility]")
+TEST_CASE("Frontier futility: a depth-2 node skips nothing at max depth 1", "[search][futility]")
 {
 	AIPerlexTestFixture fix(kMixedFen);
 	fix.set_frontier_futility(true);
+	fix.set_frontier_futility_max_depth(1);
 	fix.arm_clock();
 
 	// The children are depth-1 nodes too, but their alpha is -kHighAlpha - 1, far below any

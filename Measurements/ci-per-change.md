@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-11-12 | 23ed0a0, `FrontierFutilityMaxDepth=2` (#634; run `43231859344`; PR #980) | 0ec5048 | 19944 | 10+0.1 | **+4.77 +/- 3.47** (at stop) | gain (SPRT H1 [0, 3]); default set to 2 |
 | 2026-11-10 | cae205d, `LateMovePruningDepth2StoreUpper=true` (#972; run `42849368403`; disposable PR #976) | cae205d (same commit, flag false) | 13284 | 10+0.1 | **+6.30 +/- 4.31** (at stop) | gain (SPRT H1 [0, 3]); advance to fresh production review, no default flip |
 | 2026-11-07 | f864646d, `LateMovePruningDepth3MinIndex=12` (#970; run `42363219133`) | f864646d (same commit, index 8) | 26568 | 10+0.1 | **-0.25 +/- 3.06** | inconclusive @ 26568; fails keep rule, default stays 8 |
 | 2026-11-06 | 4a29cd0b, `QuietPawnEscapeBonus=1024` for ordinary quiets leaving enemy pawn coverage (#960; run `42237625821`) | 64172f4e | 26568 | 10+0.1 | **-1.70 +/- 3.03** | inconclusive @ 26568; fails keep rule, experiment abandoned |
@@ -120,6 +121,11 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-11-12 -- 23ed0a0, depth-2 frontier futility (#634) (19944 games)
+
+Ptnml [676, 2258, 3894, 2404, 740]. Default-off build at max depth 1 is node-identical to the
+reference, so the candidate option alone separates the arms; stopped at wave 3, LLR +3.14.
 
 ### 2026-11-10 -- cae205d, depth-2 LMP fail-low UPPER stores (#972) (13284 games)
 

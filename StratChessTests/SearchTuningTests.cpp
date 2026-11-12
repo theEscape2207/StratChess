@@ -432,8 +432,8 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(tuning == expected);
 
 	expected = SearchTuning{};
-	REQUIRE_FALSE(parse_uci("FrontierFutilityMaxDepth", "2", tuning));
-	expected.frontier_futility_max_depth = 2;
+	REQUIRE_FALSE(parse_uci("FrontierFutilityMaxDepth", "1", tuning));
+	expected.frontier_futility_max_depth = 1;
 	CHECK(tuning == expected);
 
 	expected = SearchTuning{};
@@ -656,7 +656,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name ReverseFutilityMargin type spin default 100 min 0 max 1000",
 	    "option name FrontierFutility type check default true",
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
-	    "option name FrontierFutilityMaxDepth type spin default 1 min 1 max 2",
+	    "option name FrontierFutilityMaxDepth type spin default 2 min 1 max 2",
 	    "option name LateMovePruning type check default true",
 	    "option name LateMovePruningMinIndex type spin default 8 min 1 max 64",
 	    "option name LateMovePruningDepth2StoreUpper type check default true",

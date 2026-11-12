@@ -77,9 +77,12 @@ namespace {
 
 	Tally late_moves(const AIPerlexTestFixture& fix) { return fix.tally_late_moves(/*ply=*/1, kFixtureIndex); }
 
+	// Frontier futility is pinned to depth 1: at depth 2 it is tested first and takes every LMP
+	// candidate its guard admits, so the skip counts here would no longer be LMP's.
 	AIPerlexTestFixture enabled_fixture(const char* fen)
 	{
 		AIPerlexTestFixture fix(fen);
+		fix.set_frontier_futility_max_depth(1);
 		fix.set_late_move_pruning(true);
 		fix.set_late_move_pruning_min_index(kFixtureIndex);
 		fix.arm_clock();
@@ -306,6 +309,7 @@ TEST_CASE("Late move pruning: moves DoMove rejects do not advance the index", "[
 TEST_CASE("Late move pruning: a move that repeats the position is never skipped", "[search][lmp]")
 {
 	AIPerlexTestFixture fix("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	fix.set_frontier_futility_max_depth(1);
 	fix.set_late_move_pruning(true);
 	fix.set_late_move_pruning_min_index(kFixtureIndex);
 	fix.arm_clock();

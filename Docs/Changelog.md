@@ -23,6 +23,17 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-12: Depth-2 frontier futility on by default (#634)
+
+### Changed
+
+- `FrontierFutilityMaxDepth` defaults to 2, so frontier futility now prunes at depth 2 as well.
+  `FrontierFutilityMaxDepth=1` restores the previous search.
+
+### Results
+
+- Lab SPRT H1 [0, 3] at wave 3, +4.77 ±3.47 at stop (ci-per-change).
+
 ## 2026-11-12: Depth-2 frontier futility behind `FrontierFutilityMaxDepth`, default off (#634)
 
 ### Added
