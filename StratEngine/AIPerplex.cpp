@@ -1285,7 +1285,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// so a fail-low here is usually exactly alpha already; this binds when a searched child returned
 	// below alpha -- a draw, or a transposition hit whose stored value lies past the child's bound. At
 	// depth 2 a child that refutes by searching hands back our quiescence value after its reply, usually
-	// below the floor, so binding is the common case there; it only ever raises the value.
+	// below the floor, so binding is the common case there; it only ever raises the value. A frame that
+	// also has an LMP or quiet-SEE skip is raised further, to alpha, by the floor below.
 	// Still <= alpha, so the bound stays UPPER. Like null move's stored bound it comes from a
 	// selective search and is not reproducible: a skipped move may later be a killer and searched.
 	if (frontier_skipped) {
@@ -1997,8 +1998,8 @@ bool AIPerplex::frontier_futility_eligible(int depth, int alpha, bool is_pv_node
 	if (!tuning_.frontier_futility_enabled)
 		return false;
 	// A verification search's fail-low grants a singular extension, so it must come from a
-	// search, not from this margin. Unreachable at depth 1 today; kept for the same reason as
-	// reverse futility's.
+	// search, not from this margin. Live whenever a verification search runs within
+	// FrontierFutilityMaxDepth: at the default SingularMinDepth the shallowest one runs at depth 2.
 	if (is_exclusion_frame)
 		return false;
 	if (is_pv_node || in_check)

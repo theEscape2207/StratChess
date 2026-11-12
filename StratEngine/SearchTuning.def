@@ -93,9 +93,9 @@ TUNING_FIELD(int,     reverse_futility_margin,    100,  0,     1000,    true, "R
 // positionally, the room delta_pruning_margin also trusts.
 TUNING_FLAG(frontier_futility_enabled, true, false, true, true, "FrontierFutility",       true)
 TUNING_FIELD(int,     frontier_futility_margin,  200,  0,     1000, true, "FrontierFutilityMargin", true)
-// Max depth 2 is the #634 extension, off by default pending its lab run. Each extra ply adds 100 cp
-// to the margin, so 300 at depth 2; #529 found depth 1 insensitive to +-50 cp. Depth 3 is outside the
-// domain: #498 measured 94.75% of its candidates already reduced by LMR.
+// Max depth 2 extends it one ply, with the margin widened by kFrontierFutilityMarginPerPly (300 cp at
+// depth 2); the margin's exact value moves few decisions. Depth 3 is outside the domain: LMR already
+// reduces nearly every candidate there.
 TUNING_FIELD(int,     frontier_futility_max_depth, 1,  1,     2,    true, "FrontierFutilityMaxDepth", true)
 
 // Late move pruning at depth 2 and, behind its own flag, depth 3 (constants in AIPerplex.h).

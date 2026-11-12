@@ -36,6 +36,8 @@ namespace {
 	// kFiftyMoveEdgeFen plus a pawn on b6: b6-b7 also resets the clock and is a push to the seventh,
 	// which depth 2 keeps. It gives no check, and its target square is empty.
 	constexpr const char* kSeventhPushFen = "7k/8/1P6/8/8/8/P7/R3K3 w - - 99 1";
+	// The same position mirrored with Black to move: b3-b2 is Black's push to the seventh.
+	constexpr const char* kSeventhPushBlackFen = "r3k3/p7/8/8/8/1p6/8/7K b - - 99 1";
 
 	// White's only legal move is Kb1, quiet and not a check, and White is a queen down.
 	constexpr const char* kOneMoveFen = "q6k/8/8/8/8/p7/P7/K7 w - - 0 1";
@@ -432,20 +434,28 @@ TEST_CASE("Frontier futility: depth 2 prunes at eval + 300 and not a centipawn i
 
 TEST_CASE("Frontier futility: depth 2 keeps a push to the seventh that depth 1 skips", "[search][futility]")
 {
-	// a2-a3, a2-a4 and b6-b7 are the only moves that do not draw on the spot. A killer sorts a drawing
-	// king move first, so none of the three is the first legal move. A searched b6-b7 promotes below
-	// the opponent's reply, so alpha sits out of its reach and the loop runs to the end.
-	AIPerlexTestFixture shallow(kSeventhPushFen);
-	enable_depth2_alone(shallow);
-	shallow.store_killer_uci(/*ply=*/1, "e1e2");
-	search_depth1(shallow, kHighAlpha);
-	REQUIRE(shallow.frontier_skips() == 3);
+	// The a-pawn's two pushes and the b-pawn's push to the seventh are the only moves that do not draw
+	// on the spot. A killer sorts a drawing king move first, so none of the three is the first legal
+	// move. A searched push to the seventh promotes below the opponent's reply, so alpha sits out of its
+	// reach and the loop runs to the end. Black's mirror pins the colour's own seventh rank.
+	struct Side {
+		const char* fen;
+		const char* killer;
+	};
+	for (const Side& s : {Side{kSeventhPushFen, "e1e2"}, Side{kSeventhPushBlackFen, "e8e7"}}) {
+		CAPTURE(s.fen);
+		AIPerlexTestFixture shallow(s.fen);
+		enable_depth2_alone(shallow);
+		shallow.store_killer_uci(/*ply=*/1, s.killer);
+		search_depth1(shallow, kHighAlpha);
+		REQUIRE(shallow.frontier_skips() == 3);
 
-	AIPerlexTestFixture deep(kSeventhPushFen);
-	enable_depth2_alone(deep);
-	deep.store_killer_uci(/*ply=*/1, "e1e2");
-	search_depth2(deep, kHighAlpha);
-	CHECK(deep.frontier_skips() == 2);
+		AIPerlexTestFixture deep(s.fen);
+		enable_depth2_alone(deep);
+		deep.store_killer_uci(/*ply=*/1, s.killer);
+		search_depth2(deep, kHighAlpha);
+		CHECK(deep.frontier_skips() == 2);
+	}
 }
 
 TEST_CASE("Frontier futility: a depth-2 fail-low is floored at eval + 300 and stored as UPPER", "[search][futility]")
@@ -471,8 +481,9 @@ TEST_CASE("Frontier futility: a depth-2 fail-low is floored at eval + 300 and st
 TEST_CASE("Frontier futility: a depth-2 frame mixing frontier and LMP skips claims LMP's alpha", "[search][futility]")
 {
 	// Frontier skips a2-a3 and a2-a4; b6-b7 is exempt from frontier at depth 2, and LMP, from index 1
-	// here, skips it instead. The node then claims alpha, above the frontier floor, exactly as an
-	// LMP-skipping node does today.
+	// here, skips it instead. The node then claims alpha, above the frontier floor, as any LMP-skipping
+	// node does. This pins that the LMP skip is honoured, not the order of the two floors: both are
+	// max(), so either order gives alpha.
 	for (const bool store_upper : {true, false}) {
 		CAPTURE(store_upper);
 		AIPerlexTestFixture fix(kSeventhPushFen);

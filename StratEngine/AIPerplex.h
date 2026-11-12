@@ -62,7 +62,7 @@ inline constexpr unsigned DEFAULT_AIPERPLEX_HASH_MB = 192;
 inline constexpr int kLateMovePruningDepth = 2;
 inline constexpr int kLateMovePruningDepth3 = 3;
 
-// Frontier futility's margin grows by this per ply above depth 1 (#634), deliberately not tunable.
+// Frontier futility's margin grows by this per ply above depth 1, deliberately not tunable.
 inline constexpr int kFrontierFutilityMarginPerPly = 100;
 
 // ln(i) for i in [1, MAX_PLY); slot 0 is unused. It covers every move number (MoveList::MAX_MOVES <

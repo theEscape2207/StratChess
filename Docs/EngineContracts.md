@@ -129,7 +129,9 @@ repeats the aborted-frame tripwire; change both together.
   move; searched cutoffs retain LOWER. Main search and quiescence reuse these selective bounds
   without matching skips, and the move can prevent IIR or staged generation on later visits.
   Disabling the depth-2 store returns entry alpha without storing that fail-low; searched cutoffs
-  still store LOWER. See the comment at the floor in `pvs()`.
+  still store LOWER. With `FrontierFutilityMaxDepth=2`, a depth-2 fail-low whose every skip was
+  frontier futility's has no LMP skip, so it stores frontier's floor as UPPER whatever this option
+  says. See the comment at the floor in `pvs()`.
 - **`pvs()` orders its move list lazily.** `MoveSorter::ScoreMovesBestFirst` orders only
   `scored_idx[0]`; the loop calls `OrderRemaining(…, 1, n)` at the top of its body when `si == 1`,
   before any `continue`. Until then nothing may read `scored_idx[i]` for `i ≥ 1` — a new reader before
