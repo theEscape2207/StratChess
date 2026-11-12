@@ -167,10 +167,11 @@ Engine tier, search-behaviour change behind a default-off option.
 5. Fast suite plus `[tactical]` with the flag on and off, and `search-reviewer` on the diff.
 6. **Elo, after the owner approves:** a lab Full run with `sprt=true`, SPRT [0, 3],
    `candidate_uci_options=ReverseFutilityTtRefine=true`, and `reference_ref` at the merge base.
-   **Rule, stated before dispatch:** H1 → flip the default on in a follow-up PR. H0, or inconclusive
-   at the cap → delete the code. This is #961's rule and deliberately overrides the lab's cap
-   fallback (`Elo − err > 0` passes): a cap-completed run deletes the code even if the harness reports
-   a pass. The harness result and the keep/delete decision are recorded separately in `Measurements/`.
+   **Rule, stated before dispatch:** the lab's standard ship rule. A pass (H1, or no crossing by the cap
+   with `Elo − err > 0` on all 26,568 games) → flip the default on in a follow-up PR. Otherwise (H0,
+   or no crossing with `Elo − err ≤ 0`) → delete the code. The owner chose this over #961's stricter
+   "H1 only" wording (2026-11-12): in the gap between them, a final estimate of about +3.0 to +3.8,
+   the strict rule would delete a change whose interval already excludes zero.
 
 ## Cost
 

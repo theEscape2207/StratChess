@@ -32,8 +32,8 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
   stored depth. That value can only be shallower than the node, since a deep enough one already cut
   off. `static_eval` itself is unchanged, so frontier futility's floor is unaffected. The entry is
   read only at nodes eligible for reverse futility. The default leaves search node-identical. The
-  option exists so the strength lab can measure it; it is promoted on an SPRT H1 and deleted
-  otherwise, including when the run reaches the cap without a decision.
+  option exists so the strength lab can measure it; it is promoted if the lab passes it and
+  deleted otherwise.
 
 ## 2026-11-12: Depth-2 frontier futility on by default (#634)
 
