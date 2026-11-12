@@ -15,11 +15,12 @@ lab SPRT on one SHA can answer the only open question: does it gain Elo on today
 
 ## Review focus
 
-- **D2, trusting an entry of any stored depth.** Every refined cut rests on an entry shallower than
-  the node, and the thinnest are null-move LOWER bounds. That is the feature, and the risk of it.
+- **D2, trusting an entry of any stored depth.** Almost every refined cut rests on an entry shallower
+  than the node. The thinnest evidence is a depth-1 searched fail-high, or a depth-1/2 PV EXACT entry,
+  at a depth-3 node. That is the feature, and the risk of it.
 - **D3, where the TT value is read.** The parked patch tested the flag on every non-cutting MAIN hit,
   which is where the 0.75% nps went. This design reads it only inside the eligible reverse-futility
-  block. Check that the hoisted entry adds no work on the probe path.
+  block. It intends no added work on the probe path; the flag-off bench decides.
 
 ## Scope
 
@@ -57,13 +58,19 @@ today. Since slice A, that floor also runs at depth 2, as `static_eval + 300`.
 There is no depth condition on the entry. A non-mate `LOWER`/`EXACT` entry with `depth >= node depth`
 and a value at or above beta has already taken the TT cutoff, so a depth-qualified rule changes
 nothing (#548: every flip came from a shallower entry). With the default band (RFP depth ≤ 3, MAIN
-entries depth ≥ 1), the entry is at most two plies shallower. There is one exception: IIR runs between
-the probe and reverse futility and can turn a depth-4 node into a depth-3 one, where a depth-3 entry
-that missed the depth-4 cutoff may now refine. That is the same two-ply bound.
+entries depth ≥ 1), the entry's label is at most two plies below the node's.
 
-The thinnest evidence is a null-move LOWER stored at the node's depth from a `depth − 1 − R` child.
-The TT cutoff already trusts those labels at equal depth. This accepts them up to two labels lower,
-for a fail-hard cut that stores nothing.
+There is one exception. IIR runs between the probe and reverse futility, and fires only without a hash
+move, so it can turn a depth-4 node into a depth-3 one. A depth-3 entry with an empty move (a
+null-move LOWER, or a terminal EXACT) that missed the depth-4 cutoff may then refine at the post-IIR
+node's own label. That is the only way a null-move entry refines by default: null move needs depth ≥ 3
+and stores at the node's depth, so in the band it is never shallower otherwise.
+
+The thinnest evidence is therefore a shallow entry that carries a move: a depth-1 searched fail-high
+at a depth-3 node (the hash move's quiescence value cleared `beta + 300`), or a depth-1/2 PV EXACT
+entry. Without the flag, that node would search the same hash move at depth 2 first, so each cut
+saves little. Two labels is a statement about labels, not about searched subtree depth. The cut is
+fail-hard and stores nothing.
 
 - **Rejected: a `depth − k` field.** With the default band it would only drop depth-1 entries at
   depth-3 nodes. No evidence says those are the bad ones, and it would add a second axis to a
@@ -82,8 +89,11 @@ if (tuning_.reverse_futility_tt_refine_enabled && tt_refines_reverse_futility(tt
 ```
 
 `tt_refines_reverse_futility` is a static helper: entry present, phase `MAIN`, bound not `UPPER`,
-`|value| < Mate_Threshold`. The flag is tested first, so flag-off adds one predictable branch per
-eligible node and nothing per probe.
+`|value| < Mate_Threshold`. The flag is tested first, so flag-off is intended to add one branch per
+eligible node and nothing per probe. That is a code-generation hypothesis: the hoisted optional stays
+live across `Evaluate()` and IIR, and the compiler may lay out the probe path differently. The
+flag-off bench decides. A copy, not a pointer into the slot, is required: the lock-free TT can
+replace the slot under another thread.
 
 - **Rejected: the parked patch's capture in the probe.** It tested the flag on every non-cutting MAIN
   hit and stored a sentinel on every node. The issue's close note asked for exactly this reordering.
@@ -94,8 +104,11 @@ eligible node and nothing per probe.
 
 This is unchanged from the owner's 2026-09-17 decision on the original design: no halfmove-clock
 condition. The refinement reads the same entries the TT cutoff already trusts without a guard, and
-#549 counted zero cutoffs near the boundary. Any guard belongs in the probe, under a future #347,
-where it would cover this read as well.
+#549 counted zero cutoffs near the boundary.
+
+The shared probe snapshot does not make a future guard cover this read automatically. #347 must apply
+its score-context predicate to both consumers, the TT cutoff and `tt_refines_reverse_futility`, while
+keeping the hash move usable. That obligation is harvested into `Docs/EngineContracts.md`.
 
 ## Assumptions I cannot verify from the code
 
@@ -123,18 +136,29 @@ where it would cover this read as well.
 Engine tier, search-behaviour change behind a default-off option.
 
 1. **Tests** in `SearchFutilityTests.cpp`, carried over from `090415e5`. Each is falsified by its own
-   source mutation: refinement removed, flag ignored, `UPPER` admitted, mate admitted, `max` dropped,
-   and the TT value written into `static_eval`.
+   source mutation: refinement removed, flag ignored, `UPPER` admitted, mate admitted, phase check
+   dropped, `max` dropped, and the TT value written into `static_eval`.
    - A shallower `LOWER`/`EXACT` entry clearing the margin cuts at node depths 2 and 3. It returns
      `== beta`, searches nothing, and leaves the planted entry unchanged. The same entry does not cut
      with the flag off, or one centipawn short.
    - No cut from `UPPER`, mate-range or QUIESCENCE entries.
    - A TT value at or below static evaluation does not stop a cut that static evaluation earns.
-   - Frontier futility's floor tripwire: same score and stored entry with the flag on and off. This
-     runs at depth 1 and, since slice A, at depth 2 (`FrontierFutilityMaxDepth` defaults to 2).
-   - Catalogue default, UCI parse and option-line cases in `SearchTuningTests.cpp`.
+   - Frontier futility's floor tripwire: same score and stored entry with the flag on and off, at
+     depth 1 and at depth 2 (margin 300 since slice A). The planted value sits between `static_eval +
+     margin` and alpha, so a leak into `static_eval` would move the floor. Each case `REQUIRE`s a
+     frontier skip.
+   - The IIR exception: a depth-4 node with a depth-3 LOWER entry, empty move, value ≥ `beta + 300`,
+     cuts with the flag on and is searched with it off. The same entry carrying a best move does not
+     cut, because IIR does not fire and depth 4 is outside the band.
+   - Catalogue default, UCI parse and option-line cases in `SearchTuningTests.cpp`, and an
+     option-apply case in `UCITests.cpp` following slice A's, since that is the path the lab uses.
 
-   IIR cannot reduce the test nodes, because `iir_min_depth` is 4 and they are at depths 2 and 3.
+   The depth-2 and depth-3 cases are beyond IIR's reach (`iir_min_depth` is 4).
+
+   **Flag-on route.** Unit tests set the flag through the fixture (`set_reverse_futility_tt_refine`).
+   `Run-Bench.ps1` and the tactical suite cannot set an engine option, so steps 4 and 5's flag-on runs
+   use a temporary build with the default flipped to `true`. It is labelled as such, never committed,
+   and the default-off build is rebuilt before steps 2, 3 and the lab.
 2. **Equivalence:** `Compare-SearchEquivalence.ps1` against `7f16db4f` must report `IDENTICAL`.
 3. **Flag-off cost:** a paired `Run-Bench.ps1` against `7f16db4f`, with interleaved rounds per skill
    `measure-strength`. Flag-off nps must be within noise of main.
@@ -144,13 +168,14 @@ Engine tier, search-behaviour change behind a default-off option.
 6. **Elo, after the owner approves:** a lab Full run with `sprt=true`, SPRT [0, 3],
    `candidate_uci_options=ReverseFutilityTtRefine=true`, and `reference_ref` at the merge base.
    **Rule, stated before dispatch:** H1 → flip the default on in a follow-up PR. H0, or inconclusive
-   at the cap → delete the code. The verdict is recorded in `Measurements/`.
+   at the cap → delete the code. This is #961's rule and deliberately overrides the lab's cap
+   fallback (`Elo − err > 0` passes): a cap-completed run deletes the code even if the harness reports
+   a pass. The harness result and the keep/delete decision are recorded separately in `Measurements/`.
 
 ## Cost
 
 - **Size:** 50–200 lines, mostly tests, across `AIPerplex.cpp`, `SearchTuning.def`,
-  `SearchFutilityTests.cpp`, `SearchTuningTests.cpp`, `SearchTestFixture.h` and `UCITests.cpp` if
-  slice A's option-apply test pattern applies.
+  `SearchFutilityTests.cpp`, `SearchTuningTests.cpp`, `SearchTestFixture.h` and `UCITests.cpp`.
 - **Blast radius:** Engine tier, default off. `Docs/EngineContracts.md` gets one line.
 - **Review:** one code review, plus `search-reviewer` on this document and on the diff.
 - **Lab:** 1–4 h of SPRT, at the owner's go.
@@ -161,5 +186,5 @@ Engine tier, search-behaviour change behind a default-off option.
 |---|---|
 | D1 (`rfp_eval` vs `static_eval`), D2's any-depth reason, D3's placement | source comment at the reverse-futility guard |
 | Flag semantics | `SearchTuning.def` comment beside the field |
-| D4: no rule-50 guard, plus residual risk | `Docs/EngineContracts.md` → Search internals |
+| D4: no rule-50 guard, residual risk, and #347's obligation to guard both consumers | `Docs/EngineContracts.md` → Search internals |
 | Node probe, lab verdict | `Measurements/`, `Docs/Changelog.md`, PR body |
