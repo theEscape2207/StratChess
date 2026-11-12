@@ -219,4 +219,17 @@ None remain.
 | D3's precedence consequence, qualified to frontier-only frames; mixed frames keep alpha | comment at the frontier guard and the floor, and on `LateMovePruningDepth2StoreUpper` |
 | D4's depth-2 floor reasoning | the rewritten floor comment in `pvs()` |
 | D6's promotion-reach reasoning | comment at the frontier guard's 7th-rank term |
-| D5's lab result | `Measurements/` ledger, plus a headline in `Docs/Changelog.md` |
+| D5's lab result | `Measurements/` ledger, plus a headline in `Docs/Changelog.md` (pending the owner's lab go) |
+
+**Changed during implementation:** none of the approved decisions changed.
+- D2's 100 cp step is the named constant `kFrontierFutilityMarginPerPly` in `AIPerplex.h`.
+- Validation 6 searches at an out-of-reach alpha, because a searched b6-b7 promotes and fails high
+  at `eval + 400`. That is D6 working.
+
+**Validation results (f61511e1):**
+- Equivalence: IDENTICAL at the default.
+- Default overhead: `Compare-Bench.ps1`, depth 14, 12 rounds, verdict No slowdown, +0.40%
+  [-0.12%, +0.92%].
+- Preflight: acknowledged `info string FrontierFutilityMaxDepth 2`.
+- Flag-on nodes at depth 14, informational only: -9.5% in total, rook-endgm -16.2%, piece-endgm
+  -23.8% (best move changed), tactical-5 -25.9%, startpos to open-mid between -2.9% and +2.6%.
