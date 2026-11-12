@@ -93,6 +93,10 @@ TUNING_FIELD(int,     reverse_futility_margin,    100,  0,     1000,    true, "R
 // positionally, the room delta_pruning_margin also trusts.
 TUNING_FLAG(frontier_futility_enabled, true, false, true, true, "FrontierFutility",       true)
 TUNING_FIELD(int,     frontier_futility_margin,  200,  0,     1000, true, "FrontierFutilityMargin", true)
+// Max depth 2 extends it one ply, with the margin widened by kFrontierFutilityMarginPerPly (300 cp at
+// depth 2); the margin's exact value moves few decisions. Depth 3 is outside the domain: LMR already
+// reduces nearly every candidate there.
+TUNING_FIELD(int,     frontier_futility_max_depth, 1,  1,     2,    true, "FrontierFutilityMaxDepth", true)
 
 // Late move pruning at depth 2 and, behind its own flag, depth 3 (constants in AIPerplex.h).
 // LateMovePruning=false turns off both. The index is zero-based over legal moves: 8 makes the ninth
@@ -100,6 +104,8 @@ TUNING_FIELD(int,     frontier_futility_margin,  200,  0,     1000, true, "Front
 // searched; 64 is past the move count of almost any position, so the cap only bounds a lab sweep.
 TUNING_FLAG(late_move_pruning_enabled,   true, false, true, true, "LateMovePruning",         true)
 TUNING_FIELD(int,     late_move_pruning_min_index, 8,    1,     64,   true, "LateMovePruningMinIndex", true)
+// With depth-2 frontier futility on, a frame where frontier took every late quiet stores frontier's
+// floor whatever this says: only an LMP skip takes the no-store return.
 TUNING_FLAG(late_move_pruning_depth2_store_upper, true, false, true, true, "LateMovePruningDepth2StoreUpper", true)
 TUNING_FLAG(late_move_pruning_depth3_enabled, true, false, true, true, "LateMovePruningDepth3", true)
 TUNING_FIELD(int,     late_move_pruning_depth3_min_index, 8, 1, 64,   true, "LateMovePruningDepth3MinIndex", true)

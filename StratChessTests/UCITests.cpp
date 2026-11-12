@@ -877,6 +877,21 @@ TEST_CASE("cmd_setoption: Contempt applies a positive value and refuses a signed
 	REQUIRE(fix.ai_tuning().contempt == 20);
 }
 
+TEST_CASE("cmd_setoption: FrontierFutilityMaxDepth applies 2 and refuses 3", "[uci][tuning]")
+{
+	UciHandlerTestFixture fix;
+
+	// The strength lab measures depth-2 frontier futility through this option alone, so a value that
+	// failed to apply would silently measure the default.
+	const std::string applied = fix.capture([&] { fix.setoption("setoption name FrontierFutilityMaxDepth value 2"); });
+	REQUIRE(applied == "info string FrontierFutilityMaxDepth 2\n");
+	REQUIRE(fix.ai_tuning().frontier_futility_max_depth == 2);
+
+	const std::string refused = fix.capture([&] { fix.setoption("setoption name FrontierFutilityMaxDepth value 3"); });
+	REQUIRE(refused.find("not applied") != std::string::npos);
+	REQUIRE(fix.ai_tuning().frontier_futility_max_depth == 2);
+}
+
 TEST_CASE("cmd_setoption: a changed tuning value is applied, reported and clears the TT", "[uci][tuning][tt]")
 {
 	UciHandlerTestFixture fix;

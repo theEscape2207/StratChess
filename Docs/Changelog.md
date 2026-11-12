@@ -23,6 +23,20 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-12: Depth-2 frontier futility behind `FrontierFutilityMaxDepth`, default off (#634)
+
+### Added
+
+- `FrontierFutilityMaxDepth` (default 1, range 1-2) lets frontier futility skip quiet moves at depth
+  2, with a 300 cp margin (200 plus 100 per ply above 1) on both the guard and the fail-low floor.
+  At depth 2 a pawn push to the seventh rank is never frontier-skipped, because quiescence below
+  the opponent's reply would promote it. The default leaves search node-identical. The option
+  exists so the strength lab can measure the extension; it is promoted on an SPRT H1 and deleted
+  otherwise.
+- A depth-2 frame where frontier skipped every late quiet stores frontier's floor as UPPER even
+  with `LateMovePruningDepth2StoreUpper=false`. A frame mixing frontier skips with LMP or quiet-SEE
+  skips keeps their alpha policy.
+
 ## 2026-11-11: Store depth-2 LMP fail-lows at alpha (#940)
 
 ### Changed

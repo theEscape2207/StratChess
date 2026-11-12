@@ -45,6 +45,7 @@ namespace {
 		int reverse_futility_max_depth;
 		int reverse_futility_margin;
 		int frontier_futility_margin;
+		int frontier_futility_max_depth;
 		int late_move_pruning_min_index;
 		int late_move_pruning_depth3_min_index;
 		int quiet_see_pruning_min_depth;
@@ -101,6 +102,7 @@ namespace {
 	SAME_MEMBER(reverse_futility_margin)
 	SAME_MEMBER(frontier_futility_enabled)
 	SAME_MEMBER(frontier_futility_margin)
+	SAME_MEMBER(frontier_futility_max_depth)
 	SAME_MEMBER(late_move_pruning_enabled)
 	SAME_MEMBER(late_move_pruning_depth2_store_upper)
 	SAME_MEMBER(late_move_pruning_min_index)
@@ -430,6 +432,11 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(tuning == expected);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("FrontierFutilityMaxDepth", "2", tuning));
+	expected.frontier_futility_max_depth = 2;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("LateMovePruning", "false", tuning));
 	expected.late_move_pruning_enabled = false;
 	CHECK(tuning == expected);
@@ -614,6 +621,15 @@ TEST_CASE("SearchTuning UCI depth band spans the engine's ply capacity", "[tunin
 	CHECK(uci_rejection("ReverseFutilityMaxDepth", std::to_string(MAX_PLY + 1)) == Code::OutOfRange);
 }
 
+TEST_CASE("SearchTuning frontier futility reaches depth 2 at most", "[tuning][uci]")
+{
+	CHECK(uci_rejection("FrontierFutilityMaxDepth", "0") == Code::OutOfRange);
+	CHECK(uci_rejection("FrontierFutilityMaxDepth", "3") == Code::OutOfRange);
+	SearchTuning tuning;
+	tuning.frontier_futility_max_depth = 3;
+	CHECK(SearchTuningSchema::Validate(tuning).has_value());
+}
+
 TEST_CASE("SearchTuning UCI ignores names it does not expose", "[tuning][uci]")
 {
 	CHECK(uci_rejection("reversefutility", "false") == Code::UnknownSetting);
@@ -640,6 +656,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name ReverseFutilityMargin type spin default 100 min 0 max 1000",
 	    "option name FrontierFutility type check default true",
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
+	    "option name FrontierFutilityMaxDepth type spin default 1 min 1 max 2",
 	    "option name LateMovePruning type check default true",
 	    "option name LateMovePruningMinIndex type spin default 8 min 1 max 64",
 	    "option name LateMovePruningDepth2StoreUpper type check default true",

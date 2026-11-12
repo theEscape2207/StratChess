@@ -169,6 +169,7 @@ class AIPerlexTestFixture {
 	// Ships enabled; each test still sets the flag, so it names the configuration it asserts about.
 	void set_frontier_futility(bool enabled) const { ai->tuning_.frontier_futility_enabled = enabled; }
 	int frontier_futility_margin() const { return ai->tuning_.frontier_futility_margin; }
+	void set_frontier_futility_max_depth(int depth) const { ai->tuning_.frontier_futility_max_depth = depth; }
 	int64_t frontier_skips() const { return ai->td_.telemetry.frontier.skips; }
 	// Whether the search board is back on the fixture's position after a search_node() call.
 	bool search_board_restored() const { return ai->td_.board.get_zobrist_hash() == board_.get_zobrist_hash(); }
