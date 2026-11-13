@@ -71,7 +71,7 @@
     Add a byte-identical copy of the baseline as a third arm, an A/A noise control.
 
 .PARAMETER Depth
-    Fixed search depth, passed to Run-Bench. Default 13, which clears -MinTimeMs on every
+    Fixed search depth, passed to Run-Bench. Default 14, which clears -MinTimeMs on every
     built-in position on the dev machine.
 
 .PARAMETER Positions
@@ -120,7 +120,7 @@ param(
     [switch]$Control,
 
     [ValidateRange(1, 30)]
-    [int]$Depth = 13,
+    [int]$Depth = 14,
 
     [string]$Positions = '',
 
