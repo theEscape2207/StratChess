@@ -72,7 +72,7 @@
 
 .PARAMETER Depth
     Fixed search depth, passed to Run-Bench. Default 14, which clears -MinTimeMs on every
-    built-in position on the dev machine; at 13, piece-endgm fell under it.
+    built-in position on the dev machine.
 
 .PARAMETER Positions
     Optional FEN file, passed to Run-Bench. Defaults to its built-in set.
