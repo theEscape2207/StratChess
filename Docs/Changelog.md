@@ -23,6 +23,15 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-13: `Compare-Bench` defaults to depth 14
+
+### Changed
+
+- `Compare-Bench.ps1` and `Compare-BenchLinux.ps1` default `-Depth` to 14. As the search got
+  faster, piece-endgm fell under the 200 ms floor at depth 13, so three regression checks in a row
+  were refused and re-run at 14. A suite pass takes about 10 s on the dev machine, so a default
+  two-arm run is about 5 min; the Linux phase estimate is raised to match.
+
 ## 2026-11-13: TT-refined reverse futility, on by default (#545)
 
 ### Added

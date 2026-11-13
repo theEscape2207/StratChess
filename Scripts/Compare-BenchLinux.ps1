@@ -28,7 +28,7 @@
     Measured rounds, passed to Compare-Bench. Default 12.
 
 .PARAMETER Depth
-    Fixed search depth, passed to Compare-Bench. Default 13.
+    Fixed search depth, passed to Compare-Bench. Default 14.
 
 .PARAMETER Positions
     Optional FEN file (Windows path), passed to Compare-Bench.
@@ -61,7 +61,7 @@ param(
     [int]$Rounds = 12,
 
     [ValidateRange(1, 30)]
-    [int]$Depth = 13,
+    [int]$Depth = 14,
 
     [string]$Positions = '',
 
@@ -85,7 +85,7 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
 # Phase estimates; the first build's measured time replaces the build estimate.
 $RoughBuildSeconds = 90
-$RoughSuiteSeconds = 20
+$RoughSuiteSeconds = 35
 
 function Get-CompareBenchArgument {
     <# The command that runs Compare-Bench inside WSL, as an argument list for wsl --exec. #>
@@ -158,7 +158,7 @@ if ($SelfTest) {
         Assert-Case "flags check: $($case.Name)" ($got -eq $case.Expect) "got $got"
     }
 
-    $common = @{ Script = '/s/Compare-Bench.ps1'; BaselineExe = '/b/x'; CandidateExe = '/c/x'; Out = '/o'; RoundCount = 12; SearchDepth = 13
+    $common = @{ Script = '/s/Compare-Bench.ps1'; BaselineExe = '/b/x'; CandidateExe = '/c/x'; Out = '/o'; RoundCount = 12; SearchDepth = 14
                  FloorMs = 200; BaselineLabel = 'aaa'; CandidateLabel = 'bbb' }
     $plain = @(Get-CompareBenchArgument @common -PositionFile '' -Mask 0)
     Assert-Case 'command: pwsh first, A/A control and trend-only always on' ($plain[0] -eq 'pwsh' -and $plain -contains '-Control' -and $plain -contains '-TrendOnly') ($plain -join ' ')
