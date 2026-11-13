@@ -31,20 +31,19 @@ series against the merge base, and the baseline build that silently skews it:
 | Is this worth shipping? | **CI strength lab** (`strength.yml`), Full with `sprt=true` | ~1–4 h, 18 of 20 CI slots | **SPRT [0, 3] decision**, or ±3.0 Elo at the cap — decisive |
 
 **The lab is the gate for anything meant to gain Elo.** A local SPRT's floor is ±10 Elo and most
-eval terms are worth 5-25, so it returns inconclusive more often than not: the ledgers run 15
-inconclusive to 11 decisive locally, against 9 of 9 decisive in the lab
+changes are worth 3-25, so it mostly returns inconclusive; the lab resolves ±3
 ([`reference/why-the-lab-is-the-default.md`](reference/why-the-lab-is-the-default.md)). Run the
 local SPRT first if you like, as a 40-minute smoke test, but plan the lab run as the gate from the
 start rather than arriving at it after two inconclusive sessions.
 
-Once a strength candidate passes correctness and the comparison is valid, prioritise its deciding
-lab run within the agreed budget. Optional cost attribution can run alongside or afterward; it
-must not become a prerequisite for measuring strength. Record capacity/budget/priority deferrals
-as unmeasured, not as strength failures. Before dispatch, record the experiment role and stopping
-rule in existing task records; `Measurements/README.md` defines how the result links back to them.
+Once a candidate is correct and its comparison valid, its lab run comes first; cost attribution
+(profile, wall clock) runs alongside or after, never as a prerequisite. A run deferred for budget or
+capacity is recorded as unmeasured. **Before dispatch, state the keep/delete rule** in the issue,
+design doc or PR body: the lab's ship rule
+([`reference/strength-lab.md`](reference/strength-lab.md#the-ship-rule)), quoted as it stands.
 
 **Explaining a result** (how a search change reshaped the tree, which helps read its wall-clock or
-Elo result, or what a #636 child is judged by): `Compare-SearchProfile.ps1 -Before -After` on two
+Elo result): `Compare-SearchProfile.ps1 -Before -After` on two
 `-DSTRAT_SEARCH_PROFILE=1` builds. It prints ordering, LMR, node types, pruning, quiescence,
 iterations and stability, pooled and by endgame group. It measures no time: a speed change with an
 unchanged tree is `Run-Bench.ps1`'s question, and where the time goes is
@@ -54,9 +53,9 @@ verdict: gate on wall clock and Elo as above. Screen with
 `-Seeds 8 -Depth 12 -Positions Tests/profile-screen.fen` (~24 min; catches a 5% late-cut change 97% of the time, a 3% one about 3 times in 5) and
 read the Screen block's ±2 SE. One run per side carries tree noise larger than a typical ordering
 effect (`Measurements/profile-screen.md`). Field meanings and emission conditions:
-[EngineGuide](../../../Docs/EngineGuide.md#interpret-search-output). The #636 child's
-fixed-depth wall clock is `Compare-WallClock.ps1 -Baseline <merge-base exe> -Candidate <exe>`
-(~17 min at its defaults); its `Ledger:` line drafts the ledger row.
+[EngineGuide](../../../Docs/EngineGuide.md#interpret-search-output). Fixed-depth wall clock is
+`Compare-WallClock.ps1 -Baseline <merge-base exe> -Candidate <exe>` (~17 min at its defaults).
+Neither screen predicts Elo: #545 and #634 parked on wall clock and later passed the lab.
 
 A **local fixed batch** (500 games, ~40 min, ±25 Elo) is supported but is not the default: a third
 of the lab's wall-clock for a fraction of its precision, so it mostly buys inconclusive runs. Reach
@@ -85,11 +84,7 @@ For `Run-Bench.ps1`, `Compare-Bench.ps1`, `Compare-BenchLinux.ps1`, `Compare-Wal
 In a multi-step plan, identify the quiet steps: `Build (no quiet needed), collect CPU profile
 (quiet), analyse (no quiet needed).` At a useful transition back, say `Collection finished;
 analysis doesn't need quiet.` A standalone run needs only its launch heads-up; estimates stay
-pre-launch, without live ETA updates or extra banners. This rule communicates the window; it
-adds no load detection, script enforcement, verdict changes or cross-session coordination.
-
-A long-run proposal can say: `SPRT needs roughly 40-60 min through the game cap and may stop
-earlier. I'll wait for your go.` The launch heads-up still gives the approximate local end time.
+pre-launch, without live ETA updates or extra banners.
 
 ## Running one
 
@@ -104,10 +99,10 @@ matters, such as an anchor step or a choice between two candidates.
 `reference_ref` defaults to `merge-base`, which attributes the result to **this change alone**; a
 tag like `elo-reference-v2` measures cumulative strength instead. A feature that ships default-off is
 measured with `-f candidate_uci_options="Name=Value"` rather than a probe branch, so the binary that
-plays is the one that will merge; the run fails fast if the engine does not advertise that option,
-since it would otherwise ignore it silently and report a null result — as it would for a value that
-is not unsigned decimal digits, which is all its UCI parser accepts. Shard count, pooling and the
-failed-shard rule: [`reference/strength-lab.md`](reference/strength-lab.md).
+plays is the one that will merge. The run fails fast on an option the engine does not advertise, or
+a value its parser would reject (a spin takes unsigned decimal digits, a check `true` or `false`),
+since the engine would otherwise ignore it and report a null result. Shard count, pooling, the ship
+rule and the failed-shard rule: [`reference/strength-lab.md`](reference/strength-lab.md).
 
 Locally, build the candidate first (`.\build.ps1 main`) — `Run-EloMatch.ps1` does not build it, and
 `build.ps1` builds the shipping clang-cl binary.
@@ -141,9 +136,8 @@ measurement and is not one.
 - **Do not hold the session open across a long match.** Start it, report that it is running, and end
   the turn. Polling keeps a large context alive for hours, the prompt cache expires underneath it,
   and the whole context is re-read at full price on wake.
-- A lab run occupies 18 of 20 repository CI slots for ~3 h and can delay every other PR. Say that
-  when proposing one — as the cost it is, not as a reason to fall back on an instrument that will
-  not answer. Lab runs are serial, never parallel: a second dispatch queues until the first ends.
+- A lab run holds 18 of 20 CI slots for up to 4 h and can delay every other PR. Say that when
+  proposing one, as its cost, not as a reason to fall back on an instrument that will not answer.
 
 ## Where the result came from
 
@@ -165,9 +159,7 @@ SMP thread count across candidate and reference too.
 
 Compare **nps**, never node counts at fixed depth. Node count is a property of the search, not the
 machine code — which is exactly what makes it the right *equivalence* check
-(`Compare-SearchEquivalence.ps1`), not a speed check. Anything adding per-node work — evaluation
-terms as much as compiler flags — gets a bench pass, and a measured slowdown needs a stated benefit
-that outweighs it. For a TT or memory-latency change the bench figure is a floor: its table stays
+(`Compare-SearchEquivalence.ps1`), not a speed check. For a TT or memory-latency change the bench figure is a floor: its table stays
 mostly cold. Effect sizing, repeat runs, why an eval change needs the per-position column, and that
 floor: `Docs/Workflow.md` → Speed and nps.
 
@@ -181,8 +173,6 @@ floor: `Docs/Workflow.md` → Speed and nps.
 - **Two runs of the same comparison do not simply pool.** Both are conditioned on having failed to
   cross a bound, which biases a pooled estimate toward the indifference region. Say "both intervals
   sit in the same place", not the average.
-- An SPRT needs a reference that isolates the change, so `Run-EloMatch.ps1` refuses `-Sprt` against
-  the fixed anchor (`-AnchorSprt` overrides it for a deliberate cumulative reading).
 
 ## Recording
 
@@ -203,4 +193,4 @@ likely means the box was oversubscribed, which invalidates the batch rather than
 - [`reference/reading-a-result.md`](reference/reading-a-result.md) — what each outcome licenses you
   to claim, and whether more games would help.
 - [`reference/why-measurement-is-hard.md`](reference/why-measurement-is-hard.md) — resolution at a
-  given N, why the anchor cannot measure your change, the 100 ms floor, bundling terms.
+  given N, why the anchor cannot measure your change, bundling terms.

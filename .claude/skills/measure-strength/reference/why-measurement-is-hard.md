@@ -1,7 +1,7 @@
 # Why measurement is hard here
 
 Each of these has cost this project a run, a wrong conclusion, or both. Sizing and book mechanics
-are in `SKILL.md`; this file is the traps that survive getting those right.
+are in [`sizing-a-batch.md`](sizing-a-batch.md); this file is the traps that survive getting those right.
 
 ## Resolution: what 500 games can see
 
@@ -39,18 +39,6 @@ the two answer different questions and both belong in the ledger, labelled as to
 `Run-EloMatch.ps1` enforces this rather than trusting it: `-Sprt` exits 1 when the reference comes
 from the tag lookup, because such a reference is a fixed anchor by construction. `-AnchorSprt`
 overrides the refusal for a cumulative reading asked for on purpose, and labels the row accordingly.
-
-## The 100 ms per-move floor
-
-`compute_budget()` floors every move at 100 ms regardless of how much clock is left, so at any
-increment below that the engine loses ground every move once its clock drains, and eventually
-forfeits. Measured: **3 time losses in 4 games at 5+0.05, none at 5+0.1**; at 2+0.02 the handicapped
-side flagged in all four.
-
-Two consequences. A handicap run must halve the **base** time and leave the increment alone —
-halving both tests the time manager's floor rather than whatever is under test. And the standard
-10+0.1 sits *exactly* on the floor: its 100 ms increment repays the minimum move cost and no more,
-so there is no margin on a slower or contended machine. Tracked as #204.
 
 ## When even SPRT cannot resolve a term
 
