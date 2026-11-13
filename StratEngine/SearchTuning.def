@@ -89,7 +89,7 @@ TUNING_FLAG(reverse_futility_enabled,   true, false, true,    true, "ReverseFuti
 TUNING_FIELD(int,     reverse_futility_max_depth, 3,    1,     MAX_PLY, true, "ReverseFutilityMaxDepth", true)
 TUNING_FIELD(int,     reverse_futility_margin,    100,  0,     1000,    true, "ReverseFutilityMargin",   true)
 // Reverse futility compares the larger of the static evaluation and a searched TT value this node's
-// probe found but could not cut on, trusting an entry of any stored depth (lab SPRT H1, #545).
+// probe found but could not cut on, trusting an entry of any stored depth.
 TUNING_FLAG(reverse_futility_tt_refine_enabled, true, false, true, true, "ReverseFutilityTtRefine", true)
 
 // Frontier futility pruning at depths 1 and 2. The margin is centipawns one quiet move may gain
