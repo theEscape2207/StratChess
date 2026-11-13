@@ -1,23 +1,15 @@
-# Why the lab is the default for a new evaluation term
+# Why the lab is the default for a gain
 
-The instrument table names the CI strength lab as the gate for "is this eval term worth shipping".
-This is the evidence behind that, recorded as evidence rather than preference.
+The instrument table names the CI strength lab as the gate for "is this worth shipping". This is
+the reasoning behind that.
 
-## The ledgers
-
-Counting every row ever recorded:
-
-- **`Measurements/local.md`: 15 inconclusive against 11 decisive.** Seven of the last ten are
-  inconclusive. #97 alone spent ~5,900 games across four SPRTs and resolved nothing.
-- **`Measurements/ci-per-change.md`: 9 of 9 decisive.** Every lab run this project has dispatched
-  produced a verdict, including on features the local instrument had already failed on.
-
-## Why, arithmetically
+## Resolution
 
 A local SPRT runs ~12 games/min on one box, so a night is ~2,500 games and **±10 Elo is its
-floor**. Most eval terms are worth 5-25 Elo, i.e. inside that floor, and `NonRegression`'s `[-5, 0]`
-region is narrower still. The lab plays 20,088 games in parallel and pools pentanomially, so it
-resolves ±3.5.
+floor**. Most changes are worth 3-25 Elo, much of that inside the floor, and `NonRegression`'s
+`[-5, 0]` region is narrower still. The lab plays up to 26,568 games in parallel and pools
+pentanomially, so it resolves ±3. Locally, #97 alone spent ~5,900 games across four SPRTs and
+resolved nothing.
 
 ## Cost is not the tie-breaker people assume
 
@@ -29,9 +21,9 @@ that answers.
 
 ## The exception
 
-A search change expected to clear 25 Elo is above the local floor, so a local SPRT can settle it.
-That is the only case where the lab is not the better instrument for a gain.
+A change expected to clear 25 Elo is above the local floor, so a local SPRT can settle it. That is
+the only case where the lab is not the better instrument for a gain.
 
-Note that "raise `-Games`" is not a way out: 500 is the default, not a limit — the local book
-supports 69,400 distinct games ([`sizing-a-batch.md`](sizing-a-batch.md)) — but a night's worth of
-games is still ~2,500, which is where the ±10 Elo floor comes from.
+"Raise `-Games`" is not a way out: 500 is the default, not a limit — the local book supports 69,400
+distinct games ([`sizing-a-batch.md`](sizing-a-batch.md)) — but a night's worth of games is still
+~2,500, which is where the ±10 Elo floor comes from.
