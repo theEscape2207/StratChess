@@ -897,8 +897,8 @@ TEST_CASE("cmd_setoption: ReverseFutilityTtRefine applies both check values", "[
 	UciHandlerTestFixture fix;
 
 	// The lab measures the refinement through this option alone, so a value that failed to apply
-	// would silently measure the default.
-	for (const bool enabled : {true, false}) {
+	// would silently measure the default. Off first, so each step moves the value.
+	for (const bool enabled : {false, true}) {
 		const std::string value = enabled ? "true" : "false";
 		const std::string output =
 		    fix.capture([&] { fix.setoption("setoption name ReverseFutilityTtRefine value " + value); });
