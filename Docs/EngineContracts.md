@@ -110,6 +110,13 @@ repeats the aborted-frame tripwire; change both together.
   engine generated; its `static_eval` is trusted like its value, at the same collision rate. The
   key check covers bits 16-63 plus the bucket index, all 64 bits from `Hash` = 4 MiB. A change that searches the hash move before generating (a staged move generator)
   must check it is pseudo-legal in this position first.
+- **A main-search TT score has two consumers in `pvs()`**: the cutoff and, with
+  `ReverseFutilityTtRefine` (default on), reverse futility's comparison (`tt_refines_reverse_futility()`). The
+  refinement raises only the compared value, never `static_eval`, because frontier futility's
+  fail-low floor reports `static_eval` and a raised one could clear the alpha it skipped under.
+  Neither consumer checks the halfmove clock, though the key omits it (#347; #549 measured zero
+  exposure in ordinary play). A rule-50 guard added for #347 must cover both while keeping the
+  hash move usable.
 - **TT clearing is a lifecycle operation.** `TranspositionTable::clear()` takes a table-wide mutex
   to serialize clears. Probes and stores are lock-free and do not take that mutex; callers must
   exclude concurrent stores. See [TranspositionTable.h](../StratEngine/TranspositionTable.h).

@@ -62,6 +62,7 @@ namespace {
 		bool singular_extensions_enabled;
 		bool singular_multicut_enabled;
 		bool reverse_futility_enabled;
+		bool reverse_futility_tt_refine_enabled;
 		bool frontier_futility_enabled;
 		bool late_move_pruning_enabled;
 		bool late_move_pruning_depth2_store_upper;
@@ -100,6 +101,7 @@ namespace {
 	SAME_MEMBER(reverse_futility_enabled)
 	SAME_MEMBER(reverse_futility_max_depth)
 	SAME_MEMBER(reverse_futility_margin)
+	SAME_MEMBER(reverse_futility_tt_refine_enabled)
 	SAME_MEMBER(frontier_futility_enabled)
 	SAME_MEMBER(frontier_futility_margin)
 	SAME_MEMBER(frontier_futility_max_depth)
@@ -170,6 +172,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.reverse_futility_enabled);
 	CHECK(tuning.reverse_futility_max_depth == 3);
 	CHECK(tuning.reverse_futility_margin == 100);
+	CHECK(tuning.reverse_futility_tt_refine_enabled);
 	CHECK(tuning.frontier_futility_enabled);
 	CHECK(tuning.frontier_futility_margin == 200);
 	CHECK(tuning.late_move_pruning_enabled);
@@ -422,6 +425,11 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(tuning == expected);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("ReverseFutilityTtRefine", "false", tuning));
+	expected.reverse_futility_tt_refine_enabled = false;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("FrontierFutility", "false", tuning));
 	expected.frontier_futility_enabled = false;
 	CHECK(tuning == expected);
@@ -654,6 +662,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name ReverseFutility type check default true",
 	    "option name ReverseFutilityMaxDepth type spin default 3 min 1 max 256",
 	    "option name ReverseFutilityMargin type spin default 100 min 0 max 1000",
+	    "option name ReverseFutilityTtRefine type check default true",
 	    "option name FrontierFutility type check default true",
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
 	    "option name FrontierFutilityMaxDepth type spin default 2 min 1 max 2",

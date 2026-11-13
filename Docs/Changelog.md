@@ -23,6 +23,21 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-13: TT-refined reverse futility, on by default (#545)
+
+### Added
+
+- `ReverseFutilityTtRefine` (default true) lets reverse futility compare the larger of the static
+  evaluation and a non-mate LOWER or EXACT main-search value from the node's own TT probe, of any
+  stored depth. That value can only be shallower than the node, since a deep enough one already cut
+  off. `static_eval` itself is unchanged, so frontier futility's floor is unaffected. The entry is
+  read only at nodes eligible for reverse futility. `ReverseFutilityTtRefine=false` restores the
+  previous search.
+
+### Results
+
+- Lab SPRT H1 [0, 3] at wave 3, +5.07 ±3.49 at stop (ci-per-change).
+
 ## 2026-11-12: Depth-2 frontier futility on by default (#634)
 
 ### Changed
