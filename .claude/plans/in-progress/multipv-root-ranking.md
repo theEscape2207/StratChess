@@ -290,12 +290,12 @@ strength target.
 
 ## Harvest
 
-| Decision / rationale | Lands in |
-|---|---|
-| D2: root exclusion vs singular exclusion, why they can't meet | source comment at the exclusion test in `pvs()` |
-| D3: no root store under root exclusion | source comment at the store guard; `Docs/EngineContracts.md` → Search internals |
-| D5/D6: one iteration = all ranks, sorted, no interrupted acceptance, the first-depth fallback | `Docs/EngineContracts.md` → The search service; comment on the multi-PV loop |
-| D1: `alternatives` meaning | comment on `SearchResult::alternatives` |
-| `N = 4` node multiplier | PR body and `Docs/Changelog.md` headline |
-| fixed-time depth loss is #985's to measure | a comment on #985 when this PR merges |
-| first-depth fallback: fewer alternatives than `N - 1` | comment on `SearchResult::alternatives` |
+| Decision / rationale | Lands in | Landed |
+|---|---|---|
+| D2: root exclusion vs singular exclusion, why they can't meet | source comment at the exclusion test in `pvs()` | `AIPerplex.cpp`, move-loop comment above `is_excluded()`; also `Docs/EngineContracts.md` → Search internals |
+| D3: no root store under root exclusion | source comment at the store guard; `Docs/EngineContracts.md` → Search internals | `AIPerplex.cpp` store guard and terminal branch; EngineContracts "A multi-PV rank after the first stores nothing at the root key" |
+| D5/D6: one iteration = all ranks, sorted, no interrupted acceptance, the first-depth fallback | `Docs/EngineContracts.md` → The search service; comment on the multi-PV loop | EngineContracts "At `SetMultiPV(N > 1)` one iteration is the whole ranked set"; comments in `iterative_deepening()` and on `search_root_set()` |
+| D1: `alternatives` meaning | comment on `SearchResult::alternatives` | `SearchResult.h` |
+| `N = 4` node multiplier | PR body and `Docs/Changelog.md` headline | Changelog 2026-11-21 Results: 3.36× at depth 12; PR body |
+| fixed-time depth loss is #985's to measure | a comment on #985 when this PR merges | Changelog Results line; the #985 comment is due at merge |
+| first-depth fallback: fewer alternatives than `N - 1` | comment on `SearchResult::alternatives` | `SearchResult.h` |
