@@ -21,6 +21,14 @@ or documentation structure changes. -->
 - **Parallel search** — Lazy SMP, configurable via the UCI `Threads` option
 - **Time management** — soft and hard limits derived from the clock, increment and moves-to-go
 
+## Strength
+
+Roughly **2600–2700 Elo** on Stockfish's `UCI_Elo` scale, which approximates CCRL Blitz, ±150.
+That comes from a 240-game scouting gauntlet against Stockfish 19 with `UCI_LimitStrength` on
+(60+0.6, one thread, November 2026). It is a bracket, not a rating-list entry. Engine ratings are
+not human ratings. Development tracks relative Elo against pinned reference builds
+([Measurements/](Measurements/)).
+
 ## Building
 
 **x86-64 with BMI2 only** — Intel Haswell (2013) or AMD Excavator (2015) onwards. The sliding-piece
