@@ -511,7 +511,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 
 	td.begin_search(tuning_.continuation_history_plies > 0);
 
-	// Multi-PV (#94): the root moves each depth ranks. 1 is the plain search, unchanged.
+	// Multi-PV: the root moves each depth ranks. 1 is the plain search, unchanged.
 	const int rank_count = root_rank_count(td);
 	// The last completed set, sorted best first: rank k's aspiration seed and ordering hint.
 	std::vector<RootLine> previous_set;
@@ -655,7 +655,7 @@ int AIPerplex::root_rank_count(ThreadData& td) const
 	return std::max(1, std::min(static_cast<int>(multipv_), legal));
 }
 
-// The multi-PV loop (#94). Each rank is a full root search through the plain search's own window
+// The multi-PV loop. Each rank is a full root search through the plain search's own window
 // logic, excluding the moves already ranked; see pvs()'s root exclusion frame. Rank k is seeded from
 // the previous set's k-th score, the closest prior estimate for "the best move outside k - 1 better
 // ones". Depth 1 and a mate-score seed search full window: a window around a mate score keeps failing
@@ -663,7 +663,7 @@ int AIPerplex::root_rank_count(ThreadData& td) const
 //
 // The completed set is sorted, and its rank 1 can differ from the move rank 1's search chose: search
 // instability can score a move higher in its own full PV search, at rank k, than the null window rank
-// 1 gave it. An unsorted set would give a pick policy a negative gap. Stockfish makes the same trade.
+// 1 gave it. An unsorted set would give a pick policy a negative gap.
 bool AIPerplex::search_root_set(ThreadData& td, int depth, int rank_count, const std::vector<RootLine>& previous_set,
                                 std::vector<RootLine>& set, TranspositionTable& tt)
 {
@@ -678,6 +678,8 @@ bool AIPerplex::search_root_set(ThreadData& td, int depth, int rank_count, const
 		                              : search_with_aspiration(td, depth, previous->score, tt);
 		// The latched abort, so a stop that landed after an out-of-window pvs() counts too.
 		const int length = td.pv_table.get_length(0);
+		// A rank that ran to the end has a line: its first move beat the full or final window.
+		assert(control_.IsAborted() || length > 0);
 		if (control_.IsAborted() || length == 0)
 			return false;
 		const auto& line = td.pv_table.get_line(0);
@@ -918,7 +920,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		}
 	}
 
-	// A multi-PV rank after the first (#94): an ordinary PV root that may not play the moves earlier
+	// A multi-PV rank after the first: an ordinary PV root that may not play the moves earlier
 	// ranks took. Unlike a singular verification it probes, writes its PV row and keeps every other root
 	// behaviour; only its stores at this key are suppressed, below. The probed move is usually rank 1's,
 	// which is excluded, so the previous set's move at this rank orders the root instead.

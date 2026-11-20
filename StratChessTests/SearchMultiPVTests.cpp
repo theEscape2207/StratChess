@@ -1,4 +1,4 @@
-// SearchMultiPVTests.cpp — multi-PV root ranking (#94): SetMultiPV(N) makes one search return its
+// SearchMultiPVTests.cpp — multi-PV root ranking: SetMultiPV(N) makes one search return its
 // N best root moves, each with an exact score and its own line, from one completed depth.
 //
 // The invariant tests run with singular extensions on and off, because pvs()'s one exclusion test
@@ -135,6 +135,7 @@ TEST_CASE("MultiPV: N above the legal move count ranks every legal move", "[mult
 {
 	// The cornered king has three moves. Verified against python-chess.
 	AIPerlexTestFixture three("7k/8/8/8/8/8/8/K7 w - - 0 1");
+	arm_singular(three, GENERATE(true, false));
 	REQUIRE(three.count_legal_moves() == 3);
 	three.ai->SetMultiPV(5);
 	const SearchResult result = search(three, SearchLimits::fixed_depth(4));
@@ -158,6 +159,7 @@ TEST_CASE("MultiPV: a mate in one ranks first", "[multipv]")
 {
 	// Ra8# — the knight cannot interpose on the eighth rank. Verified against python-chess.
 	AIPerlexTestFixture fix("6k1/5ppp/8/8/2n5/8/5PPP/R5K1 w - - 0 1");
+	arm_singular(fix, GENERATE(true, false));
 	fix.ai->SetMultiPV(AIPerplex::MAX_MULTIPV);
 	const SearchResult result = search(fix, SearchLimits::fixed_depth(4));
 	check_ranked_set(fix.board_, result, expected_alternatives(fix, AIPerplex::MAX_MULTIPV));
@@ -173,6 +175,7 @@ TEST_CASE("MultiPV: moves that allow a mate in one rank last", "[multipv]")
 	// Ra8 is met by ...Rxa8.
 	// Verified against python-chess.
 	AIPerlexTestFixture fix("4r1k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1");
+	arm_singular(fix, GENERATE(true, false));
 	fix.ai->SetMultiPV(AIPerplex::MAX_MULTIPV);
 	const SearchResult result = search(fix, SearchLimits::fixed_depth(4));
 	check_ranked_set(fix.board_, result, expected_alternatives(fix, AIPerplex::MAX_MULTIPV));
@@ -193,6 +196,9 @@ TEST_CASE("MultiPV: depth-1 scores are exact, not bounds", "[multipv]")
 {
 	// No white move gives check or lets Black capture, so each child's quiescence is its stand-pat
 	// and every root move's true depth-1 score is -Evaluate(child). Verified against python-chess.
+	// This is the only exactness check, and depth 1 is full window: a deeper rank's exactness rests
+	// on search_root_set() dropping a rank whose out-of-window score came back with the abort latched.
+	// Singular extensions never reach depth 1, so this test runs only the default.
 	AIPerlexTestFixture fix("1n2k3/p6p/8/8/8/8/P6P/1N2K3 w - - 0 1");
 	const int legal = fix.count_legal_moves();
 	fix.ai->SetMultiPV(static_cast<unsigned>(legal));
@@ -228,11 +234,15 @@ TEST_CASE("MultiPV: depth-1 scores are exact, not bounds", "[multipv]")
 
 TEST_CASE("MultiPV: later ranks store nothing at the root key", "[multipv]")
 {
-	// Without the guard the last rank stores last, naming a move other than the free capture.
+	// Without the guard the last rank stores last, naming a move other than the free capture. At
+	// Threads = 2 the helpers store d1d5 at the root too, so with the guard reverted that arm can pass
+	// by timing; the Threads = 1 arm is the falsifier.
 	const unsigned threads = GENERATE(1u, 2u);
+	const bool singular = GENERATE(true, false);
 	const unsigned n = threads == 1 ? 4u : 3u;
-	INFO("threads=" << threads << " N=" << n);
+	INFO("threads=" << threads << " N=" << n << " singular=" << singular);
 	AIPerlexTestFixture fix(kFreeQueen);
+	arm_singular(fix, singular);
 	fix.ai->SetThreads(threads);
 	fix.ai->SetMultiPV(n);
 	const SearchResult result = search(fix, SearchLimits::fixed_depth(kDepth));
@@ -246,6 +256,7 @@ TEST_CASE("MultiPV: later ranks store nothing at the root key", "[multipv]")
 TEST_CASE("MultiPV: the observer sees every emitted depth's alternatives", "[multipv]")
 {
 	AIPerlexTestFixture fix(kKiwipete);
+	arm_singular(fix, GENERATE(true, false));
 	fix.ai->SetMultiPV(3);
 	std::vector<Emitted> emitted;
 	const SearchResult result = search(fix, SearchLimits::fixed_depth(kDepth), &emitted);
@@ -268,19 +279,25 @@ TEST_CASE("MultiPV: a stop inside a set keeps the previous depth's complete set"
 {
 	constexpr unsigned kN = 4;
 	constexpr int kMaxDepth = 9;
+	const bool singular = GENERATE(true, false);
 	std::vector<Emitted> full;
 	{
 		AIPerlexTestFixture fix(kKiwipete, kMaxDepth);
+		arm_singular(fix, singular);
 		fix.ai->SetMultiPV(kN);
 		(void)search(fix, SearchLimits::fixed_depth(kMaxDepth), &full);
 	}
 	REQUIRE(full.size() == static_cast<size_t>(kMaxDepth));
-	// The last depth costs several poll intervals, so a limit halfway into it lands inside the set.
+	// A limit just short of the last depth's end lands in its rank N: that rank's search costs far more
+	// than the margin plus one poll interval (1024 node entries), so the stop comes after it started and
+	// before it finished.
 	const Emitted& kept = full[full.size() - 2];
-	const int64_t limit = (kept.nodes + full.back().nodes) / 2;
-	REQUIRE(full.back().nodes - kept.nodes > 20'000);
+	constexpr int64_t kMargin = 2048;
+	const int64_t limit = full.back().nodes - kMargin;
+	REQUIRE(full.back().nodes - kept.nodes > 100'000);
 
 	AIPerlexTestFixture fix(kKiwipete, kMaxDepth + 1);
+	arm_singular(fix, singular);
 	fix.ai->SetMultiPV(kN);
 	const SearchResult result = search(fix, SearchLimits::fixed_nodes(limit));
 	CHECK(result.depth_completed == kept.depth);
@@ -320,7 +337,7 @@ TEST_CASE("MultiPV: a stop inside depth 1's set falls back to its rank 1", "[mul
 	CHECK(fix.root_excluded_count() == 0);
 }
 
-// Characterisation for #94: the node cost of N = 4 over N = 1 on the Run-Bench positions at a fixed
+// Characterisation: the node cost of N = 4 over N = 1 on the Run-Bench positions at a fixed
 // depth, and how often sorting changed rank 1. Deterministic, so no quiet window. Reports, no threshold.
 TEST_CASE("MultiPV: N = 4 node multiplier on the bench positions", "[.multipv-cost]")
 {

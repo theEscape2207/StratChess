@@ -121,7 +121,7 @@ struct ThreadData {
 	// abort like the node counters.
 	SearchTelemetry telemetry{};
 
-	// Multi-PV root exclusion (#94): the moves earlier ranks of this depth already took, which the
+	// Multi-PV root exclusion: the moves earlier ranks of this depth already took, which the
 	// root of the next rank's search may not play. Only the main thread's iterative_deepening() fills
 	// it, through RootExclusionGuard, so a Lazy SMP helper's count stays 0. After telemetry, so no hot
 	// member's offset moves.
