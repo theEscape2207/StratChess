@@ -19,7 +19,7 @@ search-identical to today.
 - **D3, the root TT guard.** Is suppressing the root store for ranks 2..N enough to keep every TT
   entry a full-move-set result, at `Threads > 1` too?
 - **D5/D6, sorting and interrupted depths.** Rank 1 after sorting drives the iteration policy, and
-  `N > 1` keeps `ACCEPTED_INTERRUPTED` only before the first complete set. Is anything in `IterationPolicy` or time management
+  `N > 1` never reaches `ACCEPTED_INTERRUPTED`; D6's first-depth fallback stands in for it. Is anything in `IterationPolicy` or time management
   unsound under that?
 
 ## Scope
@@ -37,8 +37,9 @@ search-identical to today.
 - add a UCI `MultiPV` option or `multipv` info fields. That is slice 2, for #91 and #68;
 - add `UCI_LimitStrength`, `UCI_Elo` or any pick policy (#985);
 - add `searchmoves`, or run multi-PV on the Lazy SMP helpers;
-- measure fixed-time depth loss. Without a UCI option the timing tools can't drive `N > 1`, so it
-  moves to slice 2;
+- measure fixed-time depth loss. It becomes part of #985's acceptance, before its clocked use:
+  #985 calibrates under its own clock and pick depth, which is where the loss matters. This slice
+  reports the deterministic `N = 4` node multiplier;
 - predict a set's cost before starting it. A set costs about N depths, and with no interrupted
   acceptance (D6) a set the hard limit cuts is wasted. A rule such as "don't start a set past a
   fraction of the soft limit" is for slice 2 or #985 to measure.
@@ -181,11 +182,17 @@ set whose hard limit latched just after its last rank would be assessed as inter
 incomplete set goes to `assess_iteration` with a null move, which is today's `INCOMPLETE`
 rejection, so the previous accepted set stands. The final result is always the last complete set.
 
-One exception: when no set has completed yet but rank 1 of the first depth has, that rank-1 line is
-assessed alone, as an interrupted depth with empty `alternatives`, exactly as at `N = 1`.
-Otherwise a tiny clock or node limit would trade a searched move for the emergency path's first
-legal move. So at `N > 1`, `ACCEPTED_INTERRUPTED` is reachable only while `depth_completed == 0`.
-That is asserted.
+**One exception, the first-depth fallback.** Suppose no set has completed yet, but rank 1 of the
+first depth has. Then the saved rank-1 line is restored to PV row 0, before the emit and its replay assert,
+and assessed as a *completed* depth 1 with empty `alternatives`: the sample's `interrupted` is
+set `false` explicitly, since `StopRequested()` is already true. That is exactly the result `N = 1` would have produced from the
+same finished search. It is not sent through the interrupted gates. Those would reject it: the
+default `min_nodes_threshold` is 1,000 main nodes, and a depth-1 set of 4 ranks reaches at most
+866, because every child is quiescence. Without this, a tiny clock or node limit would trade a
+searched move for the emergency path's first legal move. Its `depth_completed` is 1, and its score
+and PV are rank 1's. It is the one result with a completed depth and fewer than
+`min(N, legal) - 1` alternatives. So a consumer that needs a ranked set must check the size.
+`ACCEPTED_INTERRUPTED` is never reached at `N > 1`. That is asserted.
 
 Rejected: keeping `ACCEPTED_INTERRUPTED` for rank 1 alone. Its partial rank 1 would come from depth
 d while ranks 2..N came from d-1, and sorting across depths compares unlike scores. This mode is for
@@ -211,9 +218,9 @@ Rejected: helpers searching ranks in parallel. It needs a parallel-root design, 
   #985's pick depth comes from the level, and its design isn't written yet. Not verified. If it
   needs something else, such as scores at several depths at once, D1's shape still carries it
   through the per-depth observer.
-- **Stockfish sorts its MultiPV set and lets the top move change.** Taken from the #94 body and
-  #985's reference-design summary of Stockfish's `search.cpp`, not re-read. D5's case rests on
-  #985's gap arithmetic, not on Stockfish, so the decision stands either way.
+- **Stockfish sorts its MultiPV set and lets the top move change.** Verified by the cross-agent
+  review against the official `search.cpp`. D5's case rests on #985's gap arithmetic anyway, not
+  on Stockfish.
 
 ## Invariants
 
@@ -222,8 +229,9 @@ Rejected: helpers searching ranks in parallel. It needs a parallel-root design, 
 - At `N > 1`, a result's `best_move` plus its `alternatives` are distinct legal root moves. The
   scores are non-increasing. Each `pv` starts with its move and replays legally. All come from one
   completed depth, `depth_completed`.
-- `alternatives.size() == min(N, legal moves) - 1` whenever a depth completed. It is empty for an
-  emergency move, a terminal root, and at `N = 1`.
+- `alternatives.size() == min(N, legal moves) - 1` whenever a depth completed, except for D6's
+  first-depth fallback, which has none. It is also empty for an emergency move, a terminal root,
+  and at `N = 1`.
 - No root exclusion frame writes the TT at the root key.
 - `root_excluded_count` is 0 whenever no multi-PV loop is running, on every exit, including a stop.
 
@@ -231,28 +239,37 @@ Rejected: helpers searching ranks in parallel. It needs a parallel-root design, 
 
 **Engine tier.** It changes `pvs()` and the iterative-deepening loop.
 
-- **Equivalence:** `Compare-SearchEquivalence.ps1 -After <worktree build>` at `N = 1`: identical
-  node counts, best moves and scores.
-- **nps:** a `Run-Bench` before/after pass at `N = 1`, read with #555 in mind (3.9% from code layout alone). The
-  target is no measurable change. A slowdown beyond the noise sends D2 back for the rejected
+- **Equivalence:** `Compare-SearchEquivalence.ps1 -After <worktree build> -BaselineRef <merge base>`
+  at `N = 1`. It compares each accepted iteration's depth, score, nodes and full PV, which must be
+  identical. The existing abort tests cover the stop paths it doesn't exercise.
+- **nps:** `measure-strength`'s paired `Compare-Bench` procedure at `N = 1`, against a same-path
+  baseline build. The target is no measurable change. #555 saw 3.9% from code layout alone; that
+  is an example, not a bound. A slowdown beyond the noise sends D2 back to its rejected
   alternatives.
 - **Tests** (new `SearchMultiPVTests.cpp`, `[multipv]`):
   - the invariant above on several positions at `N = 2, 4`;
   - `N` above the legal count clamps (a position with 3 legal moves at `N = 5`);
   - terminal roots (mate, stalemate) return no move and no alternatives at `N = 4`;
   - mate ordering: a mate-in-1 among the moves ranks first, and mated lines rank last;
+  - **an exact-score oracle.** At depth 1, take a quiet position where no root move gives check or
+    allows a capture. Each child's quiescence is then its stand-pat, so the true score of every
+    root move is `-Evaluate(child)`. With `N` equal to the legal count, the returned moves and
+    scores must equal that list, sorted. A rank that returned a bound, or a stale score, fails;
   - the TT guard: a position with one clearly best move (a free queen), `N = 4`, `Threads = 1`:
     the root TT entry's move is the best move at the final depth. Without D3's guard, rank 4
     writes last and the test fails. To be falsified by reverting the guard;
   - stop during rank N: a node limit that ends the search mid-set returns the previous depth's
     complete set, and `root_excluded_count == 0` afterwards;
-  - a node limit just above depth 1's rank 1 returns that rank-1 move, not the emergency move;
+  - the first-depth fallback, at the default `min_nodes_threshold`: a node limit that stops after
+    depth 1's rank 1 but before the set completes. The position is chosen so that rank 1's move is
+    not the first generated legal move, so the result tells the fallback from the emergency path.
+    The result has `depth_completed == 1` and empty `alternatives`;
   - every `[multipv]` invariant test runs with `SingularExtensions` on and off, since the folded
     exclusion test has a branch for each;
   - `Threads = 2` at `N = 3`: the invariant holds, and so does the TT guard. Node aggregation in
     `Search()` is not touched, so the existing `[smp]` accounting tests cover it;
-  - the observer sees `alternatives` sized as above on every emitted depth.
-- **Characterisation, reported with no threshold:** a hidden `[.multipv-cost]` test runs the bench
+  - the observer sees `alternatives` sized as the invariant above states, on every emitted depth.
+- **Characterisation, required and reported with no threshold:** a hidden `[.multipv-cost]` test runs the bench
   positions at fixed depth with `N = 1` and `N = 4`. It prints the node multiplier, and the share
   of depths where sorting changed rank 1, which sizes D5's trade. That is deterministic, so it needs
   no quiet window. Printing the multiplier with D3's ordering hint off as well is optional.
@@ -268,8 +285,8 @@ strength target.
   `Docs/Changelog.md`.
 - **Blast radius:** Engine tier, through `pvs()`'s move loop and store guard and the ID loop.
 - **Review:** one code review (170-270k tokens), plus `search-reviewer` on the diff.
-- **Optional parts:** the `[.multipv-cost]` characterisation test (about 30 lines). It covers no
-  risk and only sizes `N = 4` for #985's time use. Drop it, and slice 2 measures through UCI.
+- **Optional parts:** the multiplier with D3's ordering hint off (one extra run of the
+  characterisation test).
 
 ## Harvest
 
@@ -277,6 +294,8 @@ strength target.
 |---|---|
 | D2: root exclusion vs singular exclusion, why they can't meet | source comment at the exclusion test in `pvs()` |
 | D3: no root store under root exclusion | source comment at the store guard; `Docs/EngineContracts.md` → Search internals |
-| D5/D6: one iteration = all ranks, sorted, no interrupted acceptance | `Docs/EngineContracts.md` → The search service; comment on the multi-PV loop |
+| D5/D6: one iteration = all ranks, sorted, no interrupted acceptance, the first-depth fallback | `Docs/EngineContracts.md` → The search service; comment on the multi-PV loop |
 | D1: `alternatives` meaning | comment on `SearchResult::alternatives` |
 | `N = 4` node multiplier | PR body and `Docs/Changelog.md` headline |
+| fixed-time depth loss is #985's to measure | a comment on #985 when this PR merges |
+| first-depth fallback: fewer alternatives than `N - 1` | comment on `SearchResult::alternatives` |
