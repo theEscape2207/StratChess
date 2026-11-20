@@ -324,6 +324,8 @@ void AIPerplex::reset_prefetch_targets() noexcept
 // thread's search result is authoritative.
 void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& tt)
 {
+	// Helpers run plain N = 1 searches; only the main thread ranks root moves.
+	assert(td.root_excluded_count == 0);
 	// On the helper's own thread, so the helpers age their continuation tables in parallel.
 	td.begin_search(tuning_.continuation_history_plies > 0);
 	int seed_score = 0;
@@ -509,13 +511,22 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 
 	td.begin_search(tuning_.continuation_history_plies > 0);
 
+	// Multi-PV (#94): the root moves each depth ranks. 1 is the plain search, unchanged.
+	const int rank_count = root_rank_count(td);
+	// The last completed set, sorted best first: rank k's aspiration seed and ordering hint.
+	std::vector<RootLine> previous_set;
+	std::vector<RootLine> current_set;
+
 	// Copied on acceptance: a later rejected iteration rewrites row 0 but not best_move.
 	// So is seldepth, which the next iteration resets.
 	std::vector<Move> accepted_pv;
+	std::vector<RootLine> accepted_alternatives;
 	int accepted_seldepth = 0;
-	const auto accept_root_pv = [&td, &accepted_pv, &accepted_seldepth] {
+	const auto accept_root_pv = [&td, &accepted_pv, &accepted_alternatives,
+	                             &accepted_seldepth](std::span<const RootLine> alternatives) {
 		const auto& line = td.pv_table.get_line(0);
 		accepted_pv.assign(line.begin(), line.begin() + td.pv_table.get_length(0));
+		accepted_alternatives.assign(alternatives.begin(), alternatives.end());
 		accepted_seldepth = td.seldepth;
 	};
 
@@ -528,20 +539,48 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 		td.seldepth = 0;
 
 		// EXECUTE SEARCH: This might get interrupted by timeout
-		int current_best_score;
-		if (state.depth_completed == 0 || !tuning_.aspiration_enabled) {
-			// Depth 1 or kill-switch: always full window (no reliable seed yet)
-			current_best_score = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt);
+		Engine::IterationSample sample{};
+		std::span<const RootLine> alternatives;
+		if (rank_count == 1) {
+			int current_best_score;
+			if (state.depth_completed == 0 || !tuning_.aspiration_enabled) {
+				// Depth 1 or kill-switch: always full window (no reliable seed yet)
+				current_best_score = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt);
+			} else {
+				current_best_score = search_with_aspiration(td, depth, state.best_score, tt);
+			}
+			sample = {depth,
+			          td.pv_table.get_pv_move(0),
+			          current_best_score,
+			          td.nodes_searched - nodes_at_start,
+			          td.pv_table.get_length(0),
+			          control_.StopRequested()};
 		} else {
-			current_best_score = search_with_aspiration(td, depth, state.best_score, tt);
+			// A depth counts only when every rank completed: its sorted rank 1 then drives the policy
+			// exactly as a plain search's best move does, and the set is never interrupted, because
+			// ranks from two depths would be sorted against each other. An incomplete set goes in with
+			// a null move, the INCOMPLETE rejection, so the previous set stands.
+			//
+			// The one exception is the first-depth fallback: no set has completed, but rank 1 of depth 1
+			// has. That is the plain search's own depth-1 result, so it is assessed as a completed
+			// depth with no alternatives, rather than sent through the interrupted gates, whose node
+			// floor a depth-1 set can never reach. Without it a tight limit would trade a searched
+			// move for the emergency path's first legal one.
+			const bool complete = search_root_set(td, depth, rank_count, previous_set, current_set, tt);
+			const bool fallback = !complete && state.depth_completed == 0 && !current_set.empty();
+			if (complete)
+				alternatives = std::span<const RootLine>(current_set).subspan(1);
+			else if (fallback)
+				td.pv_table.set_line(0, current_set.front().pv);
+			const bool usable = complete || fallback;
+			sample = {depth,
+			          usable ? current_set.front().move : Move::EmptyMove(),
+			          usable ? current_set.front().score : 0,
+			          td.nodes_searched - nodes_at_start,
+			          usable ? static_cast<int>(current_set.front().pv.size()) : 0,
+			          !usable};
 		}
 
-		const Engine::IterationSample sample{depth,
-		                                     td.pv_table.get_pv_move(0),
-		                                     current_best_score,
-		                                     td.nodes_searched - nodes_at_start,
-		                                     td.pv_table.get_length(0),
-		                                     control_.StopRequested()};
 		const auto assessment = Engine::assess_iteration(sample, state, thresholds);
 		const auto& metrics = assessment.metrics;
 		log_iteration_eval(metrics, td.pv_table);
@@ -551,8 +590,10 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 		case Engine::IterationDisposition::COMPLETED: {
 			state = assessment.next_state;
 			log_completed_iteration(metrics, td.pv_table);
-			emit_iteration_info(td, state.depth_completed, state.best_score, search_start_age, observer);
-			accept_root_pv();
+			emit_iteration_info(td, state.depth_completed, state.best_score, search_start_age, alternatives, observer);
+			accept_root_pv(alternatives);
+			if (!alternatives.empty())
+				previous_set.swap(current_set);
 
 			// The observer can consume time or request Stop(); sample the soft limit after it.
 			const int soft_percent = Engine::soft_limit_percent(state.move_run, tuning_.stability_time_floor);
@@ -565,10 +606,11 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			break;
 		}
 		case Engine::IterationDisposition::ACCEPTED_INTERRUPTED:
+			assert(rank_count == 1 && "a multi-PV set is never accepted interrupted");
 			state = assessment.next_state;
 			log_acceptance(metrics);
-			emit_iteration_info(td, state.depth_completed, state.best_score, search_start_age, observer);
-			accept_root_pv();
+			emit_iteration_info(td, state.depth_completed, state.best_score, search_start_age, {}, observer);
+			accept_root_pv({});
 			break;
 		case Engine::IterationDisposition::REJECTED:
 			log_rejection(depth, assessment.reason, metrics, state);
@@ -582,7 +624,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 	// No accepted move: either the game is over at the root, or an emergency move is found.
 	const bool has_move = !state.best_move.is_null() || handle_empty_move_emergency(td, state);
 	if (has_move && accepted_pv.empty())
-		accept_root_pv(); // the emergency move: its row 0 is that one move
+		accept_root_pv({}); // the emergency move: its row 0 is that one move
 	assert(accepted_pv.empty() ? state.best_move.is_null() : accepted_pv.front() == state.best_move);
 	assert(pv_replays_legally(td.board, accepted_pv));
 	if (has_move && state.depth_completed > 0)
@@ -593,7 +635,63 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 	                    .nodes_searched = state.nodes_at_completed_depth,
 	                    .search_was_stable = state.search_was_stable,
 	                    .pv = std::move(accepted_pv),
-	                    .seldepth = accepted_seldepth};
+	                    .seldepth = accepted_seldepth,
+	                    .alternatives = std::move(accepted_alternatives)};
+}
+
+int AIPerplex::root_rank_count(ThreadData& td) const
+{
+	if (multipv_ == 1)
+		return 1;
+	MoveList moves;
+	MoveGenerator::ComputeLegalMoves(td.board, moves);
+	int legal = 0;
+	for (const auto& move : moves) {
+		if (td.board.DoMove(move)) {
+			td.board.UndoMove(move);
+			++legal;
+		}
+	}
+	return std::max(1, std::min(static_cast<int>(multipv_), legal));
+}
+
+// The multi-PV loop (#94). Each rank is a full root search through the plain search's own window
+// logic, excluding the moves already ranked; see pvs()'s root exclusion frame. Rank k is seeded from
+// the previous set's k-th score, the closest prior estimate for "the best move outside k - 1 better
+// ones". Depth 1 and a mate-score seed search full window: a window around a mate score keeps failing
+// until the retry cap opens it anyway.
+//
+// The completed set is sorted, and its rank 1 can differ from the move rank 1's search chose: search
+// instability can score a move higher in its own full PV search, at rank k, than the null window rank
+// 1 gave it. An unsorted set would give a pick policy a negative gap. Stockfish makes the same trade.
+bool AIPerplex::search_root_set(ThreadData& td, int depth, int rank_count, const std::vector<RootLine>& previous_set,
+                                std::vector<RootLine>& set, TranspositionTable& tt)
+{
+	set.clear();
+	RootExclusionGuard exclusion(td);
+	for (size_t rank = 0; rank < static_cast<size_t>(rank_count); ++rank) {
+		const RootLine* const previous = rank < previous_set.size() ? &previous_set[rank] : nullptr;
+		td.root_rank_hint = previous != nullptr ? previous->move : Move::EmptyMove();
+		const bool full_window = previous == nullptr || !tuning_.aspiration_enabled ||
+		                         std::abs(previous->score) >= GameValues::Mate_Threshold;
+		const int score = full_window ? pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt)
+		                              : search_with_aspiration(td, depth, previous->score, tt);
+		// The latched abort, so a stop that landed after an out-of-window pvs() counts too.
+		const int length = td.pv_table.get_length(0);
+		if (control_.IsAborted() || length == 0)
+			return false;
+		const auto& line = td.pv_table.get_line(0);
+		set.push_back({.move = line[0], .score = score, .pv = std::vector<Move>(line.begin(), line.begin() + length)});
+		exclusion.add(line[0]);
+	}
+
+	std::stable_sort(set.begin(), set.end(), [](const RootLine& a, const RootLine& b) { return a.score > b.score; });
+#ifdef STRAT_ENABLE_TEST_ACCESS
+	if (set.front().move != td.root_excluded[0])
+		++multipv_rank1_resorted_;
+#endif
+	td.pv_table.set_line(0, set.front().pv);
+	return true;
 }
 
 bool AIPerplex::poll_search_limits(ThreadData& td)
@@ -630,6 +728,13 @@ namespace {
 	bool tt_refines_reverse_futility(const std::optional<TTEntry>& entry) noexcept
 	{
 		return entry && entry->phase == SearchPhase::MAIN && tt_value_is_non_mate_lower_bound(*entry);
+	}
+
+	// Whether pvs()'s move loop must skip move: the singular verification's excluded move in such a
+	// frame, else one an earlier multi-PV rank took.
+	bool is_excluded(const ThreadData& td, int ply, const Move& move, bool singular_frame) noexcept
+	{
+		return singular_frame ? move == td.excluded_move[ply] : td.is_root_excluded(move);
 	}
 
 	void record_tt_store(ThreadData& td, TTStoreOutcome outcome) noexcept
@@ -812,6 +917,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			}
 		}
 	}
+
+	// A multi-PV rank after the first (#94): an ordinary PV root that may not play the moves earlier
+	// ranks took. Unlike a singular verification it probes, writes its PV row and keeps every other root
+	// behaviour; only its stores at this key are suppressed, below. The probed move is usually rank 1's,
+	// which is excluded, so the previous set's move at this rank orders the root instead.
+	const bool root_exclusion_frame = ply == 0 && td.root_excluded_count != 0;
+	if (root_exclusion_frame && !td.root_rank_hint.is_null() && !td.is_root_excluded(td.root_rank_hint))
+		hash_move = td.root_rank_hint;
+	const bool any_exclusion = is_exclusion_frame || root_exclusion_frame;
 
 	const bool in_check = td.board.InCheck();
 
@@ -1079,9 +1193,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		}
 		const Move& move = move_list[scored_idx[si].second];
 
-		// The move a verification search is proving the alternatives against is not one of
-		// them.
-		if (is_exclusion_frame && move == td.excluded_move[ply])
+		// The move a verification search is proving the alternatives against is not one of them, and
+		// neither is a move an earlier multi-PV rank took. The two kinds never meet in one frame: a
+		// verification runs at its parent's ply, singular eligibility requires ply > 0, and a root
+		// exclusion frame is ply 0 alone. So one bool gates both, and N = 1 pays only for it.
+		if (any_exclusion && is_excluded(td, ply, move, is_exclusion_frame))
 			continue;
 
 		// Ahead of the frontier guards so their work overlaps the child's bucket miss; a quiet move
@@ -1364,8 +1480,14 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// original_alpha, not alpha: they are equal here (alpha only moves inside the
 		// move_found branch, three levels down) but saying so explicitly keeps this correct if
 		// that update is ever hoisted. It is the singular_beta - 1 the verification asked for.
-		if (is_exclusion_frame)
+		//
+		// A root exclusion frame cannot get here: the rank count is clamped to the legal moves, so a
+		// move always remains. Were it reached, the same return keeps its partial move set out of the
+		// table, and its empty PV row makes the rank incomplete.
+		if (any_exclusion) {
+			assert(!root_exclusion_frame && "a multi-PV rank found no legal move");
 			return original_alpha;
+		}
 
 		const int terminal_value = adjust_score_for_game_state(td, move_found, ply, best_value);
 		record_tt_store(td, tt.store(key, static_cast<int16_t>(terminal_value), static_cast<int16_t>(depth),
@@ -1406,8 +1528,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	// Suppressed under exclusion, the mirror of the skipped probe: this result describes a
 	// search that was denied one legal move, and storing it under the position's own key
-	// would cache a partial move set as if it were the whole.
-	if (!is_exclusion_frame) {
+	// would cache a partial move set as if it were the whole. A multi-PV rank after the first is
+	// the same at the root key, though it probed: its best move and score are not the position's.
+	// Every frame below it searches its own full move set, so only this store is suppressed.
+	if (!any_exclusion) {
 		record_tt_store(td, tt.store(key, static_cast<int16_t>(best_value), static_cast<int16_t>(depth),
 		                             static_cast<int16_t>(ply), best_move, bound, node_type, SearchPhase::MAIN,
 		                             storable_static_eval(td, static_eval_known, static_eval)));
@@ -2221,7 +2345,7 @@ void AIPerplex::log_completed_iteration(const Engine::IterationMetrics& metrics,
 }
 
 void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, uint8_t search_start_age,
-                                    const IterationObserver& observer) const
+                                    std::span<const RootLine> alternatives, const IterationObserver& observer) const
 {
 	// The PV of an accepted iteration, asserted before anything reads it: a line spliced out
 	// of two different subtrees replays illegally at the ply where the positions diverge.
@@ -2250,6 +2374,7 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, 
 	iter.hashfull = tt_->hashfull(search_start_age);
 	iter.elapsed = control_.Elapsed();
 	iter.pv.assign(line.begin(), line.begin() + length);
+	iter.alternatives.assign(alternatives.begin(), alternatives.end());
 
 	observer(iter);
 }

@@ -121,6 +121,22 @@ struct ThreadData {
 	// abort like the node counters.
 	SearchTelemetry telemetry{};
 
+	// Multi-PV root exclusion (#94): the moves earlier ranks of this depth already took, which the
+	// root of the next rank's search may not play. Only the main thread's iterative_deepening() fills
+	// it, through RootExclusionGuard, so a Lazy SMP helper's count stays 0. After telemetry, so no hot
+	// member's offset moves.
+	std::array<Move, MoveList::MAX_MOVES> root_excluded{};
+	int root_excluded_count = 0;
+	// The previous completed set's move at the rank now being searched. The root TT entry names rank
+	// 1's move, which every later rank excludes, so this orders rank k's root instead.
+	Move root_rank_hint;
+
+	bool is_root_excluded(const Move& move) const noexcept
+	{
+		const auto end = root_excluded.begin() + root_excluded_count;
+		return std::find(root_excluded.begin(), end, move) != end;
+	}
+
 	ThreadData()
 	{
 		clear_killers();
@@ -361,6 +377,36 @@ class ExcludedMoveGuard {
 	ThreadData& td_;
 	int ply_;
 	Move previous_;
+};
+
+// Owns one depth of multi-PV root exclusion. Empties the list and the hint on every exit, a stop
+// included: a list left populated would make the next search's root an exclusion frame, searching a
+// partial move set and storing nothing at the root.
+class RootExclusionGuard {
+  public:
+	explicit RootExclusionGuard(ThreadData& td) noexcept : td_(td)
+	{
+		assert(td.root_excluded_count == 0 && "nested root exclusion");
+	}
+	~RootExclusionGuard() noexcept
+	{
+		td_.root_excluded_count = 0;
+		td_.root_rank_hint = Move::EmptyMove();
+	}
+
+	void add(const Move& move) noexcept
+	{
+		assert(td_.root_excluded_count < static_cast<int>(MoveList::MAX_MOVES));
+		td_.root_excluded[static_cast<size_t>(td_.root_excluded_count++)] = move;
+	}
+
+	RootExclusionGuard(const RootExclusionGuard&) = delete;
+	RootExclusionGuard& operator=(const RootExclusionGuard&) = delete;
+	RootExclusionGuard(RootExclusionGuard&&) = delete;
+	RootExclusionGuard& operator=(RootExclusionGuard&&) = delete;
+
+  private:
+	ThreadData& td_;
 };
 
 // Marks a singular verification search as an expected all-node for the search profile, and restores

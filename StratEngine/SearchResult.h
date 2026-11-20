@@ -7,6 +7,14 @@
 #include <cstdint>
 #include <vector>
 
+// One ranked root move of a multi-PV search (AIPerplex::SetMultiPV): its exact score at the result's
+// depth_completed and its own line, which starts with move.
+struct RootLine {
+	Move move = Move::EmptyMove();
+	int score = 0;
+	std::vector<Move> pv{};
+};
+
 // What one GetMove() call produced: the move to play, and everything the caller needs to know
 // about how it was reached. It lives in its own header because IPlayer returns it and cannot
 // include a concrete engine.
@@ -44,4 +52,12 @@ struct SearchResult {
 	// in the interrupted one. May be below depth_completed when every line ends early (a fifty-move
 	// draw at ply 1); the UCI line clamps it.
 	int seldepth = 0;
+
+	// AIPerplex at MultiPV N > 1: ranks 2..N, best first, from the same completed depth as best_move,
+	// which stays rank 1. Scores never exceed best_score and every move is distinct. Its size is
+	// min(N, legal root moves) - 1 whenever a depth completed, with one exception: when a limit lands
+	// inside depth 1's set after rank 1 finished, the result is that rank 1 alone (depth_completed 1)
+	// and this is empty. A consumer that needs a ranked set checks the size. Empty at N = 1, for an
+	// emergency move and at a terminal root.
+	std::vector<RootLine> alternatives{};
 };
