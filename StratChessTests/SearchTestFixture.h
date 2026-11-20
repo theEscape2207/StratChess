@@ -835,6 +835,12 @@ class AIPerlexTestFixture {
 	// iterative_deepening() zeroes it, so this is a per-search figure.
 	int64_t poll_ticks() const { return ai->td_.nodes_since_check; }
 
+	// --- Multi-PV pokes ---
+	int root_excluded_count() const { return ai->td_.root_excluded_count; }
+	int64_t multipv_rank1_resorted() const { return ai->multipv_rank1_resorted_; }
+	// The static evaluation of any board, from its side to move: what a stand-pat there returns.
+	int evaluate(const Board& board) const { return ai->evaluator_.Evaluate(board); }
+
 	static bool verbose_logging(const AIPerplex& ai) { return ai.verbose_logging_; }
 	static const SearchTuning& tuning(const AIPerplex& ai) { return ai.tuning_; }
 	static unsigned configured_threads(const AIPerplex& ai) { return ai.threads_; }

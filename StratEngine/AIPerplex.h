@@ -19,6 +19,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <thread>
 #include <vector>
 
@@ -39,6 +40,8 @@
 // table's root line, taken at emit time before the next iteration
 // overwrites it. `elapsed` shares SearchResult's SearchControl origin, so a
 // caller can report iteration and final times on one monotonic timeline.
+// `alternatives` is SearchResult::alternatives for this depth: ranks 2..N at MultiPV N > 1, sized
+// min(N, legal root moves) - 1 except for the first-depth fallback, which emits rank 1 alone.
 struct IterationInfo {
 	int depth = 0;
 	int seldepth = 0;
@@ -47,6 +50,7 @@ struct IterationInfo {
 	int hashfull = 0;
 	std::chrono::milliseconds elapsed{0};
 	std::vector<Move> pv;
+	std::vector<RootLine> alternatives;
 };
 
 using IterationObserver = std::function<void(const IterationInfo&)>;
@@ -142,6 +146,16 @@ class AIPerplex final {
 		assert_not_in_completion_handler();
 		threads_ = std::clamp(n, 1u, MAX_THREADS);
 	}
+	// The number of best root moves one search ranks, each with an exact score and its own line
+	// (SearchResult::alternatives); clamps to [1, MAX_MULTIPV]. Idle-only like SetThreads(); kept by
+	// StartNewGame(). A search ranks min(N, legal root moves). N = 1, the default, is the plain search.
+	static constexpr unsigned MAX_MULTIPV = static_cast<unsigned>(MoveList::MAX_MOVES);
+	void SetMultiPV(unsigned n) noexcept
+	{
+		assert_not_in_completion_handler();
+		multipv_ = std::clamp(n, 1u, MAX_MULTIPV);
+	}
+	unsigned MultiPV() const noexcept { return multipv_; }
 	// MAX_HASH_MB = 1536 is a deliberate policy cap, not an exact fit: 64-byte buckets make the
 	// exact fits powers of two, so 1536 rounds down to 2^24 buckets and allocates 1024 MiB.
 	// Steady-state total is about 1152 MiB on Windows or 1920 MiB on Linux including locks;
@@ -189,6 +203,13 @@ class AIPerplex final {
 	SearchResult iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt, uint8_t search_start_age,
 	                                 const IterationObserver& observer = {});
 	int search_with_aspiration(ThreadData& td, int depth, int seed_score, TranspositionTable& tt);
+	// How many root moves this search ranks: min(multipv_, legal root moves), and 1 when either is.
+	int root_rank_count(ThreadData& td) const;
+	// One multi-PV depth: rank k searches the root with ranks 1..k-1 excluded. True when every rank
+	// completed; `set` is then sorted best first and PV row 0 holds its rank 1. Otherwise `set` holds
+	// the ranks that completed, in search order.
+	bool search_root_set(ThreadData& td, int depth, int rank_count, const std::vector<RootLine>& previous_set,
+	                     std::vector<RootLine>& set, TranspositionTable& tt);
 	int pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt);
 	int adjust_score_for_game_state(ThreadData& td, bool move_found, int ply, int score);
 
@@ -300,7 +321,7 @@ class AIPerplex final {
 	// when no observer was supplied. Called from both accept branches of
 	// iterative_deepening(), after `state` is updated for that iteration.
 	void emit_iteration_info(const ThreadData& td, int depth, int score, uint8_t search_start_age,
-	                         const IterationObserver& observer) const;
+	                         std::span<const RootLine> alternatives, const IterationObserver& observer) const;
 	// The immediate go/stop handshake. StartAsync() arms it before the launch thread exists, so a
 	// Stop() arriving before Search() initialises is kept rather than reset.
 	void arm_search_launch() noexcept;
@@ -362,6 +383,14 @@ class AIPerplex final {
 	// SetThreads(). threads_ == 1 (the default) runs Search() without
 	// helper_tds_ construction or thread spawning.
 	unsigned threads_{1};
+
+	// Configured MultiPV; clamped to [1, MAX_MULTIPV] by SetMultiPV().
+	unsigned multipv_{1};
+#ifdef STRAT_ENABLE_TEST_ACCESS
+	// Completed multi-PV depths whose sorted rank 1 is not the move rank 1's search chose, for the
+	// [.multipv-cost] characterisation test.
+	int64_t multipv_rank1_resorted_{0};
+#endif
 
 	// Per-service logging policy. The shared logger is only a sink; every
 	// AIPerplex instance decides independently whether to emit diagnostics.

@@ -57,6 +57,16 @@ repeats the aborted-frame tripwire; change both together.
   `bestmove` is accepted. `on_done` must not call `StartAsync`, `Wait`, `StopAndWait`, `SetHash`,
   `SetThreads`, `SetTuning`, `StartNewGame` or destroy the service (Debug-asserted). Those methods
   come from one controlling thread; only `Stop()` and `IsSearching()` are callable from any thread.
+- **At `SetMultiPV(N > 1)` one iteration is the whole ranked set.** Each depth runs
+  `min(N, legal root moves)` full root searches, rank k excluding ranks 1..k-1, then sorts the set
+  by score. The sorted rank 1 is what `IterationPolicy` sees, so it drives the move run, the
+  soft-limit scaling, the mate stop and `search_was_stable`, and the soft limit is read once per set.
+  A depth counts only when every rank completed (the latched abort, not `StopRequested()`), so
+  `ACCEPTED_INTERRUPTED` is never reached (asserted): ranks from two depths would be sorted against
+  each other. **One exception:** when the first depth's set is cut after its rank 1 finished, that
+  rank 1 is accepted as a completed depth 1 with no alternatives, the result `N = 1` would have
+  given. So `SearchResult::alternatives` can be shorter than `min(N, legal) - 1`, and a consumer
+  that needs a ranked set checks its size. Helpers stay `N = 1`. Tests: `SearchMultiPVTests.cpp`.
 
 ## Search internals
 
@@ -77,6 +87,14 @@ repeats the aborted-frame tripwire; change both together.
     exactly what a recompute would give. It is never cleared, for the same reason.
   - **`seldepth`** is written at frame entry and kept from frames that never finished: it reports
     how deep the search went, and no search decision reads it.
+- **A multi-PV rank after the first stores nothing at the root key.** Its root searches a smaller
+  move set, so its score and best move are not the position's. `pvs()`'s root exclusion frame
+  (`td.root_excluded_count != 0` at ply 0) keeps the probe, which never cuts at a PV root, the PV
+  write, and the killer and history writes, which come from real moves in the real position. Both
+  root-key stores are guarded on `any_exclusion`; every frame below searches its full move set and
+  stores as usual. Root exclusion and singular exclusion share one test in the move loop and can
+  never meet in a frame: singular verification needs `ply > 0`. `RootExclusionGuard` empties the
+  list on every exit, so a populated list cannot leak into the next search's root.
 - **A drawn score is context the Zobrist key does not carry.** With `contempt` non-zero, the score
   of a draw — repetition, fifty-move, stalemate, or a position the evaluator settles as drawn —
   depends on the root colour and the contempt value, and reaches parent entries through the terminal

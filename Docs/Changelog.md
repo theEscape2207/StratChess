@@ -23,6 +23,28 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-21: Multi-PV root ranking (#94 slice 1)
+
+### Added
+
+- `AIPerplex::SetMultiPV(N)` makes one search rank its N best root moves (clamped to the legal
+  count), each with an exact score and its own line, all from one completed depth. Rank 1 stays in
+  `best_move`, `best_score` and `pv`; ranks 2..N arrive in `SearchResult::alternatives` and the
+  per-depth `IterationInfo::alternatives`. It is the base for `UCI_LimitStrength` (#985), which
+  picks among the set by each move's gap to the best. No UCI option yet: that is slice 2.
+- Each rank is a full root search excluding the moves already ranked, seeded from the previous
+  set's score at that rank. The set is sorted, so rank 1 can differ from the plain search's move
+  when a later rank's own PV search scores higher. A depth counts only when every rank completed,
+  except that a limit landing inside depth 1's set keeps that depth's rank 1 alone. Ranks after the
+  first store nothing at the root key. Lazy SMP helpers keep running plain searches.
+- `N = 1`, the default, is search-identical to before.
+
+### Results
+
+- `N = 4` searches 3.36× the nodes of `N = 1` on the bench positions at depth 12, and sorting
+  changed rank 1 in 16 of 96 sets (`[.multipv-cost]`). The fixed-time depth loss is #985's to
+  measure under its own clock.
+
 ## 2026-11-13: `Compare-Bench` defaults to depth 14
 
 ### Changed
