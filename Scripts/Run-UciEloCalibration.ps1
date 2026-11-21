@@ -48,10 +48,11 @@ param(
     # 1 or 2 (design D4); a -Smoke run may leave it at 0.
     [ValidateSet(0, 1, 2)]
     [int]$Stage = 0,
-    # StratChess UCI_Elo per attempt.
-    [int[]]$UciElo = @(),
+    # StratChess UCI_Elo per attempt. Comma-separated also as one string: pwsh -File passes
+    # "1320,1455" as a single argument, which an [int[]] parameter refuses.
+    [string[]]$UciElo = @(),
     # Stockfish UCI_Elo per attempt, paired by position with -UciElo; 1320..3190.
-    [int[]]$SfElo = @(),
+    [string[]]$SfElo = @(),
     # Games per attempt, even (colour-swapped pairs).
     [int]$Games = 0,
     # One-based first opening of the sequential book slice; every attempt plays the same slice.
@@ -100,6 +101,12 @@ function Get-AttemptDirName {
     return "$Stamp-s$StageNumber-elo$Candidate-sf$Opponent$suffix"
 }
 
+function ConvertTo-EloList {
+    <# Splits each item on commas, so "1320,1455" (pwsh -File) and 1320, 1455 (in-process) agree. #>
+    param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Item)
+    return @($Item | ForEach-Object { $_ -split ',' } | Where-Object { $_.Trim() -ne '' } | ForEach-Object { [int]::Parse($_.Trim(), [cultureinfo]::InvariantCulture) })
+}
+
 function Get-GameSecondsForecast {
     <# Design Cost: ~90 s a game at levels 0-4, 115 at 7-10, 155 at 14-19 (game-slot seconds). #>
     param([Parameter(Mandatory)][double]$Level)
@@ -124,6 +131,8 @@ if ($SelfTest) {
         @{ Name = 'every D3 point stays in its band'; Got = { @(0, 2, 4, 7, 10, 14, 19 | Where-Object { [math]::Truncate((Get-LevelForElo -Elo (Get-UciEloForLevel -Level $_))) -ne $_ }).Count }; Expect = 0 }
         @{ Name = 'attempt dir';       Got = { Get-AttemptDirName -Stamp '20261121-130000' -StageNumber 1 -Candidate 1455 -Opponent 1455 }; Expect = '20261121-130000-s1-elo1455-sf1455' }
         @{ Name = 'smoke attempt dir'; Got = { Get-AttemptDirName -Stamp '20261121-130000' -StageNumber 0 -Candidate 1320 -Opponent 1320 -IsSmoke }; Expect = '20261121-130000-s0-elo1320-sf1320-smoke' }
+        @{ Name = 'one -File string splits'; Got = { (ConvertTo-EloList -Item @('1320,1455,2600')) -join '/' }; Expect = '1320/1455/2600' }
+        @{ Name = 'in-process array passes through'; Got = { (ConvertTo-EloList -Item @('1320', '1455')) -join '/' }; Expect = '1320/1455' }
         @{ Name = 'forecast by level'; Got = { '{0}/{1}/{2}' -f (Get-GameSecondsForecast -Level 4.0078), (Get-GameSecondsForecast -Level 10.0047), (Get-GameSecondsForecast -Level 14.0125) }; Expect = '90/115/155' }
     )
     foreach ($c in $cases) {
@@ -147,6 +156,8 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'QuietWindow.ps1')
 
 # --- Arguments ---------------------------------------------------------------------------------
+$UciElo = @(ConvertTo-EloList -Item $UciElo)
+$SfElo = @(ConvertTo-EloList -Item $SfElo)
 if ($Smoke) {
     if ($UciElo.Count -eq 0) { $UciElo = @(1320) }
     if ($SfElo.Count -eq 0) { $SfElo = @(1320) }
