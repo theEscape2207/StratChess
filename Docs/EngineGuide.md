@@ -88,7 +88,7 @@ ignores bad input as `MultiPV` does; both are kept by `ucinewgame`. While limiti
 at least four moves (`MultiPV` raised to 4, the user's N still deciding what prints), stops at the
 pick depth `1 + int(level)`, and plays a move drawn from that set with Stockfish's weakened pick, so
 low levels answer almost instantly. `go infinite` is analysis and is not capped at the pick depth; it
-picks from whatever set it ends on. The Elo scale is **provisional**: a two-point table from 1320
+picks from whatever set it ends on, which a `stop` or a mate can leave shallower than the pick depth. The Elo scale is **provisional**: a two-point table from 1320
 (level 0) to 2600 (level 19) until a gauntlet against Stockfish 19's `UCI_Elo` calibrates it, at
 `Threads=1` and the default `MultiPV`. More threads or a higher `MultiPV` change play at the same
 `UCI_Elo`. A mate the search proved is always played, never traded for a slower one.

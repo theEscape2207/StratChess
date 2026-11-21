@@ -21,7 +21,7 @@ namespace {
 	constexpr int kPawn = 100;
 	constexpr int kSeeds = 2000;
 
-	// The largest gap to rank 1 the pick can ever choose (the design's exact bound).
+	// The largest gap to rank 1 the pick can ever choose: an exact bound of the integer formula.
 	double gap_bound(int delta, double level)
 	{
 		const double weakness = 120.0 - 2.0 * level;
@@ -56,7 +56,7 @@ TEST_CASE("StrengthLimit table: endpoints, clamping and monotonicity", "[strengt
 
 TEST_CASE("StrengthLimit table: the pick depth either side of a depth boundary", "[strength]")
 {
-	// The provisional inverse of level 1 is 1387.37 (the design's calibration contract).
+	// The provisional inverse of level 1 is 1387.37, so a gauntlet setting ceil(inverse(1)) lands on depth 2.
 	CHECK(level_for_elo(1387) < 1.0);
 	CHECK(level_for_elo(1388) > 1.0);
 	CHECK(pick_depth(level_for_elo(1387)) == 1);

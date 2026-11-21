@@ -628,23 +628,20 @@ void UciHandler::cmd_setoption(std::string_view line)
 	const std::string_view name =
 	    trim((value_pos != std::string_view::npos) ? line.substr(name_pos + 4, value_pos - (name_pos + 4))
 	                                               : line.substr(name_pos + 4));
+	const std::string_view value =
+	    value_pos == std::string_view::npos ? std::string_view{} : trim(line.substr(value_pos + 5));
 
 	if (name == "UCI_LimitStrength") {
-		set_limit_strength(value_pos == std::string_view::npos ? std::string_view{} : trim(line.substr(value_pos + 5)));
+		set_limit_strength(value);
 		return;
 	}
 	if (name != "Threads" && name != "Hash" && name != "MultiPV" && name != "UCI_Elo") {
-		set_tuning_option(name,
-		                  value_pos == std::string_view::npos ? std::string_view{} : trim(line.substr(value_pos + 5)));
+		set_tuning_option(name, value);
 		return;
 	}
-	if (value_pos == std::string_view::npos)
+	if (value.empty())
 		return;
-
-	const std::string_view value_str = trim(line.substr(value_pos + 5));
-	if (value_str.empty())
-		return;
-	for (const char c : value_str) {
+	for (const char c : value) {
 		if (c < '0' || c > '9')
 			return; // non-numeric — ignore malformed value
 	}
@@ -654,7 +651,7 @@ void UciHandler::cmd_setoption(std::string_view line)
 	unsigned n = 0;
 	try {
 		n = static_cast<unsigned>(
-		    std::min<unsigned long long>(std::stoull(std::string(value_str)), std::numeric_limits<unsigned>::max()));
+		    std::min<unsigned long long>(std::stoull(std::string(value)), std::numeric_limits<unsigned>::max()));
 	} catch (...) {
 		return; // past unsigned long long — ignore
 	}

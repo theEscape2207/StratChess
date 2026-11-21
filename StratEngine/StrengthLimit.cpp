@@ -9,10 +9,10 @@ namespace StrengthLimit {
 			double level;
 		};
 
-		// Provisional: kMaxElo is the uncapped engine's scouting estimate (#985) and 1320 is Stockfish 19's
-		// UCI_Elo floor. The calibration slice replaces the anchors and both range ends and changes nothing
-		// else. It reaches level L by setting UCI_Elo to ceil(inverse(L)), so the table must stay strictly
-		// increasing in both columns.
+		// Provisional: kMaxElo is the uncapped engine's estimated strength and 1320 is Stockfish 19's UCI_Elo
+		// floor. Calibration replaces the anchors and both range ends and changes nothing else. A gauntlet
+		// reaches level L by setting UCI_Elo to ceil(inverse(L)), so the table must stay strictly increasing
+		// in both columns.
 		constexpr std::array kAnchors{Anchor{kMinElo, 0.0}, Anchor{kMaxElo, kMaxLevel}};
 
 		constexpr bool strictly_increasing()
