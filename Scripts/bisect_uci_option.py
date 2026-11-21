@@ -4,8 +4,9 @@
 For each position in a corpus, bisect a spin option over a range and report the smallest value
 at which the engine's chosen move differs from its choice at the range minimum. That value is
 the margin, in the option's own units, between the move the search prefers by default and the
-best alternative it can find -- the engine has neither MultiPV nor `searchmoves`, so bisecting
-the option is the only way to read it.
+best alternative it can find. MultiPV gives the score gap between the two, in centipawns, not the
+option value that closes it. The option must be a tuning spin the engine acknowledges with an
+`info string`; MultiPV itself is not one.
 
     python Scripts/bisect_uci_option.py corpus.jsonl --engine <exe> --option Contempt \
         --range 0 100 --depth 12 --workers 20 --out results.jsonl

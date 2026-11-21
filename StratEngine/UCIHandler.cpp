@@ -60,7 +60,7 @@ namespace {
 		return "cp " + std::to_string(cp);
 	}
 
-	// Both lines show the full PV; an empty one means no move, which UCI spells 0000.
+	// Every info line shows its full PV; an empty one means no move, which UCI spells 0000.
 	std::string format_uci_pv(const std::vector<Move>& pv)
 	{
 		if (pv.empty())
@@ -74,17 +74,44 @@ namespace {
 		return result;
 	}
 
-	// The iteration and final lines, in the UCI field order. seldepth is clamped to depth: a search
-	// whose every line ends early (mate, draw) never enters a frame at ply depth. nps divides by at
-	// least 1 ms so a sub-millisecond search reports a finite rate.
-	std::string format_uci_info(int depth, int seldepth, int score, int64_t nodes, int hashfull,
-	                            std::chrono::milliseconds elapsed, const std::vector<Move>& pv)
+	// What every line of one block shares: a ranked set is one iteration, so its lines report one
+	// depth and one set of counts.
+	struct InfoCounts {
+		int depth = 0;
+		int seldepth = 0;
+		int64_t nodes = 0;
+		int hashfull = 0;
+		std::chrono::milliseconds elapsed{0};
+	};
+
+	// The iteration and final lines, in the UCI field order; `multipv` 0 prints no multipv field.
+	// seldepth is clamped to depth: a search whose every line ends early (mate, draw) never enters a
+	// frame at ply depth. nps divides by at least 1 ms so a sub-millisecond search reports a finite rate.
+	std::string format_uci_info(const InfoCounts& counts, int multipv, int score, const std::vector<Move>& pv)
 	{
-		const int64_t nps = nodes * 1000 / std::max<int64_t>(elapsed.count(), 1);
-		return "info depth " + std::to_string(depth) + " seldepth " + std::to_string(std::max(seldepth, depth)) +
-		       " score " + format_uci_score(score) + " nodes " + std::to_string(nodes) + " nps " + std::to_string(nps) +
-		       " hashfull " + std::to_string(hashfull) + " time " + std::to_string(elapsed.count()) + " pv " +
-		       format_uci_pv(pv);
+		const int64_t nps = counts.nodes * 1000 / std::max<int64_t>(counts.elapsed.count(), 1);
+		std::string line = "info depth " + std::to_string(counts.depth) + " seldepth " +
+		                   std::to_string(std::max(counts.seldepth, counts.depth));
+		if (multipv > 0)
+			line += " multipv " + std::to_string(multipv);
+		return line + " score " + format_uci_score(score) + " nodes " + std::to_string(counts.nodes) + " nps " +
+		       std::to_string(nps) + " hashfull " + std::to_string(counts.hashfull) + " time " +
+		       std::to_string(counts.elapsed.count()) + " pv " + format_uci_pv(pv);
+	}
+
+	// One block: rank 1, then each alternative as rank 2..k, each with its own score and full line.
+	// `tag_ranks` is the configured MultiPV > 1. At N = 1 no line carries a multipv
+	// field, so single-PV output and every script that parses it are unchanged; at N > 1 every line
+	// does, even when rank 1 is all there is to print. Each line is its own send, so the input thread
+	// may answer between two ranks: a client assembles a set by depth + multipv.
+	void send_ranked_info(UciWriter& writer, bool tag_ranks, const InfoCounts& counts, int score,
+	                      const std::vector<Move>& pv, std::span<const RootLine> alternatives)
+	{
+		assert((tag_ranks || alternatives.empty()) && "alternatives from a MultiPV 1 search");
+		writer.send(format_uci_info(counts, tag_ranks ? 1 : 0, score, pv));
+		int rank = 2;
+		for (const RootLine& line : alternatives)
+			writer.send(format_uci_info(counts, rank++, line.score, line.pv));
 	}
 } // namespace
 
@@ -169,6 +196,7 @@ void UciHandler::cmd_uci()
 	// the 192 default and the 1536 cap are not.
 	send("option name Hash type spin default " + std::to_string(AIPerplex::DEFAULT_HASH_MB) + " min " +
 	     std::to_string(AIPerplex::MIN_HASH_MB) + " max " + std::to_string(AIPerplex::MAX_HASH_MB));
+	send("option name MultiPV type spin default 1 min 1 max " + std::to_string(AIPerplex::MAX_MULTIPV));
 	for (const auto& option : SearchTuningSchema::UciOptionLines())
 		send(option);
 	// After uciok, not inside the block: the spec's reply to 'uci' is id + option + uciok,
@@ -417,24 +445,31 @@ void UciHandler::cmd_go(std::string_view line)
 {
 	const SearchLimits limits = search_limits_for(parse_go(line), board_.GetCurrentColor());
 
-	IterationObserver observer = [writer = writer_](const IterationInfo& iter) {
-		writer->send(
-		    format_uci_info(iter.depth, iter.seldepth, iter.score, iter.nodes, iter.hashfull, iter.elapsed, iter.pv));
+	// Read here, never from the search thread. setoption is refused mid-search, so this is the N the
+	// whole search ranks.
+	const bool tag_ranks = ai_->MultiPV() > 1;
+
+	IterationObserver observer = [writer = writer_, tag_ranks](const IterationInfo& iter) {
+		send_ranked_info(*writer, tag_ranks, {iter.depth, iter.seldepth, iter.nodes, iter.hashfull, iter.elapsed},
+		                 iter.score, iter.pv, iter.alternatives);
 	};
 
 	// IsSearching() is true once this returns, so a command arriving immediately after 'go' is
 	// refused, and false before the handler runs, so the 'position' a client sends the instant it
 	// reads bestmove is accepted. The callbacks hold the writer by shared_ptr, so their validity on
 	// the search thread does not depend on the handler's destruction order.
-	ai_->StartAsync(board_, limits, std::move(observer), [writer = writer_](const SearchResult& result) {
+	ai_->StartAsync(board_, limits, std::move(observer), [writer = writer_, tag_ranks](const SearchResult& result) {
 		const Move best = result.best_move;
 
 		// 'nodes' covers both trees rather than the main tree alone, which is what the
 		// protocol means and what keeps the client's nps from charging quiescence work to
 		// the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
-		writer->send(format_uci_info(result.depth_completed, result.seldepth, result.best_score,
-		                             result.nodes_searched + result.qnodes_searched, result.hashfull, result.elapsed,
-		                             result.pv));
+		// The whole accepted set again, with the final totals, so the last block before bestmove is
+		// complete on its own; best_move is its sorted rank 1.
+		send_ranked_info(*writer, tag_ranks,
+		                 {result.depth_completed, result.seldepth, result.nodes_searched + result.qnodes_searched,
+		                  result.hashfull, result.elapsed},
+		                 result.best_score, result.pv, result.alternatives);
 
 		// The split, as an 'info string' so GUIs and match runners ignore it: without it a
 		// change that relocates work between the trees looks like one that simply got slower.
@@ -513,8 +548,9 @@ void UciHandler::cmd_setoption(std::string_view line)
 	// Minimal UCI 'setoption' parser — recognizes:
 	//   setoption name Threads value N
 	//   setoption name Hash value N
+	//   setoption name MultiPV value N
 	//   setoption name <tuning option> value V   (SearchTuning.def's UCI names)
-	// An unknown option name, or a malformed/missing Threads or Hash value, is
+	// An unknown option name, or a malformed/missing Threads, Hash or MultiPV value, is
 	// silently ignored (standard UCI convention — same as unknown top-level
 	// commands in run()). Names are case-sensitive, matching the convention
 	// used by Stockfish and other engines.
@@ -535,7 +571,7 @@ void UciHandler::cmd_setoption(std::string_view line)
 	    trim((value_pos != std::string_view::npos) ? line.substr(name_pos + 4, value_pos - (name_pos + 4))
 	                                               : line.substr(name_pos + 4));
 
-	if (name != "Threads" && name != "Hash") {
+	if (name != "Threads" && name != "Hash" && name != "MultiPV") {
 		set_tuning_option(name,
 		                  value_pos == std::string_view::npos ? std::string_view{} : trim(line.substr(value_pos + 5)));
 		return;
@@ -551,15 +587,22 @@ void UciHandler::cmd_setoption(std::string_view line)
 			return; // non-numeric — ignore malformed value
 	}
 
+	// Saturated rather than narrowed, so a huge value reaches each setter's own cap on every platform
+	// (unsigned long is 32 bits on Windows, 64 on LP64).
 	unsigned n = 0;
 	try {
-		n = static_cast<unsigned>(std::stoul(std::string(value_str)));
+		n = static_cast<unsigned>(
+		    std::min<unsigned long long>(std::stoull(std::string(value_str)), std::numeric_limits<unsigned>::max()));
 	} catch (...) {
-		return; // out-of-range or otherwise unparsable — ignore
+		return; // past unsigned long long — ignore
 	}
 
 	if (name == "Threads") {
 		ai_->SetThreads(n);
+		return;
+	}
+	if (name == "MultiPV") {
+		ai_->SetMultiPV(n);
 		return;
 	}
 

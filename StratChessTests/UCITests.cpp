@@ -251,6 +251,13 @@ TEST_CASE("cmd_setoption: Threads value survives cmd_ucinewgame()", "[uci][smp]"
 	REQUIRE(fix.ai_threads() == 4);
 }
 
+TEST_CASE("cmd_setoption: a Threads value past unsigned saturates to the cap, never wraps to 1", "[uci][smp]")
+{
+	UciHandlerTestFixture fix;
+	fix.setoption("setoption name Threads value 4294967296");
+	REQUIRE(fix.ai_threads() == AIPerplex::MAX_THREADS);
+}
+
 TEST_CASE("cmd_setoption: Threads takes effect immediately on the live ai_", "[uci][smp]")
 {
 	// A client may send setoption mid-session without an intervening ucinewgame.

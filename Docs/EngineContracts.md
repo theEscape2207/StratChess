@@ -204,6 +204,14 @@ Usage, working-directory requirements and JSON examples live in
   decisions with `STRAT_PROFILE_TIEBREAK_SEED` unset or zero. A nonzero seed deliberately changes
   tied move ordering and is a separate experimental input. Node counters are distinct from
   telemetry: iteration acceptance reads them. See [CONTEXT](../CONTEXT.md#search-telemetry).
+- **At `MultiPV` N > 1 UCI prints one `info depth` line per rank, `multipv k` after `seldepth`.**
+  A block is ranks 1..k of one accepted iteration, sharing its depth and counts; each line is its own
+  send, so a client assembles a set by `depth` + `multipv`, and the input thread's `readyok` may
+  land between two ranks. The final block repeats the accepted set with the final totals, so it equals
+  the last iteration block in depth, scores and PVs; `bestmove` is its rank 1. A terminal root prints
+  rank 1 alone with `pv 0000`, and only an emergency move prints a final line with no block before
+  it. The tag is keyed on the configured N, read once in `cmd_go`: N = 1 output carries no
+  `multipv` field, which keeps every script that parses it unchanged. Tests: `UCIMultiPVTests.cpp`.
 - **UCI stdout is the protocol channel.** General console logging stays disabled in UCI mode;
   command tracing uses the dedicated file-only logger, not the default spdlog logger. See
   [Logger.h](../StratEngine/Utils/Logger.h) and the [logging guide](EngineGuide.md#logging-and-runtime-files).

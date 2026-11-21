@@ -75,7 +75,12 @@ Apply `setoption` while idle. UCI starts from its own defaults and does not load
 `game_settings.json`. For example, `setoption name Threads value 4` enables four search workers.
 `Hash` budgets TT entry storage; allocation rounds down to a power-of-two bucket count, so a
 request can allocate less than its nominal size. Read the engine's `info string hash` response
-for the actual entry memory and bucket count.
+for the actual entry memory and bucket count. `MultiPV` (1..218, default 1) ranks that many best
+root moves in one search, each with its own score and line; it is capped at the position's legal
+move count, kept by `ucinewgame`, so a client sets it back to 1 for single-PV play. Each rank is a
+full root search, so N > 1 costs roughly N times the nodes per depth. Under a clock a set the hard
+limit cuts is discarded, so N > 1 spends more time per move and reaches less depth; and the search
+stops on rank 1's mate score, so `go depth D` can end below D with every rank at that depth.
 
 **Game mode:** edit [game_settings.json](../StratChessEvolved/game_settings.json). Under
 `game.players.white` and `.black`, `search_limits` supplies per-move constraints (required for a
@@ -125,6 +130,12 @@ in that iteration, quiescence included, and never less than `depth`; `nps` is `n
 from the root side's perspective. `bestmove` completes the search; `0000` indicates no move.
 `hashfull` reports the fraction of sampled TT entries written since this search began, in
 permille. Older occupied entries do not count; it measures neither total occupancy nor usefulness.
+
+At `MultiPV` N > 1 each depth prints one line per rank, with `multipv k` after `seldepth`,
+best first; the lines of one depth share its `seldepth`, `nodes`, `nps`, `hashfull` and `time`.
+Assemble a set by `depth` and `multipv`, ignoring other lines that may arrive between ranks. The
+final block before `bestmove` repeats the accepted set with the search's totals, and `bestmove`
+is its `multipv 1` move. At N = 1 no line carries `multipv`.
 
 Iteration node counts describe the main worker. Final counts include helpers and work from a
 rejected trailing iteration, so subtracting the last iteration's nodes from the final total only
@@ -286,8 +297,8 @@ The rules cover:
 - the `id` lines;
 - the commands `uci`, `isready`, `ucinewgame`, `position`, `go` (with the parameters this guide
   documents), `stop` and `quit`;
-- the `Threads` and `Hash` options: their name, type, range and default as advertised, and their
-  `setoption` behaviour;
+- the `Threads`, `Hash` and `MultiPV` options: their name, type, range and default as advertised,
+  and their `setoption` behaviour;
 - the `info` fields that [Interpret search output](#interpret-search-output) defines;
 - the `bestmove` line.
 

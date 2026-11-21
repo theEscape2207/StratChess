@@ -23,6 +23,24 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-21: UCI `MultiPV` (#94 slice 2)
+
+### Added
+
+- The `MultiPV` spin option (1..218, default 1) puts slice 1's ranked set on UCI. At N > 1 every
+  `info depth` line carries `multipv k` after `seldepth`, one line per rank, and the final block
+  before `bestmove` repeats the whole accepted set with the search's totals; `bestmove` is its
+  rank 1. At N = 1 the `go` output is unchanged and carries no `multipv` field, so every script
+  that parses it is unaffected. It joins `Threads` and `Hash` in the supported UCI contract.
+- No set-start rule under a clock: a set the hard limit cuts is wasted, so N > 1 in timed play
+  spends more clock and reaches less depth. #985 owns measuring that loss.
+
+### Fixed
+
+- `setoption`'s numeric parse saturates instead of narrowing, so an absurd `Threads`, `Hash` or
+  `MultiPV` value reaches the option's cap on every platform; on LP64 `4294967296` used to wrap
+  to 0.
+
 ## 2026-11-21: Multi-PV root ranking (#94 slice 1)
 
 ### Added
