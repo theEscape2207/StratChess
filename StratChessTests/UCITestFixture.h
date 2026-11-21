@@ -147,6 +147,7 @@ class UciHandlerTestFixture {
 	// Reads threads_ off UCI's concretely-owned AIPerplex instance — proves
 	// the option reaches the search service.
 	unsigned ai_threads() const { return AIPerlexTestFixture::configured_threads(*handler.ai_); }
+	unsigned ai_multipv() const { return handler.ai_->MultiPV(); }
 
 	void set_quiet_see_pruning(bool enabled) const
 	{
@@ -332,6 +333,7 @@ inline std::vector<std::string> split_lines(const std::string& text)
 struct ParsedInfoLine {
 	int depth = 0;
 	int seldepth = -1;
+	int multipv = 0; // 0 when the line carries no multipv field
 	std::string score;
 	int64_t nodes = 0;
 	int64_t nps = -1;
@@ -359,6 +361,8 @@ inline std::vector<ParsedInfoLine> parse_info_depth_lines(const std::string& out
 				iss >> info.depth;
 			} else if (tok == "seldepth") {
 				iss >> info.seldepth;
+			} else if (tok == "multipv") {
+				iss >> info.multipv;
 			} else if (tok == "score") {
 				std::string kind;
 				std::string value;
