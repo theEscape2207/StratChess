@@ -12,14 +12,14 @@ the advertised range with the measured ones. Nothing else in the policy changes.
 
 ## Review focus
 
-- **D5, the fit's top-block rule.** A plateau at the top (expected: levels from about 13-15 up are
-  clock-bound at 60+0.6, design record D2) is written as two anchors one Elo apart. Is that the
-  right way to keep the table strictly increasing while telling the truth about a plateau?
-- **D3/D4, precision for the budget.** Seven levels, 300 games each, with the second stage's
-  opponent picked from a 60-game first stage. Does that buy ±50 per point, and are the levels the
-  right ones?
-- **A1/A2, the anchor's own drift.** Stockfish's `UCI_Elo` fit is from 2023 master and states no
-  time control; we inherit both.
+- **D5, the fit's top-suffix rule.** A plateau at the top (expected: levels from about 13-15 up are
+  clock-bound at 60+0.6, design record D2) is written as two integer anchors one Elo apart, and only
+  levels 14 and 19 may pool. Is that the right way to keep the shipped integer table strictly
+  increasing while telling the truth about a plateau?
+- **D4/D5, precision for the budget.** Seven levels, 300 games each, intervals from an
+  opening-pair bootstrap. Does that buy ±50 per point, and does the fit fail closed when it doesn't?
+- **A1/A2, the anchor's own drift.** Stockfish's `UCI_Elo` was fitted in 2023 at 120+1; we play it
+  at 60+0.6.
 
 ## Scope
 
@@ -29,18 +29,21 @@ the advertised range with the measured ones. Nothing else in the policy changes.
   and `Scripts/fit_uci_elo_calibration.py` with `Scripts/test_fit_uci_elo_calibration.py`;
 - play the gauntlet locally in two stages, each started by the owner (D4);
 - replace `kAnchors` in `StratEngine/StrengthLimit.cpp` and `kMinElo`/`kMaxElo` in
-  `StrengthLimit.h`, rewrite their "provisional" comments, and update the one test literal that
-  spells the range (`UCIStrengthLimitTests.cpp:112`);
+  `StrengthLimit.h`, rewrite their "provisional" comments, and re-pin the tests that rest on the
+  provisional table (Validation);
 - record the fit in a new ledger, `Measurements/uci-elo-calibration.md`, listed in
-  `Measurements/README.md`; update `Docs/EngineGuide.md` (range, TC, no longer provisional) and
-  `Docs/Changelog.md`.
+  `Measurements/README.md`; update `Docs/EngineGuide.md` (range, TC, and "provisional" removed from
+  both UCI option passages, `:85-94` and `:317-318`) and `Docs/Changelog.md`.
 
 **This change will not:**
 
 - touch the pick (`pick`, `pick_depth`, `weakness`, the mate guard), the forced MultiPV 4, the
   depth cap, or anything in the search. If the data says a level plays badly, that is a new issue;
-- calibrate below level 0 (the UI's beginner levels own that band) or for `Threads` > 1 or a user
-  `MultiPV` > 1;
+- extend the scale below level 0. The owner's note of 2026-11-21 expects the floor may need
+  extending (weakness beyond level 0's maximum at depth 1), pending their own games at
+  `UCI_Elo=1320`. That is a policy change with its own design and its own calibration points; this
+  slice's level-0 measurement is its input;
+- calibrate for `Threads` > 1 or a user `MultiPV` > 1;
 - fix #991 (`go infinite`); fastchess never sends it;
 - add a CCRL-engine anchor (option B of the triage).
 
@@ -48,14 +51,16 @@ the advertised range with the measured ones. Nothing else in the policy changes.
 
 ### D1: 60+0.6 on both sides
 
-Owner decision, 2026-11-21. StratChessUI sends only `go movetime` today (default 1000 ms), but
-clocked games are planned soon, and 60+0.6 is also the scouting's TC, so the scouting result
-carries over as a cross-check. Both engines play the same clock: the label should mean "scores 50%
-against Stockfish at this Elo when both think the same time".
+Owner decision in the planning session, 2026-11-21: calibrate for clocked play. StratChessUI
+offers `go depth` and `go movetime` today (1000 ms the fixed-time default); clocked games are
+planned soon. 60+0.6 is also the scouting's TC, so the scouting result carries over as a
+cross-check. Both engines play the same clock, so a label means "scores 50% against SF19 at this
+`UCI_Elo`, both at 60+0.6 on this machine" — parity with weakened SF19 under these conditions, not a
+CCRL rating (A1, A2).
 
-Rejected: `movetime 1000`, what the UI sends today; it is about to be superseded, and is offered as
-an optional spot check (Cost, O1). Rejected: playing Stockfish at the TC its fit used, as the
-domain review suggested, because the fit states none (A2).
+Rejected: `movetime 1000` as the target; it stays an optional spot check (Cost, O1). Rejected:
+playing Stockfish at its fit's 120+1 (A2): the labels then mean "beats a Stockfish given twice the
+time", which no user of the UI meets.
 
 ### D2: Local, on the owner's machine, shipping binary, concurrency 8
 
@@ -64,10 +69,11 @@ the binary the UI runs), on the machine the UI runs on. Above the plateau onset 
 set by the clock, so its Elo depends on per-core speed: calibrating on different hardware would
 label it for that hardware.
 
-Concurrency 8, as in the scouting (240 games, no time losses). Neither engine ponders, so a game
-keeps one core busy at a time, and 8 games stay under the 12 physical cores. All-core load lowers
-per-core boost below a lone UI game; that biases clock-bound levels low, so their labels err
-conservative (A3).
+Concurrency 8, as in the scouting (240 games, no time losses, uncapped StratChess). Neither engine
+ponders, so a game mostly keeps one core busy, and 8 games stay under the 12 physical cores.
+Concurrency is a condition of the benchmark: load slows both engines, and the sign of the relative
+Elo shift is unknown (A3). The ledger records concurrency and machine with the result. If the smoke
+run or stage 1 shows a time loss or stall, the run drops to the suite's 6.
 
 Rejected: the CI strength lab. It has no Stockfish opponent (a workflow change), builds GCC on
 Linux rather than what ships, runs on 2-core runners unlike the UI's machine, and holds 18 of 20
@@ -105,120 +111,171 @@ points (leaves 10 → 19 as one segment across the plateau onset).
   10 and clamped to Stockfish's 1320..3190, so the score sits near 50%, where a game carries the
   most information. Openings 31-150.
 
-Every level plays the same opening slice, so differences between levels are not opening luck.
-Fixed size, not SPRT: this estimates a number, it decides nothing. At about 50% with a 20% draw
-rate, 300 games give a 95% interval of about ±35 Elo (`1.96 * 695 * sqrt(0.8/4/300)`); stage-1
-games against a mismatched opponent carry less, so expect ±35-45, inside the issue's ±50 target.
+Every level plays the same opening slice, so differences between levels are not opening luck (and
+the intervals on those differences must account for it, D5). Fixed size, not SPRT: this estimates a
+number, it decides nothing. Under independence, 300 games at about 50% with 20% draws give about
+±35 Elo (`1.96 * 695 * sqrt(0.8/4/300)`); 60 stage-1 games give about ±79, enough only to place
+the stage-2 opponent. Pair correlation can move the real figure either way, so ±50 is a gate the
+fit checks (D5, G1), not a promise. A miss is reported as inconclusive; the budget stays fixed.
 
-Each stage is its own quiet window, started on the owner's go, with the stage-1 timings giving a
-firm stage-2 estimate before that go is asked for.
+Each stage is its own quiet window, started on the owner's go. Stage 1 ends with a stage-1 report
+(D6): the stage-2 opponents, saturated scores and the measured game times that price stage 2.
 
-**Stop and return to the owner** (no fit is written) when:
+**Stop and return to the owner** (no initializer is emitted) when:
 
-- **S1:** level 0 scores under 10% against Stockfish 1320 over all its games. Its Elo would be an
-  extrapolation more than ~380 below the anchor's floor, and the table's `front().level == 0.0`
-  contract would then need changing, which is outside this slice;
-- **S2:** the fit pools any levels below the top block (D5): a lower level measurably outscores a
-  higher one mid-scale, which is the non-monotone case design-record A3 left to this slice;
-- **S3:** a batch reports a time loss, illegal move or disconnect: discard it (`Measurements/README.md`)
-  and rerun once; a second one stops.
+- **S1, floor:** evaluated on the stage-1 report and again at the fit, over all level-0 games (both
+  stages play Stockfish 1320 if the clamp binds). Level 0 below 1320 is an extrapolation past the
+  anchor's floor: the ledger flags it, and it ships as `kMinElo` only while level 0 scores at least
+  10% (`400·log10(0.1/0.9) ≈ −382`, so `kMinElo` ≥ about 938). Below that, stop: placing the floor
+  is then the owner's pending floor decision, not this fit's;
+- **S2, order:** the fit would pool or reverse levels outside the top suffix (D5). Stopping there is
+  a policy choice: the non-monotone case design-record A3 left to this slice is worth a human look
+  even when noise could explain it;
+- **S3, harness:** a batch reports a time loss, illegal move, disconnect, stall or a failed runner:
+  discard the attempt (`Measurements/README.md`) and rerun once; a second one stops.
 
-### D5: Fit — per-level maximum likelihood, monotone, top block collapsed
+### D5: Fit — per-level estimate, opening-pair intervals, an integer table that fails closed
 
-1. **Per level:** the Elo R maximising `Σ s·ln E + (1-s)·ln(1-E)` over all that level's games
-   (stage 1 and 2 pooled), with `E = 1/(1 + 10^((SF_elo - R)/400))` and s ∈ {0, ½, 1}.
-   Stockfish's `UCI_Elo` is taken as exact. The 95% interval is the likelihood-ratio interval
-   (ΔlnL = 1.92). Stockfish's own scale error (±100 per its fit's commit) is common to every point,
-   so it is stated once and kept out of the per-point bars.
-2. **Monotone:** weighted pool-adjacent-violators (weights 1/SE²) over the levels in order. Only a
-   block that contains level 19 may pool; any other pooling is S2.
-3. **Anchors:** each unpooled level gives `(round(R), level played)`. A pooled top block spanning
-   levels a..19 with pooled Elo E gives two anchors, `(E, a)` and `(E + 1, 19.0)`, and drops its
-   interior levels: the measured strengths cannot be told apart, and the integer scale cannot hold a
-   flat segment, so every `UCI_Elo` from E up plays the top of the block.
-4. **Range:** `kMinElo` = level 0's anchor Elo, `kMaxElo` = level 19's. `kMaxElo` is what the top
-   level measures (design record D2), not the scouting's uncapped 2600-2700.
+1. **Point estimate per level:** the Elo R maximising `Σ s·ln E + (1-s)·ln(1-E)` over all that
+   level's games (stage 1 and 2 pooled), with `E = 1/(1 + 10^((SF_elo - R)/400))` and s ∈ {0, ½, 1}.
+   Stockfish's `UCI_Elo` is taken as exact.
+2. **Intervals from opening pairs:** a bootstrap over opening IDs, stratified by stage, 10 000
+   resamples at a fixed seed. One resample of opening IDs is applied to every level at once, so the
+   intervals on adjacent *differences* carry the shared openings. The 95% interval is the
+   percentile interval. These are match-sampling intervals only; the anchor's own scale drift is
+   unmeasured and stated beside them (A1).
+3. **Monotone:** weighted pool-adjacent-violators (weights 1/variance) over the levels in order.
+   The only block allowed to pool is the predeclared top suffix {14, 19}.
+4. **The integer table:** each unpooled level gives `(round(R), level played)`. If 14 and 19 pool,
+   or their rounded estimates collide, with pooled Elo E they give `(round(E) - 1, 14.0125)` and
+   `(round(E), 19.0)`: every `UCI_Elo` from `round(E)` plays level 19, and the levels between 14
+   and 19 are reachable only through the one-Elo step, which the ledger states.
+5. **Range:** `kMinElo` = level 0's anchor, `kMaxElo` = level 19's. `kMaxElo` is what the top level
+   measures (design record D2), not the scouting's uncapped 2600-2700.
+
+**Gates; any failure prints the report but no initializer:**
+
+- **G1, precision:** each level's interval endpoints lie within 50 Elo of its point estimate.
+- **G2, order:** no pooling or rounded collision outside {14, 19} (S2); no adjacent difference
+  whose interval lies wholly below zero.
+- **G3, fit:** reading the *emitted* integer table back at each level played gives a label inside
+  that level's interval. This covers the synthetic `round(E) - 1` onset and the rounding.
+- **G4, contract:** emitted Elo keys strictly increase; `front()` is level 0.0, `back()` level 19.0.
+- **S1** as D4 states it.
 
 Rejected: a smooth curve (a cubic, as Stockfish fits). It would put residuals at every point and
 add a shape nobody measured; the table takes measured points directly (design record D3).
-Rejected: dropping level 19 into a plateau and letting a lower level carry `kMaxElo`; the
-`back().level == kMaxLevel` contract forbids it, and it would hide the strongest setting.
+Rejected: letting a pooled block grow downward past 14. A plateau reaching level 10 contradicts
+the depth evidence (D3) and would be S2's case, not a plateau. Rejected: dropping level 19 so a
+lower level carries `kMaxElo`; the `back().level == kMaxLevel` contract forbids it.
 
 ### D6: Tooling — one driver, one fit, one ledger
 
-`Run-UciEloCalibration.ps1 -UciElo <int[]> -SfElo <int[]> -Games <n> -OpeningStart <k>
+`Run-UciEloCalibration.ps1 -Stage <1|2> -UciElo <int[]> -SfElo <int[]> -Games <n> -OpeningStart <k>
 [-Tc 60+0.6] [-Concurrency 8] [-Smoke] [-SelfTest]` plays each `(UciElo, SfElo)` pair as one
-fastchess match, in order, into `logs\elo\calibration-<stamp>\`, with Run-EloMatch's adjudication
-(draw 40/8/10, resign 4/800) and the large book (`openings-large.pgn`, sequential from
-`-OpeningStart`). It prints a QuietWindow phase plan, exits 1 on any time loss, illegal move or
-disconnect, and writes no `local.md` row: a limited engine against Stockfish is not a per-change
-result, and `Run-EloMatch.ps1` has no way to name the candidate's `UCI_Elo`.
+fastchess match, in order, with Run-EloMatch's adjudication (draw 40/8/10, resign 4/800) and the
+large book (`openings-large.pgn`, sequential, one-based `-OpeningStart`). It prints a QuietWindow
+phase plan and writes no `local.md` row. `Run-EloMatch.ps1` could pass `option.UCI_Elo` through
+`-CandidateOptions`, but its row names the candidate by commit only and cannot be suppressed by
+design, and a limited engine against Stockfish is not a per-change result.
 
-**The contract between the two scripts is the engine names in the PGN:**
-`StratChess-UCI_Elo-<n>` and `SF19-UCI_Elo-<n>`. The fit reads only PGNs, so a resumed or
-re-run batch needs no manifest.
+**One directory per attempt:** `logs\elo\calibration\<stamp>-s<stage>-elo<UciElo>-sf<SfElo>\`
+holds fastchess's config, log and PGN. On a clean finish only, the driver writes `run.json`:
+`complete`, `smoke`, stage, `UciElo`, `SfElo`, the candidate commit and SHA-256 of both exes, the
+book path and SHA-256, the opening range, both engines' options, TC, concurrency and machine name.
+A failed attempt (S3) gets no `run.json` and is never read.
 
-`fit_uci_elo_calibration.py <pgn or dir>...` computes the level played from `<n>` with the
-provisional table (`--table 1320:0,2600:19` by default, the table the games ran under), runs D5,
-reads each move comment's `{score/depth time}` (the parser `compare_lab_depth.py` uses), and
-prints the ledger table, the C++ `kAnchors` initializer and `kMinElo`/`kMaxElo`. It exits 1 on
-S1 or S2.
+`fit_uci_elo_calibration.py <attempt dir>...` reads only attempts with `complete: true` and
+`smoke: false`, and fails unless every (level, stage, opening) in the plan has exactly one
+colour-swapped pair, all attempts share one candidate hash, book hash and TC. It computes the level
+played from `UciElo` with the provisional table (`--table 1320:0,2600:19` by default, the table
+the games ran under), runs D5 and prints the ledger table, the gates and, if they pass, the C++
+`kAnchors` initializer and `kMinElo`/`kMaxElo`. Two more modes:
+
+- `--stage1-report`: the stage-2 opponent per level (D4), each score with saturated ones flagged,
+  and game times;
+- `--smoke-check`: on the smoke attempt alone, run at level 0: every StratChess move comment parses
+  and shows depth 1 (proof `UCI_LimitStrength`/`UCI_Elo` reached the engine), and no move lacks a
+  comment.
+
+Depth per level comes from each StratChess move comment's `{score/depth time}` (the parser
+`compare_lab_depth.py` uses), attributed by side to move, never by position in the comment list.
+Moves whose score is a mate are reported apart, since a mate stop ends the search below the pick
+depth; moves with a missing or unparsable comment are counted, not dropped silently.
 
 Engine options, both sides `Threads=1`, `Hash=64`, `UCI_LimitStrength=true`, `UCI_Elo=<n>`;
 StratChess at the default `MultiPV` (the forced 4 is internal). Stockfish is
 `StratChessSupport\EngineTesting\stockfish.exe` (`sf_19`, see its PROVENANCE file).
 
-Rejected: extending `Run-EloMatch.ps1`. Its ledger row is the wrong record for these games, and it
-refuses to suppress the row by design.
-
 ## Assumptions I cannot verify from the code
 
-- **A1: Stockfish 19's `UCI_Elo` still tracks CCRL Blitz.** Its formula was fitted in 2023 (commit
-  `a08b8d4`, master vs Stash versions) and is not refitted per release; the commit itself puts
-  Stash within ±100 of CCRL. Not verifiable here; the owner chose this anchor knowing it (#985,
-  2026-11-21). The ledger states the ±100.
-- **A2: Stockfish's fit states no TC.** Checked 2026-11-21: the commit message and `search.h` say
-  "CCRL Blitz" and nothing more. 60+0.6 on this machine is in the range of CCRL Blitz
-  (2'+1" on slower reference hardware). Unverifiable beyond that.
-- **A3: 8 concurrent games bias clock-bound levels low, not high.** Load lowers per-core speed;
-  fewer plies at the top means a lower measured Elo for the same setting, so a user at that label
-  meets a slightly stronger engine. Not measured; O2 would size it.
-- **A4: local fastchess writes `{score/depth time}` move comments.** True of the lab's PGNs that
-  `compare_lab_depth.py` parses; the local `fastchess.exe` is a different build. Settled by the
-  `-Smoke` run before stage 1; the fit fails loudly on a PGN with no depth.
-- **A5: draws as half-points in a logistic model.** Standard for this kind of fit; it ignores the
-  pair correlation from colour-swapped openings, which only makes the bars slightly conservative.
+- **A1: SF19's `UCI_Elo` scale.** Its formula was fitted in 2023 (commit `a08b8d4`, master at skill
+  levels vs Stash versions rated by CCRL) and is not refitted per release; SF19 at a given skill may
+  sit elsewhere. The commit's "±100" is how closely the Stash versions matched their CCRL ratings,
+  not a bound on SF19's scale. The tagged cubic also maps 1320-1346 to the same skill 0. Not
+  verifiable here; the owner chose this anchor knowing it (#985, 2026-11-21). The ledger says the
+  labels are parity with weakened SF19 under D1's conditions.
+- **A2: the anchor's fit TC is 120+1, ours is 60+0.6.** Verified 2026-11-21: the commit's README
+  diff reads "calibrated at a time control of 120s+1.0s and anchored to +- 100 Elo to CCRL Blitz".
+  At half the time Stockfish at a given `UCI_Elo` likely plays somewhat below its label, so our
+  labels read against SF19-at-60+0.6, not against SF's nominal scale. No hardware-equivalence claim
+  is made.
+- **A3: concurrency 8 is a benchmark condition.** Load can slow both engines; the sign of the
+  relative Elo shift is unknown, and a fixed-depth bench could detect a throughput change but not
+  size the Elo effect. Recorded with the result, not corrected for.
+- **A4: local fastchess writes `{score/depth time}` move comments for the limited engine.** True of
+  the lab PGNs `compare_lab_depth.py` parses; the local `fastchess.exe` is a different build and
+  the configuration is new. Settled by `--smoke-check` before stage 1.
+- **A5: the fractional-Bernoulli point estimate.** Standard for a mean score against known
+  opponents; the bootstrap (D5) carries the uncertainty, so the estimate's own likelihood interval
+  is not used.
 
 ## Invariants
 
 - I1. The table stays strictly increasing in both columns, `front() == (kMinElo, 0.0)`,
   `back() == (kMaxElo, 19.0)`: the existing `static_assert`s hold unchanged.
-- I2. Only `kAnchors`, `kMinElo`, `kMaxElo`, their comments, docs and the range literal in one test
-  change. `level_for_elo` is read only while limiting (`UCIHandler.cpp:492`), so limiting-off play
-  is untouched.
-- I3. Each anchor is a measured Elo and the fractional level that was actually played (D3's table),
-  except the one synthetic `E + 1` of a pooled top block (D5).
-- I4. Every sampled level's measured Elo lies within its 95% interval of the final table's label
-  for that level (covers dropped interior levels of a pooled block).
-- I5. Monotone: below the top block, each sampled level measures above the one before it, and no
-  adjacent pair anywhere reverses by more than its combined 95% error.
+- I2. Only `kAnchors`, `kMinElo`, `kMaxElo`, their comments, docs and the tests pinned to the
+  provisional table change. `level_for_elo` is read only while limiting (`UCIHandler.cpp:492`), so
+  limiting-off play is untouched.
+- I3. Each anchor is a rounded measured Elo and the fractional level actually played (D3's table),
+  except the synthetic `round(E) - 1` onset of a pooled {14, 19} suffix (D5).
+- I4. The emitted integer table, read back at each level played, gives a label inside that level's
+  95% interval (G3).
+- I5. Monotone: no pooling outside {14, 19}, and no adjacent difference significantly below zero
+  (G2).
+- I6. Every fitted game comes from exactly one complete, non-smoke attempt, with one candidate
+  binary, book and TC across the fit (D6).
 
 ## Validation
 
 Tier: engine code (a table), plus scripts and a ledger.
 
-- **Tools before games:** `test_fit_uci_elo_calibration.py` on synthetic PGNs: recovers a known R
-  within its interval; pools a reversed top pair into `(E, a)`, `(E + 1, 19.0)`; exits 1 on a
-  mid-scale reversal (S2) and on level 0 under 10% (S1); fails on a PGN without depth comments.
-  The driver's `-SelfTest` covers the name format and the `ceil(inverse)` arithmetic of D3's
-  table. Then one `-Smoke` run (20 games, ~6 min) proves the pipeline and A4.
-- **The gauntlet's own acceptance:** every point's 95% interval within ±50; I4 and I5 from the fit's
-  output; no S3 batch kept.
-- **Depth at this TC, per level:** median and 10th/90th-percentile depth of StratChess's moves, and
-  the share of moves that reached the pick depth. A level where under half did is clock-bound; the
-  ledger marks it, and the plateau's onset is read from that column, not from the Elo alone.
-- **The code change:** `Run-Tests.ps1 "[strength]"` and `"[uci]"` with the new range literal;
-  `Validate-PrePR.ps1`.
+- **Tools before games:** `test_fit_uci_elo_calibration.py` on synthetic attempt dirs: recovers a
+  known R inside its interval; pairs each opening's two colours, and a paired fixture whose two games
+  are perfectly correlated widens the interval against an independent one; a clamped, mismatched
+  opponent fixture misses G1; a reversed {14, 19} pair emits `(round(E) - 1, 14.0125)`,
+  `(round(E), 19.0)`; a rounded tie in the suffix takes the same path; a suffix that would grow
+  down to 10 fails G2; a pooled pair whose synthetic onset falls just outside 14's interval fails G3;
+  level 0 under 10% fails S1; a duplicate pair, a smoke attempt, an attempt without `run.json` and a
+  mixed candidate hash are each refused; a comment-less StratChess move is counted and attributed by
+  side. The driver's `-SelfTest` covers the attempt-dir name and the `ceil(inverse)` arithmetic of
+  D3's table.
+- **Smoke:** one `-Smoke` attempt (20 games at level 0 vs SF 1320, a few minutes) and
+  `--smoke-check` on it (A4, options applied, depth attribution, `bestmove` is the picked move:
+  fastchess's "bestmove does not match PV" warning count is read from the log).
+- **The gauntlet's own acceptance:** G1-G4 and S1 from the fit; no S3 attempt kept.
+- **Depth at this TC, per level:** median and 10th/90th-percentile depth of StratChess's non-mate
+  moves, the share that reached the pick depth, and the mate and missing-comment counts. A level
+  where under half reached it is marked clock-bound. That is a depth statistic; flattening is read
+  from the Elo column and its difference intervals, reported apart.
+- **The code change:** re-pin the tests that rest on the provisional table, keeping what they test:
+  - `StrengthLimitTests.cpp:57-65`: the 1387/1388 depth boundary moves to the two integers around a
+    depth transition in the new table, computed from `kAnchors` rather than hard-coded;
+  - `UCIStrengthLimitTests.cpp`: the range literal (`:112`), the depth-5 fixture at 1590 (`:246-261`
+    and the final-block tests at `:293-326`) moves to the new anchor for level 4.0078, and the
+    option tests' in-range value (2000, `:129-143`) to one inside the new range; the fixed-depth
+    control and the seeded non-rank-1 precondition stay;
+  - then `Run-Tests.ps1 "[strength]"` and `"[uci]"`, and `Validate-PrePR.ps1`.
 - **No Elo match beyond the gauntlet, no `Compare-SearchEquivalence.ps1`:** I2's single reader
   means the limiting-off search cannot change.
 
@@ -228,25 +285,29 @@ Tier: engine code (a table), plus scripts and a ledger.
   10 lines. Files: 3 new scripts, 1 new ledger, `StrengthLimit.h/.cpp`, one test, three docs.
 - **Blast radius:** engine tier for the table (UCI-visible range change), scripts tier for the tools.
 - **Review:** one code review of the diff; no domain review (no search or eval change).
-- **Game budget (owner's quiet time, local):** 2100 games. From the scouting's 154 engine-seconds a
-  game at full strength (240 games, 77 min, concurrency 8), and shorter games where StratChess
-  answers early (about 90 s at levels 0-4, 115 s at 7-10, 154 s at 14-19):
-  - stage 1: 420 games, **~1.5-2 h**;
-  - stage 2: 1680 games, **~5.5-8.5 h** (one overnight window, or split by level);
+- **Game budget (owner's quiet time, local):** 2100 games. Measured input: the scouting ran 240
+  games in 77m31s at concurrency 8, about 155 game-slot seconds a game at full strength. Forecast
+  input: shorter games where StratChess answers early, about 90 s at levels 0-4, 115 s at 7-10 and
+  155 s at 14-19. Before per-attempt startup and drain:
+  - stage 1: 420 games, **~1.7 h** forecast;
+  - stage 2: 1680 games, **~6.7 h** forecast, **~9 h** if every game runs at the scouting rate (one
+    overnight window, or split by level); priced again from stage 1's measured times before its go;
+  - smoke: a few minutes;
   - tooling and fit sessions: about one session each side of the games.
 - **Optional parts, each priced alone:**
   - **O1, a movetime-1000 spot check** at levels 7 and 19, 240 games each against their stage-2
     opponent: ~1.5-2 h. Tells how far the labels are off for today's UI until clocked games land.
-  - **O2, sizing A3:** a `Run-Bench.ps1` at concurrency 1 vs 8 load, ~15 min. Sizes the
-    clock-bound bias; changes nothing unless it is large.
-  - **Lean stage 2** (180 games instead of 240): saves ~1.5-2 h; bars widen to about ±40-50.
+  - **O2, a level-12 point** (60 + 240 games, ~1.3 h forecast), offered only if the fit shows 14 and
+    19 pooled and 10 not clock-bound, so the plateau onset between 10 and 14 would change the table.
+  - **Lean stage 2** (180 games instead of 240): saves ~1.7 h forecast; G1 is then likelier to miss
+    (about ±39 under independence at 50%, before pair correlation and the floor's extrapolation).
 
 ## Harvest
 
 | Decision / rationale | Lands in |
 |---|---|
 | D1 TC, D2 machine and concurrency, D4 sizes, the per-level results and depths | `Measurements/uci-elo-calibration.md` (table + Row detail) |
-| D5 fit rule, the `E + 1` top-block anchor, A1/A2 anchor caveats | comment on `kAnchors` in `StrengthLimit.cpp`; ledger detail |
-| D6 name contract, options, adjudication | `Run-UciEloCalibration.ps1` help; fit script docstring |
+| D5 fit rule, the `round(E) - 1` onset, A1/A2 anchor caveats | comment on `kAnchors` in `StrengthLimit.cpp`; ledger detail |
+| D6 attempt-dir and `run.json` contract, options, adjudication | `Run-UciEloCalibration.ps1` help; fit script docstring |
 | Calibrated range, TC and conditions it holds for | `Docs/EngineGuide.md` → Configure a run |
 | Headline | `Docs/Changelog.md` |
