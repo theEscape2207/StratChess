@@ -60,7 +60,7 @@ namespace {
 		return "cp " + std::to_string(cp);
 	}
 
-	// Both lines show the full PV; an empty one means no move, which UCI spells 0000.
+	// Every info line shows its full PV; an empty one means no move, which UCI spells 0000.
 	std::string format_uci_pv(const std::vector<Move>& pv)
 	{
 		if (pv.empty())
@@ -100,7 +100,7 @@ namespace {
 	}
 
 	// One block: rank 1, then each alternative as rank 2..k, each with its own score and full line.
-	// `tag_ranks` is the configured MultiPV > 1, read once at 'go'. At N = 1 no line carries a multipv
+	// `tag_ranks` is the configured MultiPV > 1. At N = 1 no line carries a multipv
 	// field, so single-PV output and every script that parses it are unchanged; at N > 1 every line
 	// does, even when rank 1 is all there is to print. Each line is its own send, so the input thread
 	// may answer between two ranks: a client assembles a set by depth + multipv.
@@ -594,7 +594,7 @@ void UciHandler::cmd_setoption(std::string_view line)
 		n = static_cast<unsigned>(
 		    std::min<unsigned long long>(std::stoull(std::string(value_str)), std::numeric_limits<unsigned>::max()));
 	} catch (...) {
-		return; // past unsigned long long, or otherwise unparsable — ignore
+		return; // past unsigned long long — ignore
 	}
 
 	if (name == "Threads") {

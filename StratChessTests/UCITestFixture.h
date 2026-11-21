@@ -9,6 +9,8 @@
 #include "AIPerplex.h"
 #include "SearchTestFixture.h"
 #include "Board.h"
+#include "MoveFormatter.h"
+#include "MoveGenerator.h"
 #include "TranspositionTable.h"
 #include <chrono>
 #include <condition_variable>
@@ -385,6 +387,33 @@ inline std::vector<ParsedInfoLine> parse_info_depth_lines(const std::string& out
 		result.push_back(std::move(info));
 	}
 	return result;
+}
+
+// Replays a full PV (as UCI tokens) from `board`, resolving each token
+// against the position's own legal move list at that point -- mirrors
+// UciHandler's private find_replay_move() (UCIHandler.cpp), which is not
+// reachable from here. Returns false at the first token that is not a
+// legal move in the position it is played from.
+inline bool replay_pv_is_legal(Board board, const std::vector<std::string>& pv_tokens)
+{
+	for (const std::string& token : pv_tokens) {
+		MoveList moves;
+		MoveGenerator::ComputeLegalMoves(board, moves);
+
+		Move found;
+		bool matched = false;
+		for (const Move& candidate : moves) {
+			if (MoveFormatter::ToUCI(candidate) == token) {
+				found = candidate;
+				matched = true;
+				break;
+			}
+		}
+		if (!matched || !board.DoMove(found))
+			return false;
+		board.ResetSearchDepth();
+	}
+	return true;
 }
 
 // The move token on a "bestmove <move>" line, or empty if none is present.

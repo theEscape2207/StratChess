@@ -1,5 +1,5 @@
 // UCIMultiPVTests.cpp — Catch2 [uci][multipv] tests for the MultiPV option and the ranked info lines it
-// produces (#94). The ranking itself is SearchMultiPVTests.cpp's; these pin what reaches the wire.
+// produces. The ranking itself is SearchMultiPVTests.cpp's; these pin what reaches the wire.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -43,25 +43,6 @@ namespace {
 		return blocks;
 	}
 
-	bool replays_legally(Board board, const std::vector<std::string>& pv)
-	{
-		for (const std::string& token : pv) {
-			MoveList moves;
-			MoveGenerator::ComputeLegalMoves(board, moves);
-			bool played = false;
-			for (const Move& move : moves) {
-				if (MoveFormatter::ToUCI(move) == token) {
-					played = board.DoMove(move);
-					break;
-				}
-			}
-			if (!played)
-				return false;
-			board.ResetSearchDepth();
-		}
-		return true;
-	}
-
 	// One block: ranks 1..k in order, one depth and one set of counts, distinct first moves, scores
 	// that never rise, and every line legal from the root.
 	void check_block(const std::vector<ParsedInfoLine>& block, size_t ranks, const char* fen)
@@ -72,11 +53,13 @@ namespace {
 			INFO("rank " << i + 1);
 			CHECK(block[i].multipv == static_cast<int>(i) + 1);
 			CHECK(block[i].depth == block[0].depth);
+			CHECK(block[i].seldepth == block[0].seldepth);
+			CHECK(block[i].hashfull == block[0].hashfull);
 			CHECK(block[i].nodes == block[0].nodes);
 			CHECK(block[i].time_ms == block[0].time_ms);
 			REQUIRE_FALSE(block[i].pv.empty());
 			first_moves.insert(block[i].pv.front());
-			CHECK(replays_legally(Board(fen), block[i].pv));
+			CHECK(replay_pv_is_legal(Board(fen), block[i].pv));
 			if (i > 0)
 				CHECK(score_order(block[i].score) <= score_order(block[i - 1].score));
 		}
@@ -227,12 +210,14 @@ TEST_CASE("MultiPV lines: a node budget that cuts a set repeats the last complet
 	UciHandlerTestFixture fix;
 	fix.setoption("setoption name MultiPV value 3");
 	fix.position(position);
-	const auto blocks = ranked_blocks(go(fix, "go nodes " + std::to_string(limit)));
+	const std::string output = go(fix, "go nodes " + std::to_string(limit));
+	const auto blocks = ranked_blocks(output);
 	REQUIRE(blocks.size() == kMaxDepth); // depths 1..kMaxDepth-1, then the final block
 	check_block(blocks.back(), 3, kKiwipete);
 	CHECK(blocks.back()[0].depth == kMaxDepth - 1);
 	check_final_repeats_last(kept, blocks.back());
 	check_final_repeats_last(blocks[blocks.size() - 2], blocks.back());
+	CHECK(extract_bestmove(output) == blocks.back()[0].pv.front());
 }
 
 TEST_CASE("MultiPV lines: N above the legal move count prints every legal move", "[uci][multipv]")
@@ -251,8 +236,9 @@ TEST_CASE("MultiPV lines: N above the legal move count prints every legal move",
 TEST_CASE("MultiPV lines: a lone rank is still tagged multipv 1", "[uci][multipv]")
 {
 	// The checked king's only move is Kxb2 (verified against python-chess); the mated king has none.
-	const char* fen =
-	    GENERATE("k7/8/8/8/8/8/1q6/K7 w - - 0 1", "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3");
+	const auto [fen, best] = GENERATE(
+	    table<const char*, const char*>({{"k7/8/8/8/8/8/1q6/K7 w - - 0 1", "a1b2"},
+	                                     {"rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3", "0000"}}));
 	INFO(fen);
 	UciHandlerTestFixture fix;
 	fix.setoption("setoption name MultiPV value 3");
@@ -266,8 +252,9 @@ TEST_CASE("MultiPV lines: a lone rank is still tagged multipv 1", "[uci][multipv
 	check_final_repeats_last(blocks[blocks.size() - 2], blocks.back());
 	const std::vector<std::string>& pv = blocks.back()[0].pv;
 	REQUIRE_FALSE(pv.empty());
-	CHECK(extract_bestmove(output) == pv.front());
-	if (pv.front() == "0000")
+	CHECK(pv.front() == best);
+	CHECK(extract_bestmove(output) == best);
+	if (std::string_view(best) == "0000")
 		CHECK(pv.size() == 1);
 }
 
