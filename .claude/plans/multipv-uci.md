@@ -15,7 +15,7 @@ rank's line from another. This slice puts slice 1 on the protocol, the way GUIs 
   field on the configured N (not on the result) right for the fallback and one-legal-move roots?
 - **D3, the final block repeats the whole accepted set.** Is the last per-iteration block always
   the accepted set, so the final block can never disagree with it (slice 1 D6: rejected iterations
-  emit nothing, and N > 1 never reaches `ACCEPTED_INTERRUPTED`)?
+  emit nothing, and a multi-rank set is never accepted interrupted)?
 
 ## Scope
 
@@ -38,7 +38,8 @@ rank's line from another. This slice puts slice 1 on the protocol, the way GUIs 
 ### D1: `multipv k` goes after `seldepth`, and only when the configured N > 1
 
 Field order follows the convention GUIs parse: `info depth D seldepth S multipv K score …`. The
-handler reads `ai_->MultiPV()` at `go` and tags lines only when it is above 1. So N = 1 output is
+handler reads `ai_->MultiPV()` once in `cmd_go`, captures it by value in both callbacks, and tags
+lines only when it is above 1. `setoption` is refused mid-search, so N is fixed for the search. So N = 1 output is
 unchanged byte for byte, and `Compare-SearchEquivalence.ps1`, `Run-Bench.ps1`, `UciDriver.ps1`,
 the match harnesses and the existing reporting tests see nothing new. A search at N > 1 tags every
 line, even when it ranks one move (one legal move, or slice 1's first-depth fallback): a client that
@@ -52,8 +53,9 @@ alternatives. Then the same client would see the field come and go between searc
 
 Rank 1 comes from `IterationInfo::score`/`pv`, ranks 2..k from `alternatives`. Every line in a
 block shares the iteration's `depth`, `seldepth`, `nodes`, `nps`, `hashfull` and `time`:
-the set is one iteration and slice 1 tracks no per-rank count. The lines are sent one after another
-from the search thread, so no other output lands between them.
+the set is one iteration and slice 1 tracks no per-rank count. Each line is a separate send. The input thread
+may print `readyok` or a refusal between two ranks, so a client keys on `depth` + `multipv`, not on
+adjacency, as GUIs do.
 
 Rejected: per-rank `nodes` or `seldepth`. Nothing reads them, and they need search changes
 (slice 1 D1 kept one `seldepth` per set).
@@ -76,7 +78,7 @@ the accepted line with the search's totals.
 `option name MultiPV type spin default 1 min 1 max 218`, the max being `AIPerplex::MAX_MULTIPV`
 (`MoveList::MAX_MOVES`, the most legal moves a position can have). `setoption` parses it as
 `Threads` is parsed: idle only (refused mid-search), a non-numeric or empty value ignored, a value
-out of range clamped by `SetMultiPV`, no `info string` echo, no TT clear, kept by `ucinewgame`.
+out of range clamped by `SetMultiPV` (a negative value fails the digit check and is ignored), no `info string` echo, no TT clear, kept by `ucinewgame`.
 It joins `Threads` and `Hash` in the Supported UCI contract, because the web UI depends on it.
 
 Rejected: a lower cap such as 5. The search already clamps to the legal count, and the cost of a
@@ -106,8 +108,9 @@ Rejected: adding the rule now with a guessed fraction.
 - At N = 1 every UCI output line is unchanged (no `multipv` token anywhere).
 - At N > 1 every `info depth` line carries `multipv k`; each block is ranks 1..k in order, k =
   1 + alternatives, with distinct first moves and non-increasing scores, one depth.
-- The final block equals the last per-iteration block in depth, ranks, scores and PVs; only the
-  counts and time may differ.
+- When any iteration block was printed, the final block equals the last one in depth, ranks,
+  scores and PVs; only the counts and time may differ. An emergency move or a terminal root prints no
+  block, and its final output is one `multipv 1` line.
 - `bestmove` equals the final `multipv 1` line's first PV move.
 
 ## Validation
@@ -118,10 +121,12 @@ Rejected: adding the rule now with a guessed fraction.
   must be IDENTICAL: it proves the N = 1 lines unchanged, not only the search.
 - **Tests** (`StratChessTests/UCIMultiPVTests.cpp`, `[uci][multipv]`):
   - `uci` advertises the option line exactly; `setoption` applies 3, clamps 0 to 1 and 999 to
-    218, ignores `abc`, is refused mid-search, survives `ucinewgame`;
+    218, ignores `abc` and `-1`, is refused mid-search, survives `ucinewgame`;
   - `go depth 5` at N = 3 from the start position: every block holds the invariants above; the
     final block equals the last iteration block; `bestmove` equals `multipv 1`;
   - N = 5 with 3 legal moves: blocks of 3;
+  - one legal move, `go movetime` at N = 3 (the plain path, which may accept an interrupted
+    iteration): `multipv 1` lines only, the final equal to the last block;
   - a checkmated root at N = 3: one final `multipv 1` line with `pv 0000`, `bestmove 0000`;
   - the first-depth fallback through `go nodes` (slice 1's `4k3/8/8/8/8/8/8/RN1QKBNR` position):
     a single `multipv 1` final line;
@@ -145,3 +150,4 @@ Rejected: adding the rule now with a guessed fraction.
 | D3: final block = accepted set; `bestmove` = rank 1 | `Docs/EngineContracts.md` → Telemetry and output; source comment on the final block |
 | D4: option range and setoption behaviour; joins the supported contract | `Docs/EngineGuide.md` → Configure a run and Supported UCI contract |
 | D5: no set-start rule; #985 measures the loss | `Docs/Changelog.md` entry |
+| N > 1 under a clock spends more per move (a cut set is wasted); the mate stop can end `go depth D` below D | `Docs/EngineGuide.md` → Configure a run |
