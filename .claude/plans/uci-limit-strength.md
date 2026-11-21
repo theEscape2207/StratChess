@@ -62,7 +62,7 @@ For any `go` other than `infinite`, the depth limit becomes
 still apply as usual. If one stops the search before the pick depth, the pick uses the deepest
 completed set.
 
-With `go infinite` the depth is not capped. UCI forbids `bestmove` before `stop`, and `infinite` is
+With `go infinite` the depth is not capped at the pick depth (an explicit `depth N` still applies). UCI forbids `bestmove` before `stop`, and `infinite` is
 analysis, not play. The pick then uses the final set, which is deeper and so stronger. This is
 documented, not prevented.
 
@@ -70,7 +70,17 @@ Rejected: Stockfish's form, which picks at `depth == 1 + int(level)` and searche
 clock. Once the pick is fixed, nothing after it changes the move played. The extra search only
 burns the clock and CPU. Stopping also makes a level's strength depend on depth, not time control,
 whenever the clock reaches the pick depth. That shrinks the calibration's TC drift (#985's second
-open question). Cost: low levels answer almost instantly. A deliberate delay is UI policy.
+open question), but only on our side. Stockfish searches on, so its next pick-depth search gets
+cutoffs from deep TT entries. Its level L therefore plays above its nominal depth and gets stronger
+with time, so the anchor still drifts. Cost: low levels answer almost instantly. A deliberate delay
+is UI policy. Pondering is not lost; the engine has none.
+
+**The clock-bound band.** Forcing MultiPV 4 costs about 2 plies at a fixed time. The domain review's
+probe reached depth 13-15 at `60000+600` vs 15-18 at MultiPV 1. So at 1+0.6, from about level 11-13 up,
+the clock stops the search before the pick depth. Those levels all play at the same clock-limited
+depth, and only `weakness` still separates them. The scale flattens at the top and may not reach
+`kMaxElo`. The calibration slice therefore calibrates at the time control it targets, expects that
+plateau, and sets `kMaxElo` to what the top level measures rather than to the scouting figure.
 
 ### D3: The Elo → level map is a table, provisional until calibrated
 
@@ -103,12 +113,19 @@ generator. With `top = S[0].score`, `weakness = 120 - 2*l`, `delta = min(top - S
 
 and the highest wins, the later rank on ties (Stockfish's `>=`). The first term *compresses* gaps:
 it does not penalise them. A move's adjusted gap is `(128 - weakness)/128` of its real gap. So a
-candidate can win only when `gap < delta * weakness / (128 - weakness)`, which gives a bound the
-tests check (I5; the one truncation adds at most 1 cp of slack). Scores stay far inside `int`
-(|score| <= 30000, weakness <= 120). A mate score's gap dwarfs `delta`, so a mate at rank 1 is
-always kept, and a mated rank is never chosen over a non-mated one.
+candidate can win only when `gap <= delta * (int(weakness) - 1) / (128 - weakness)`. That is the
+exact maximum, found by brute force of the integer formula in the domain review: 1487 cp at level 0
+and 176 cp at level 19 for `delta = 100`. Rank 1 with `r = 0` loses nothing to the truncation, so
+there is no slack term. The tests check this bound (I5). Scores stay far inside `int`
+(|score| <= 30000, weakness <= 120). A mate score's gap dwarfs the bound (`Mate_Threshold` = 29744), so a mate at rank 1 is always kept,
+and a move that gets mated is never chosen over one that doesn't. Accepted residual, as in
+Stockfish: when several ranks mate, a low level can choose a slower mate every move and drift into a
+50-move or repetition draw.
 
 `pick_depth(l) = 1 + int(l)`; the fractional level enters only `weakness`. Both as in Stockfish.
+
+`S` is the whole set the search ranked. A user MultiPV above 4 therefore adds candidates and plays
+weaker at the same `UCI_Elo` (Stockfish too). Calibration runs at the default MultiPV.
 
 `#985`'s body describes the first term as a penalty, which is wrong: it compresses gaps (Assumption
 A1).
@@ -133,10 +150,16 @@ Rejected: a UCI seed option, which widens the public surface for tests only. Als
   recomputed whenever `setoption` changes `MultiPV` or `UCI_LimitStrength`. That is the only place
   it can change: `setoption` is idle-only, and `cmd_go` may overlap a finishing search.
 - **Iteration lines** print the user's ranks only, ranks 1..min(user N, set size), tagged exactly as
-  at that user N. The engine's real analysis stays visible, as in Stockfish.
+  at that user N. The engine's real analysis stays visible, as in Stockfish. Both the per-depth
+  observer and the final block decide the `multipv` tag from the **user's** N, not
+  `ai_->MultiPV()`, and pass only the first `user N - 1` alternatives. `UCIHandler.cpp:450` reads
+  `ai_->MultiPV()` today, and `send_ranked_info` asserts at `:110` that an untagged call has no
+  alternatives. Without the change, user N = 1 asserts in Debug and prints `multipv` tags in Release.
 - **Final block:** if the pick is not rank 1, its line swaps with rank 1, so the block's
   `multipv 1` is the picked line with its own exact score, and `bestmove` stays the block's
-  `multipv 1` move. At user N = 1 the block is the picked line alone. Stockfish also swaps the pick
+  `multipv 1` move. At user N = 1 the block is the picked line alone. When the pick ranks below the user's N, rank 1
+  moves into an unprinted slot, so the true best line drops out of the final block. That is intended:
+  the block shows what was played. Stockfish also swaps the pick
   into `rootMoves[0]` and re-sends the PV.
 - **No pick** (empty `alternatives`: one legal move, the depth-1 fallback, an emergency move, a
   terminal root) → `bestmove` is rank 1, unchanged.
@@ -170,11 +193,12 @@ reproducibility no consumer has asked for.
 - **A2: GUIs and fastchess accept a `bestmove` that differs from earlier iterations' `multipv 1`.**
   This is normal for any engine whose best move changes late, and Stockfish does it while limiting.
   Settled by the calibration slice's gauntlet (fastchess flags illegal or unexpected moves).
-- **A3: the transfer argument in D4.** Our score distribution is not Stockfish's: our eval has no
-  positional range (memory: |material| is the same at level as at +150-400). Gaps between near-best
-  moves may be smaller than Stockfish's, so a level here may play more randomly than its
-  Stockfish counterpart. Calibration absorbs this into the table. It only matters if the result is
-  non-monotone in level, which the calibration slice checks.
+- **A3: the shape of our score distribution.** Below the cap the pick depends only on gap/delta, and
+  the cap is one material pawn in both engines, so the constants carry over (domain review,
+  finding 6). What does not carry over is the shape: our eval has little positional range, so near-ties
+  may be more common. That makes the pick more random among nearly equal moves, which costs little,
+  so the direction of the effect on strength is unknown. Calibration absorbs it into the table. It
+  matters only if strength is non-monotone in level, which the calibration slice checks.
 
 ## Invariants
 
@@ -184,8 +208,9 @@ reproducibility no consumer has asked for.
 - I3. Limiting: the final block's `multipv 1` move equals `bestmove` (PR #988's contract, kept).
 - I4. Limiting, not `infinite`: `depth_completed <= pick_depth(level_for_elo(UCI_Elo))`.
 - I5. The pick never picks a candidate whose gap to rank 1 exceeds
-  `delta * weakness / (128 - weakness) + 1` (D4's bound; +1 for the truncation). A mate-scored rank 1 is always picked.
-- I6. The same seed and the same ranked set give the same pick.
+  `delta * (int(weakness) - 1) / (128 - weakness)` (D4's exact bound). A mate-scored rank 1 is always picked.
+- I6. The same seed and the same ranked set give the same pick. End to end, the same seed gives the
+  same `bestmove` only at `Threads=1`.
 - I7. `level_for_elo` is non-decreasing, clamps at both ends, and the table is strictly increasing
   (D3's contract).
 
@@ -199,7 +224,9 @@ Tier: engine code, UCI-facing.
   It covers both option lines and their `setoption` clamp/saturate/ignore cases, a start-position
   search at user N = 1 and N = 3, `go infinite` + `stop` (no cap), and a one-legal-move root.
 - I5, I6, I7: `StrengthLimitTests.cpp` (`[strength]`), pure unit tests:
-  - the bound over many seeds on synthetic sets;
+  - the bound over many seeds on synthetic sets whose spread exceeds 100 cp, so `delta` is capped.
+    With a smaller spread every gap is at most `delta`, which is under the bound at every level, so
+    the test could not fail;
   - a mate at rank 1;
   - ties;
   - a set of size 1;
