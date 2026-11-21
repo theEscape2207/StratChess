@@ -1,12 +1,14 @@
 // UCIHandler.h — UCI protocol command loop for StratChess engine.
 #pragma once
 #include <memory>
+#include <random>
 #include <string>
 #include <spdlog/spdlog.h>
 #include "GameState.h"
 #include "Board.h"
 #include "Eval.h"
 #include "SearchLimits.h"
+#include "StrengthLimit.h"
 #include "UciWriter.h"
 
 class AIPerplex;
@@ -65,6 +67,9 @@ class UciHandler {
 	void cmd_stop();
 	void cmd_setoption(std::string_view line);
 	void set_tuning_option(std::string_view name, std::string_view value);
+	void set_limit_strength(std::string_view value);
+	// The search's MultiPV: the user's, raised to StrengthLimit::kMinMultiPV while limiting.
+	void apply_multipv();
 
 	/// Routes one command line. Returns false for 'quit', which ends the loop.
 	/// Separate from run() so the routing — and the command log — are unit-testable without
@@ -82,6 +87,14 @@ class UciHandler {
 	std::unique_ptr<AIPerplex> ai_;     // never null
 	Evaluator eval_;                    // never configured, so it reports untinted scores; see Eval.h
 	std::shared_ptr<UciWriter> writer_; // never null
+
+	// UCI_LimitStrength / UCI_Elo and the MultiPV the user set; all kept across ucinewgame. While
+	// limiting the search runs at a raised MultiPV, so the user's N is kept here to decide what prints.
+	bool limit_strength_ = false;
+	int uci_elo_ = StrengthLimit::kMinElo;
+	unsigned user_multipv_ = 1;
+	// One seed per limited search is drawn from this, on the controlling thread (StrengthLimit.h).
+	std::mt19937_64 strength_rng_{std::random_device{}()};
 
 	// Null unless EnableCommandLog() succeeded. Owned here and nowhere else — it is deliberately
 	// not registered with spdlog (see Logger::CreateUciCommandLogger), so the file is closed when
