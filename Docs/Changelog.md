@@ -23,6 +23,26 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-21: UCI `UCI_LimitStrength` / `UCI_Elo` (#985)
+
+### Added
+
+- The standard UCI strength pair, for the band between the UI's beginner levels and full strength.
+  While limiting, the search ranks at least four moves, stops at the pick depth `1 + int(level)`
+  and plays Stockfish's weakened pick from that set, ported to our centipawns. Default off: the
+  search and its output are unchanged apart from the two `option` lines.
+- The Elo → level table is **provisional** (1320 → level 0, 2600 → level 19, linear); a later slice
+  calibrates it against Stockfish 19's `UCI_Elo`, replacing only the anchors and range ends.
+- Departures from Stockfish: the search stops at the pick depth instead of running on to the clock
+  (low levels move almost instantly; a delay is UI policy), and a proven mate is always played rather
+  than traded for a slower one. The policy is a pure module (`StrengthLimit`) wired in at the UCI
+  layer; the search service is untouched.
+
+### Changed
+
+- While limiting, the final `info` block before `bestmove` shows the move played as its
+  `multipv 1`, so it can differ from the last iteration's block (#94's rule holds when not limiting).
+
 ## 2026-11-21: UCI `MultiPV` (#94 slice 2)
 
 ### Added

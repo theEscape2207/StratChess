@@ -212,6 +212,14 @@ Usage, working-directory requirements and JSON examples live in
   rank 1 alone with `pv 0000`, and only an emergency move prints a final line with no block before
   it. The tag is keyed on the configured N, read once in `cmd_go`: N = 1 output carries no
   `multipv` field, which keeps every script that parses it unchanged. Tests: `UCIMultiPVTests.cpp`.
+- **While `UCI_LimitStrength` is on, the final block shows the move played.** The search ranks
+  `max(user N, 4)` moves, but the tag and the printed ranks follow the user's N, in every block.
+  When the pick is not rank 1, its line swaps with rank 1 in the final block, so `bestmove` stays the
+  block's `multipv 1` move and the block no longer equals the last iteration's; a pick ranked
+  beyond the user's N moves rank 1 out of the printed block. No alternatives (one legal move, the
+  first-depth fallback, an emergency move, a terminal root) means no pick. The seed, level and user
+  N are captured by value in `cmd_go`, because a previous search's completion can still run after
+  `IsSearching()` clears. Tests: `UCIStrengthLimitTests.cpp`, `StrengthLimitTests.cpp`.
 - **UCI stdout is the protocol channel.** General console logging stays disabled in UCI mode;
   command tracing uses the dedicated file-only logger, not the default spdlog logger. See
   [Logger.h](../StratEngine/Utils/Logger.h) and the [logging guide](EngineGuide.md#logging-and-runtime-files).

@@ -6,6 +6,7 @@
 #include "AIPerplex.h"
 #include "MoveFormatter.h"
 #include "MoveGenerator.h"
+#include "StrengthLimit.h"
 #include "Board.h"
 #include "Tools/Perft.h"
 #include "Eval.h"
@@ -113,6 +114,38 @@ namespace {
 		for (const RootLine& line : alternatives)
 			writer.send(format_uci_info(counts, rank++, line.score, line.pv));
 	}
+
+	// The first user N - 1 alternatives: a limited search ranks more moves than the user asked to see.
+	std::span<const RootLine> shown_alternatives(std::span<const RootLine> alternatives, unsigned user_multipv)
+	{
+		return alternatives.first(std::min<size_t>(alternatives.size(), user_multipv - 1));
+	}
+
+	// What a limited search's pick needs on the launch thread, captured by value in cmd_go.
+	struct StrengthPick {
+		double level = 0.0;
+		uint64_t seed = 0;
+	};
+
+	// The ranked set in reported order: rank 1, then the alternatives. A strength pick swaps into rank 1,
+	// so the final block's multipv 1 is the line played, with its own score and PV, and bestmove stays
+	// that line's move. No alternatives (one legal move, the first-depth fallback, an emergency move, a
+	// terminal root) means no pick.
+	std::vector<RootLine> reported_ranks(const SearchResult& result, const std::optional<StrengthPick>& strength)
+	{
+		std::vector<RootLine> ranks;
+		ranks.reserve(result.alternatives.size() + 1);
+		ranks.push_back({result.best_move, result.best_score, result.pv});
+		ranks.insert(ranks.end(), result.alternatives.begin(), result.alternatives.end());
+		if (strength && ranks.size() > 1) {
+			std::vector<int> scores;
+			scores.reserve(ranks.size());
+			for (const RootLine& line : ranks)
+				scores.push_back(line.score);
+			std::swap(ranks.front(), ranks[StrengthLimit::pick(scores, strength->level, strength->seed)]);
+		}
+		return ranks;
+	}
 } // namespace
 
 void UciHandler::send(std::string_view msg) const { writer_->send(msg); }
@@ -197,6 +230,9 @@ void UciHandler::cmd_uci()
 	send("option name Hash type spin default " + std::to_string(AIPerplex::DEFAULT_HASH_MB) + " min " +
 	     std::to_string(AIPerplex::MIN_HASH_MB) + " max " + std::to_string(AIPerplex::MAX_HASH_MB));
 	send("option name MultiPV type spin default 1 min 1 max " + std::to_string(AIPerplex::MAX_MULTIPV));
+	send("option name UCI_LimitStrength type check default false");
+	send("option name UCI_Elo type spin default " + std::to_string(StrengthLimit::kMinElo) + " min " +
+	     std::to_string(StrengthLimit::kMinElo) + " max " + std::to_string(StrengthLimit::kMaxElo));
 	for (const auto& option : SearchTuningSchema::UciOptionLines())
 		send(option);
 	// After uciok, not inside the block: the spec's reply to 'uci' is id + option + uciok,
@@ -443,46 +479,66 @@ SearchLimits UciHandler::search_limits_for(const GoParams& p, eColor side_to_mov
 
 void UciHandler::cmd_go(std::string_view line)
 {
-	const SearchLimits limits = search_limits_for(parse_go(line), board_.GetCurrentColor());
+	const GoParams params = parse_go(line);
+	SearchLimits limits = search_limits_for(params, board_.GetCurrentColor());
 
-	// Read here, never from the search thread. setoption is refused mid-search, so this is the N the
-	// whole search ranks.
-	const bool tag_ranks = ai_->MultiPV() > 1;
+	// Read here, never from the search thread, and captured by value: setoption is refused mid-search,
+	// but a previous search's completion can still run after IsSearching() clears. The user's N decides
+	// what prints; while limiting the search ranks at least StrengthLimit::kMinMultiPV.
+	const unsigned user_multipv = user_multipv_;
+	const bool tag_ranks = user_multipv > 1;
+	std::optional<StrengthPick> strength;
+	if (limit_strength_) {
+		const double level = StrengthLimit::level_for_elo(uci_elo_);
+		// Stop at the pick depth: once the pick is made nothing after it changes the move, so searching
+		// on (as Stockfish does) only burns the clock. 'go infinite' is analysis, not play, and is not
+		// capped; its pick uses whatever set the search ends on.
+		if (!params.infinite) {
+			const int depth = StrengthLimit::pick_depth(level);
+			limits.depth = std::min(limits.depth.value_or(depth), depth);
+		}
+		strength = StrengthPick{.level = level, .seed = strength_rng_()};
+	}
 
-	IterationObserver observer = [writer = writer_, tag_ranks](const IterationInfo& iter) {
+	IterationObserver observer = [writer = writer_, tag_ranks, user_multipv](const IterationInfo& iter) {
 		send_ranked_info(*writer, tag_ranks, {iter.depth, iter.seldepth, iter.nodes, iter.hashfull, iter.elapsed},
-		                 iter.score, iter.pv, iter.alternatives);
+		                 iter.score, iter.pv, shown_alternatives(iter.alternatives, user_multipv));
 	};
 
 	// IsSearching() is true once this returns, so a command arriving immediately after 'go' is
 	// refused, and false before the handler runs, so the 'position' a client sends the instant it
 	// reads bestmove is accepted. The callbacks hold the writer by shared_ptr, so their validity on
 	// the search thread does not depend on the handler's destruction order.
-	ai_->StartAsync(board_, limits, std::move(observer), [writer = writer_, tag_ranks](const SearchResult& result) {
-		const Move best = result.best_move;
+	ai_->StartAsync(board_, limits, std::move(observer),
+	                [writer = writer_, tag_ranks, user_multipv, strength](const SearchResult& result) {
+		                const std::vector<RootLine> ranks = reported_ranks(result, strength);
+		                const RootLine& played = ranks.front();
 
-		// 'nodes' covers both trees rather than the main tree alone, which is what the
-		// protocol means and what keeps the client's nps from charging quiescence work to
-		// the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
-		// The whole accepted set again, with the final totals, so the last block before bestmove is
-		// complete on its own; best_move is its sorted rank 1.
-		send_ranked_info(*writer, tag_ranks,
-		                 {result.depth_completed, result.seldepth, result.nodes_searched + result.qnodes_searched,
-		                  result.hashfull, result.elapsed},
-		                 result.best_score, result.pv, result.alternatives);
+		                // 'nodes' covers both trees rather than the main tree alone, which is what the
+		                // protocol means and what keeps the client's nps from charging quiescence work to
+		                // the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
+		                // The whole accepted set again, with the final totals, so the last block before bestmove is
+		                // complete on its own; its rank 1 is the move played.
+		                send_ranked_info(
+		                    *writer, tag_ranks,
+		                    {result.depth_completed, result.seldepth, result.nodes_searched + result.qnodes_searched,
+		                     result.hashfull, result.elapsed},
+		                    played.score, played.pv, shown_alternatives(std::span(ranks).subspan(1), user_multipv));
 
-		// The split, as an 'info string' so GUIs and match runners ignore it: without it a
-		// change that relocates work between the trees looks like one that simply got slower.
-		// The two must sum to 'nodes' above -- Run-Bench.ps1 refuses a run if they
-		// do not. 'main' not 'pv' because pvs() searches PV and non-PV nodes alike.
-		writer->send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
-		             std::to_string(result.qnodes_searched));
+		                // The split, as an 'info string' so GUIs and match runners ignore it: without it a
+		                // change that relocates work between the trees looks like one that simply got slower.
+		                // The two must sum to 'nodes' above -- Run-Bench.ps1 refuses a run if they
+		                // do not. 'main' not 'pv' because pvs() searches PV and non-PV nodes alike.
+		                writer->send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
+		                             std::to_string(result.qnodes_searched));
 
-		// Trigger counters; each feature decides its own wording and whether it prints.
-		result.telemetry.append_info([&writer](const std::string& payload) { writer->send("info string " + payload); });
+		                // Trigger counters; each feature decides its own wording and whether it prints.
+		                result.telemetry.append_info(
+		                    [&writer](const std::string& payload) { writer->send("info string " + payload); });
 
-		writer->send("bestmove " + (best.is_null() ? std::string("0000") : MoveFormatter::ToUCI(best)));
-	});
+		                writer->send("bestmove " +
+		                             (played.move.is_null() ? std::string("0000") : MoveFormatter::ToUCI(played.move)));
+	                });
 }
 
 // UCI has no error channel, so the refusal goes out as 'info string' -- the
@@ -549,11 +605,13 @@ void UciHandler::cmd_setoption(std::string_view line)
 	//   setoption name Threads value N
 	//   setoption name Hash value N
 	//   setoption name MultiPV value N
+	//   setoption name UCI_LimitStrength value true|false
+	//   setoption name UCI_Elo value N
 	//   setoption name <tuning option> value V   (SearchTuning.def's UCI names)
-	// An unknown option name, or a malformed/missing Threads, Hash or MultiPV value, is
+	// An unknown option name, or a malformed/missing Threads, Hash, MultiPV or UCI_Elo value, is
 	// silently ignored (standard UCI convention — same as unknown top-level
-	// commands in run()). Names are case-sensitive, matching the convention
-	// used by Stockfish and other engines.
+	// commands in run()). Names are case-sensitive and match exactly as
+	// advertised (the UCI spec leaves case open; Stockfish ignores it).
 	const auto trim = [](std::string_view s) {
 		const size_t b = s.find_first_not_of(" \t");
 		if (b == std::string_view::npos)
@@ -570,29 +628,30 @@ void UciHandler::cmd_setoption(std::string_view line)
 	const std::string_view name =
 	    trim((value_pos != std::string_view::npos) ? line.substr(name_pos + 4, value_pos - (name_pos + 4))
 	                                               : line.substr(name_pos + 4));
+	const std::string_view value =
+	    value_pos == std::string_view::npos ? std::string_view{} : trim(line.substr(value_pos + 5));
 
-	if (name != "Threads" && name != "Hash" && name != "MultiPV") {
-		set_tuning_option(name,
-		                  value_pos == std::string_view::npos ? std::string_view{} : trim(line.substr(value_pos + 5)));
+	if (name == "UCI_LimitStrength") {
+		set_limit_strength(value);
 		return;
 	}
-	if (value_pos == std::string_view::npos)
+	if (name != "Threads" && name != "Hash" && name != "MultiPV" && name != "UCI_Elo") {
+		set_tuning_option(name, value);
 		return;
-
-	const std::string_view value_str = trim(line.substr(value_pos + 5));
-	if (value_str.empty())
+	}
+	if (value.empty())
 		return;
-	for (const char c : value_str) {
+	for (const char c : value) {
 		if (c < '0' || c > '9')
 			return; // non-numeric — ignore malformed value
 	}
 
-	// Saturated rather than narrowed, so a huge value reaches each setter's own cap on every platform
+	// Saturated rather than narrowed, so a huge value reaches each option's own cap on every platform
 	// (unsigned long is 32 bits on Windows, 64 on LP64).
 	unsigned n = 0;
 	try {
 		n = static_cast<unsigned>(
-		    std::min<unsigned long long>(std::stoull(std::string(value_str)), std::numeric_limits<unsigned>::max()));
+		    std::min<unsigned long long>(std::stoull(std::string(value)), std::numeric_limits<unsigned>::max()));
 	} catch (...) {
 		return; // past unsigned long long — ignore
 	}
@@ -602,7 +661,13 @@ void UciHandler::cmd_setoption(std::string_view line)
 		return;
 	}
 	if (name == "MultiPV") {
-		ai_->SetMultiPV(n);
+		user_multipv_ = std::clamp(n, 1u, AIPerplex::MAX_MULTIPV);
+		apply_multipv();
+		return;
+	}
+	if (name == "UCI_Elo") {
+		uci_elo_ = static_cast<int>(std::clamp(n, static_cast<unsigned>(StrengthLimit::kMinElo),
+		                                       static_cast<unsigned>(StrengthLimit::kMaxElo)));
 		return;
 	}
 
@@ -618,6 +683,24 @@ void UciHandler::cmd_setoption(std::string_view line)
 
 	send("info string hash " + std::to_string(result.entry_mb) + " MiB (" + std::to_string(result.bucket_count) +
 	     " buckets)");
+}
+
+// UCI defines a check option's values as exactly 'true' and 'false'.
+void UciHandler::set_limit_strength(std::string_view value)
+{
+	if (value != "true" && value != "false") {
+		send("info string UCI_LimitStrength: value must be true or false; previous value retained");
+		return;
+	}
+	limit_strength_ = value == "true";
+	apply_multipv();
+}
+
+// Recomputed whenever MultiPV or UCI_LimitStrength changes. Both are idle-only, so the search never
+// sees the value move.
+void UciHandler::apply_multipv()
+{
+	ai_->SetMultiPV(limit_strength_ ? std::max(user_multipv_, StrengthLimit::kMinMultiPV) : user_multipv_);
 }
 
 // A recognised tuning option reports whether it was applied; any other name stays silent.

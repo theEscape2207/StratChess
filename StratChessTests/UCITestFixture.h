@@ -151,6 +151,11 @@ class UciHandlerTestFixture {
 	unsigned ai_threads() const { return AIPerlexTestFixture::configured_threads(*handler.ai_); }
 	unsigned ai_multipv() const { return handler.ai_->MultiPV(); }
 
+	bool limit_strength() const { return handler.limit_strength_; }
+	int uci_elo() const { return handler.uci_elo_; }
+	// Fixes the seeds cmd_go draws for limited searches: the next one is std::mt19937_64(seed)().
+	void reseed_strength(uint64_t seed) { handler.strength_rng_.seed(seed); }
+
 	void set_quiet_see_pruning(bool enabled) const
 	{
 		auto tuning = ai_tuning();

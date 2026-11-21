@@ -82,6 +82,17 @@ full root search, so N > 1 costs roughly N times the nodes per depth. Under a cl
 limit cuts is discarded, so N > 1 spends more time per move and reaches less depth; and the search
 stops on rank 1's mate score, so `go depth D` can end below D with every rank at that depth.
 
+`UCI_LimitStrength` (check, default `false`) with `UCI_Elo` (`1320..2600`, default 1320) plays
+below full strength. `UCI_LimitStrength` takes exactly `true` or `false`; `UCI_Elo` clamps and
+ignores bad input as `MultiPV` does; both are kept by `ucinewgame`. While limiting, the search ranks
+at least four moves (`MultiPV` raised to 4, the user's N still deciding what prints), stops at the
+pick depth `1 + int(level)`, and plays a move drawn from that set with Stockfish's weakened pick, so
+low levels answer almost instantly. `go infinite` is analysis and is not capped at the pick depth; it
+picks from whatever set it ends on, which a `stop` or a mate can leave shallower than the pick depth. The Elo scale is **provisional**: a two-point table from 1320
+(level 0) to 2600 (level 19) until a gauntlet against Stockfish 19's `UCI_Elo` calibrates it, at
+`Threads=1` and the default `MultiPV`. More threads or a higher `MultiPV` change play at the same
+`UCI_Elo`. A mate the search proved is always played, never traded for a slower one.
+
 **Game mode:** edit [game_settings.json](../StratChessEvolved/game_settings.json). Under
 `game.players.white` and `.black`, `search_limits` supplies per-move constraints (required for a
 Search player), `search_tuning` supplies search parameters, and `threads` selects worker count.
@@ -136,6 +147,10 @@ best first; the lines of one depth share its `seldepth`, `nodes`, `nps`, `hashfu
 Assemble a set by `depth` and `multipv`, ignoring other lines that may arrive between ranks. The
 final block before `bestmove` repeats the accepted set with the search's totals, and `bestmove`
 is its `multipv 1` move. At N = 1 no line carries `multipv`.
+
+While `UCI_LimitStrength` is on, the final block is the exception: the move played is swapped into
+`multipv 1` with its own score and PV, so `bestmove` is still the block's `multipv 1` move, but the
+block can differ from the last iteration's, and the true best line can drop out of it.
 
 Iteration node counts describe the main worker. Final counts include helpers and work from a
 rejected trailing iteration, so subtracting the last iteration's nodes from the final total only
@@ -299,6 +314,8 @@ The rules cover:
   documents), `stop` and `quit`;
 - the `Threads`, `Hash` and `MultiPV` options: their name, type, range and default as advertised,
   and their `setoption` behaviour;
+- the `UCI_LimitStrength` and `UCI_Elo` options, the same way, except that `UCI_Elo`'s range and
+  what each value plays like are provisional until calibrated;
 - the `info` fields that [Interpret search output](#interpret-search-output) defines;
 - the `bestmove` line.
 
