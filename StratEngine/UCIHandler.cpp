@@ -610,8 +610,8 @@ void UciHandler::cmd_setoption(std::string_view line)
 	//   setoption name <tuning option> value V   (SearchTuning.def's UCI names)
 	// An unknown option name, or a malformed/missing Threads, Hash, MultiPV or UCI_Elo value, is
 	// silently ignored (standard UCI convention — same as unknown top-level
-	// commands in run()). Names are case-sensitive, matching the convention
-	// used by Stockfish and other engines.
+	// commands in run()). Names are case-sensitive and match exactly as
+	// advertised (the UCI spec leaves case open; Stockfish ignores it).
 	const auto trim = [](std::string_view s) {
 		const size_t b = s.find_first_not_of(" \t");
 		if (b == std::string_view::npos)
@@ -646,7 +646,7 @@ void UciHandler::cmd_setoption(std::string_view line)
 			return; // non-numeric — ignore malformed value
 	}
 
-	// Saturated rather than narrowed, so a huge value reaches each setter's own cap on every platform
+	// Saturated rather than narrowed, so a huge value reaches each option's own cap on every platform
 	// (unsigned long is 32 bits on Windows, 64 on LP64).
 	unsigned n = 0;
 	try {
