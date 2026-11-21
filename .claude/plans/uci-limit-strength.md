@@ -135,8 +135,11 @@ slower mate. Likewise `[-29995, -29999]` adjusts to `[-29995, -29992]`, a faster
 
 - if `|top| >= Mate_Threshold`, the pick returns rank 1: a proven mate is played as found, and
   so is the slowest proven loss;
-- otherwise candidates with `score <= -Mate_Threshold` are dropped before the formula. A finite
-  top already beats them by the bound, so this only makes the rule explicit.
+- otherwise candidates with `score <= -Mate_Threshold` are dropped before the formula. `n` is then
+  the filtered size and `delta` uses the filtered last rank, so a mated rank no longer pins `delta`
+  at 100; a set left with rank 1 alone plays rank 1. A finite top already beats a mated rank by far
+  more than the bound, so the drop itself changes no winner; it makes the rule explicit and keeps
+  `delta` honest.
 
 Rejected: Stockfish's behaviour, which can play a slower mate each move and drift into a 50-move or
 repetition draw. A won mate thrown away reads as a bug to a human opponent, and the guard costs
@@ -285,7 +288,7 @@ Tier: engine code, UCI-facing.
     With a smaller spread every gap is at most `delta`, which is under the bound at every level, so
     the test could not fail;
   - mates: two winning mates (rank 1 always kept), two losing mates (rank 1 kept), and a finite
-    rank 1 against a losing mate (never picked);
+    rank 1 against a losing mate (never picked); `[50, 0, -29990]` gives `delta == 50`;
   - ties;
   - a set of size 1;
   - table endpoints and monotonicity, plus `level_for_elo` and `pick_depth` either side of a
