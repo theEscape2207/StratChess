@@ -175,10 +175,10 @@ Rejected: adding the rule now with a guessed fraction.
 
 ## Harvest
 
-| Decision / rationale | Lands in |
-|---|---|
-| D1: field placement, and no field at N = 1 | `Docs/EngineGuide.md` → Interpret search output; source comment in `cmd_go` |
-| D2/D3: blocks keyed by depth + multipv, final block = accepted set, `bestmove` = rank 1 | `Docs/EngineContracts.md` → Telemetry and output; source comment on the block printer |
-| D4: option range, setoption behaviour, saturation; joins the supported contract | `Docs/EngineGuide.md` → Configure a run and Supported UCI contract; comment at the parse |
-| D5: no set-start rule; #985 measures the loss | `Docs/Changelog.md` entry |
-| N > 1 under a clock spends more per move (a cut set is wasted); the mate stop can end `go depth D` below D | `Docs/EngineGuide.md` → Configure a run |
+| Decision / rationale | Lands in | Landed |
+|---|---|---|
+| D1: field placement, and no field at N = 1 | `Docs/EngineGuide.md` → Interpret search output; source comment in `cmd_go` | EngineGuide "At `MultiPV` N > 1 each depth prints"; `send_ranked_info` and `cmd_go` comments |
+| D2/D3: blocks keyed by depth + multipv, final block = accepted set, `bestmove` = rank 1 | `Docs/EngineContracts.md` → Telemetry and output; source comment on the block printer | EngineContracts "At `MultiPV` N > 1 UCI prints one `info depth` line per rank"; `send_ranked_info` and completion-handler comments |
+| D4: option range, setoption behaviour, saturation; joins the supported contract | `Docs/EngineGuide.md` → Configure a run and Supported UCI contract; comment at the parse | EngineGuide Configure a run + Supported UCI contract; "Saturated rather than narrowed" comment in `cmd_setoption`; Changelog Fixed |
+| D5: no set-start rule; #985 measures the loss | `Docs/Changelog.md` entry | Changelog 2026-11-21 slice 2 entry |
+| N > 1 under a clock spends more per move (a cut set is wasted); the mate stop can end `go depth D` below D | `Docs/EngineGuide.md` → Configure a run | EngineGuide `MultiPV` paragraph |
