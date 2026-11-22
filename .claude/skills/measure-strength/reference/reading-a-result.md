@@ -48,7 +48,8 @@ estimate (size), not an SPRT (decision).
   different windows, so set `aspiration_enabled = false` before a node delta carries a claim.
 - **Stratify a rate by the gate that produces it.** A depth-gated feature averaged over all depths
   is diluted by depth 1, and the average can invert the conclusion.
-- **A gate must be able to fail.** State the expected effect and the instrument's error at its
-  budget first; if the interval cannot exclude zero at that effect, the run is indicative.
+- **A gate must be able to fail.** Before naming a run as a gate, simulate its power: state the
+  expected effect and the instrument's error at its budget. If the interval cannot exclude zero at
+  that effect, the run is indicative.
 - **"Nothing changed" bounds the whole interval** inside a band declared before measuring. An
   interval spanning zero is unresolved, not equivalent.

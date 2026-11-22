@@ -16,7 +16,7 @@
          which proves the relink is faithful and its map describes what was benchmarked.
       2. pairs the engine's functions across both maps. Anonymous-namespace names carry a
          per-tree hash (?A0x<hash>@), so names are compared with it normalised. A function only
-         the candidate has is listed: new code, or one the baseline inlined (#990).
+         the candidate has is listed: new code, or one the baseline inlined.
       3. pins every paired function whose size is equal in both maps, in baseline address
          order, through an order file written in each tree's own names. With equal sizes in an
          equal order, every pinned function lands at the same address in both images. A size
@@ -165,19 +165,18 @@ function Get-UniqueEngineSymbol {
 function Get-UnpairedEngineFunction {
     <#
       .SYNOPSIS
-        Engine functions only one map has. One only in the candidate is new code, or one the
-        baseline inlined and the candidate calls: a per-node helper moved out of its caller's
-        file stops being inlined, and node-identical search cannot show it.
+        Engine functions only one map has, given each map's Get-UniqueEngineSymbol table. One
+        only in the candidate is new code, or one the baseline inlined and the candidate calls:
+        a per-node helper moved out of its caller's file stops being inlined, and node-identical
+        search cannot show it.
     #>
     param(
-        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$BaselinePlaced,
-        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$CandidatePlaced
+        [Parameter(Mandatory)][hashtable]$BaselineByKey,
+        [Parameter(Mandatory)][hashtable]$CandidateByKey
     )
-    $baselineByKey = Get-UniqueEngineSymbol -Placed $BaselinePlaced
-    $candidateByKey = Get-UniqueEngineSymbol -Placed $CandidatePlaced
     return [pscustomobject]@{
-        OnlyBaseline  = @($baselineByKey.Keys | Where-Object { -not $candidateByKey.ContainsKey($_) } | ForEach-Object { $baselineByKey[$_].Name } | Sort-Object)
-        OnlyCandidate = @($candidateByKey.Keys | Where-Object { -not $baselineByKey.ContainsKey($_) } | ForEach-Object { $candidateByKey[$_].Name } | Sort-Object)
+        OnlyBaseline  = @($BaselineByKey.Keys | Where-Object { -not $CandidateByKey.ContainsKey($_) } | ForEach-Object { $BaselineByKey[$_].Name } | Sort-Object)
+        OnlyCandidate = @($CandidateByKey.Keys | Where-Object { -not $BaselineByKey.ContainsKey($_) } | ForEach-Object { $CandidateByKey[$_].Name } | Sort-Object)
     }
 }
 
@@ -451,7 +450,7 @@ function Invoke-SelfTest {
         (($orderEntries | ForEach-Object { "$($_.BaselineName):$($_.Resized)" }) -join ',') "${pvs}:False,?anon@?A0x11111111@@YAXXZ:False,${qs}:True"
     Assert-Equal "each order file lists the tree's own names" `
         (($orderEntries | ForEach-Object { $_.CandidateName }) -join ',') "$pvs,?anon@?A0x22222222@@YAXXZ,$qs"
-    $unpaired = Get-UnpairedEngineFunction -BaselinePlaced @(Get-SymbolPlacement -Symbol $baseline) -CandidatePlaced @(Get-SymbolPlacement -Symbol $candidate)
+    $unpaired = Get-UnpairedEngineFunction -BaselineByKey (Get-UniqueEngineSymbol -Placed @(Get-SymbolPlacement -Symbol $baseline)) -CandidateByKey (Get-UniqueEngineSymbol -Placed @(Get-SymbolPlacement -Symbol $candidate))
     Assert-Equal 'a function only the baseline has is listed; funclets, labels and duplicates are not' ($unpaired.OnlyBaseline -join ',') '?gone@@YAXXZ'
     Assert-Equal 'a function only the candidate has is listed' ($unpaired.OnlyCandidate -join ',') '?new@@YAXXZ'
 
@@ -680,8 +679,9 @@ foreach ($arm in $arms.Keys) {
 $orderEntries = @(Get-OrderEntry -BaselinePlaced $placed['baseline'] -CandidatePlaced $placed['candidate'])
 if ($orderEntries.Count -eq 0) { throw 'No engine function pairs across the two maps; nothing to pin.' }
 
+$baselineKey = Get-UniqueEngineSymbol -Placed $placed['baseline']
 $candidateKey = Get-UniqueEngineSymbol -Placed $placed['candidate']
-$pairedCount = @((Get-UniqueEngineSymbol -Placed $placed['baseline']).Keys | Where-Object { $candidateKey.ContainsKey($_) }).Count
+$pairedCount = @($baselineKey.Keys | Where-Object { $candidateKey.ContainsKey($_) }).Count
 $resizedHot = @($orderEntries | Where-Object { $_.Resized })
 $spacers = @($orderEntries | Where-Object { $_.Spacer })
 $pinnedOnlyCount = $orderEntries.Count - $resizedHot.Count - $spacers.Count
@@ -690,7 +690,7 @@ Write-Host "==> Relinking with a shared order ($pinnedOnlyCount of $pairedCount 
 foreach ($spacer in $spacers) {
     Write-Host ('  spacer in {0}: {1} ({2} bytes)' -f $spacer.Spacer, $spacer.BaselineName, $spacer.Size) -ForegroundColor DarkGray
 }
-$unpaired = Get-UnpairedEngineFunction -BaselinePlaced $placed['baseline'] -CandidatePlaced $placed['candidate']
+$unpaired = Get-UnpairedEngineFunction -BaselineByKey $baselineKey -CandidateByKey $candidateKey
 foreach ($name in $unpaired.OnlyCandidate) {
     Write-Host "  only in candidate: $name (new, or inlined in the baseline: a per-node one costs a call per node)" -ForegroundColor Yellow
 }
@@ -741,8 +741,7 @@ $metadata = [ordered]@{
     pinnedCount  = $verdict.PinnedCount
     matchedCount = $verdict.MatchedCount
     resizedHot   = @($resizedHot | ForEach-Object { $_.BaselineName })
-    onlyBaseline  = $unpaired.OnlyBaseline
-    onlyCandidate = $unpaired.OnlyCandidate
+    unpaired     = [ordered]@{ onlyBaseline = $unpaired.OnlyBaseline; onlyCandidate = $unpaired.OnlyCandidate }
     spacers      = @($spacers | ForEach-Object { [ordered]@{ name = $_.BaselineName; size = $_.Size; listedIn = $_.Spacer } })
     hotFunction  = @($verdict.HotFunction | ForEach-Object {
             [ordered]@{ label = $_.Label; baselineAddress = $_.BaselineAddress; candidateAddress = $_.CandidateAddress; ok = $_.Ok } })
