@@ -61,6 +61,18 @@ namespace {
 
 } // namespace
 
+bool AIPerplex::poll_search_limits(ThreadData& td)
+{
+	// Helpers never even reach the ++, so their nodes_since_check stays at 0 for the whole
+	// search. They do still call StopRequested() elsewhere — search_with_aspiration() at
+	// every retry boundary, and pvs()'s LMR re-search guard — so this gate bounds how often
+	// the clock is read, not which threads read it.
+	if (td.thread_id != 0 || (++td.nodes_since_check & 1023) != 0)
+		return false;
+
+	return control_.StopRequested() || control_.NodeLimitReached(td.nodes_searched + td.qnodes_searched);
+}
+
 namespace {
 	// Whether a TT entry already resolves a node searched under (alpha, beta). Cutoff only: pvs() and
 	// quiescence() never use an entry to narrow the window -- see the comments at their probes.

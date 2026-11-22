@@ -27,10 +27,11 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
 ### Changed
 
-- `AIPerplex`'s root driver (`Search()`, iterative deepening, the multi-PV root set, aspiration,
-  limit polling and the empty-move emergency) moved to `AIPerplexRoot.cpp`. The class and the
-  search are unchanged. `AIPerplex.cpp` now holds node search, the pruning predicates and the
-  draw/score helpers, about 1,490 lines.
+- `AIPerplex`'s root driver (`Search()`, iterative deepening, the multi-PV root set, aspiration
+  and the empty-move emergency) moved to `AIPerplexRoot.cpp`. The class and the search are
+  unchanged. `AIPerplex.cpp` now holds node search, the pruning predicates and the draw/score
+  helpers, about 1,500 lines. `poll_search_limits()` stays with `pvs()` and `quiescence()`, its
+  only callers: in another file ThinLTO stops inlining it, which adds a call on every node.
 
 ## 2026-11-22: AIPerplex file split, slice 1: telemetry and lifecycle (#990)
 

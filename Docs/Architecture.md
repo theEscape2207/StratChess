@@ -119,18 +119,17 @@ explains the robustness goal.
 ### Search mechanism index
 
 `AIPerplex`'s member definitions span four files. [AIPerplex.cpp](../StratEngine/AIPerplex.cpp) holds
-node search, pruning predicates and draw/score helpers.
+node search, per-node limit polling, pruning predicates and draw/score helpers.
 [AIPerplexRoot.cpp](../StratEngine/AIPerplexRoot.cpp) holds the root driver: `Search`, iterative
-deepening, the multi-PV root set, aspiration windows, limit polling and the empty-move emergency.
+deepening, the multi-PV root set, aspiration windows and the empty-move emergency.
 [AIPerplexLifecycle.cpp](../StratEngine/AIPerplexLifecycle.cpp) holds construction, the async launch
 handshake, configuration, new-game reset and the Lazy SMP helper loop.
 [AIPerplexTelemetry.cpp](../StratEngine/AIPerplexTelemetry.cpp) holds the verbose logger and the
 iteration observer feed.
 
-This is navigation into those files, not a second catalogue of
-defaults or algorithms. Tuning field families below are defined in
-[SearchTuning.def](../StratEngine/SearchTuning.def); eligibility and correctness guards remain in
-the implementation and [search contracts](EngineContracts.md#search-internals).
+This is navigation into those files, not a second catalogue of defaults or algorithms. Tuning field
+families below are defined in [SearchTuning.def](../StratEngine/SearchTuning.def); eligibility and
+correctness guards remain in the implementation and [search contracts](EngineContracts.md#search-internals).
 
 | Mechanism | Implementation entry | Control / related state |
 |---|---|---|
@@ -159,7 +158,7 @@ and node limit, every 1024 calls; the node limit uses that worker's combined mai
 Helpers also call `StopRequested()` at aspiration retry boundaries and the LMR re-search guard,
 so they can observe hard-clock expiry directly. All workers use `IsAborted()` to read the shared
 stop latch without a clock call. See [SearchControl.cpp](../StratEngine/SearchControl.cpp) and
-`poll_search_limits` in [AIPerplexRoot.cpp](../StratEngine/AIPerplexRoot.cpp).
+`poll_search_limits` in [AIPerplex.cpp](../StratEngine/AIPerplex.cpp).
 
 ## 3. State ownership and lifetimes
 

@@ -25,8 +25,9 @@ Read the live sources first; the engine moves faster than any checklist:
 
 - `StratEngine/SearchTuning.def` — every search feature, its default and its gate.
 - `Docs/EngineContracts.md` → Search internals — the non-obvious contracts.
-- The touched region of `AIPerplex.cpp` (`pvs()`, `quiescence()`, the `*_eligible()` helpers),
-  plus `Sort.cpp` and `ThreadData.h` for ordering and history.
+- The touched region of `AIPerplex.cpp` (`pvs()`, `quiescence()`, the `*_eligible()` helpers) or
+  `AIPerplexRoot.cpp` (iterative deepening, aspiration, the multi-PV root set), plus `Sort.cpp` and
+  `ThreadData.h` for ordering and history.
 - `Measurements/` for what earlier attempts at the same idea measured.
 - Earlier domain reviews of the same area: grep `../StratChessSupport/DesignRecords/*.domain-review.md`
   for the tag (`Domain: search/lmr`). Reuse a finding that still holds at the baseline, citing it.

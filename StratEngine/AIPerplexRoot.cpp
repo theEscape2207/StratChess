@@ -10,8 +10,8 @@
 #include <spdlog/logger.h>
 
 // The AIPerplex root driver: Search() and its Lazy SMP helper spawn, iterative deepening, the
-// multi-PV root set, aspiration windows, limit polling and the empty-move emergency. Node search
-// (pvs(), quiescence()) stays in AIPerplex.cpp.
+// multi-PV root set, aspiration windows and the empty-move emergency. Node search (pvs(),
+// quiescence()) and its per-node limit polling stay in AIPerplex.cpp.
 
 namespace {
 	template <typename Function> class ScopeExit final {
@@ -375,18 +375,6 @@ bool AIPerplex::search_root_set(ThreadData& td, int depth, int rank_count, const
 #endif
 	td.pv_table.set_line(0, set.front().pv);
 	return true;
-}
-
-bool AIPerplex::poll_search_limits(ThreadData& td)
-{
-	// Helpers never even reach the ++, so their nodes_since_check stays at 0 for the whole
-	// search. They do still call StopRequested() elsewhere — search_with_aspiration() at
-	// every retry boundary, and pvs()'s LMR re-search guard — so this gate bounds how often
-	// the clock is read, not which threads read it.
-	if (td.thread_id != 0 || (++td.nodes_since_check & 1023) != 0)
-		return false;
-
-	return control_.StopRequested() || control_.NodeLimitReached(td.nodes_searched + td.qnodes_searched);
 }
 
 // ============================================================================
