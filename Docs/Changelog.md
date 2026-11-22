@@ -23,6 +23,20 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-22: AIPerplex file split, slice 1: telemetry and lifecycle (#990)
+
+### Changed
+
+- `AIPerplex`'s lifecycle members (construction, the launch handshake, configuration, new-game reset,
+  the Lazy SMP helper loop) moved to `AIPerplexLifecycle.cpp`, and its logging and observer feed to
+  `AIPerplexTelemetry.cpp`. The class and the search are unchanged, so a node-search change reads
+  about 350 fewer lines.
+- The telemetry file now owns the verbose logger outright. `Search()`, `iterative_deepening()` and
+  the constructor reach it through three private `log_*`-style members, so no other file touches
+  it.
+- `New-PullRequest.ps1` and `open-pull-request` now route every `AIPerplex*.cpp/.h` file to
+  `search-reviewer`, not just `AIPerplex.cpp/.h`.
+
 ## 2026-11-21: UCI `UCI_LimitStrength` / `UCI_Elo` (#985)
 
 ### Added
