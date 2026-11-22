@@ -23,6 +23,15 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-22: AIPerplex file split, slice 2: root driver (#990)
+
+### Changed
+
+- `AIPerplex`'s root driver (`Search()`, iterative deepening, the multi-PV root set, aspiration,
+  limit polling and the empty-move emergency) moved to `AIPerplexRoot.cpp`. The class and the
+  search are unchanged. `AIPerplex.cpp` now holds node search, the pruning predicates and the
+  draw/score helpers, about 1,490 lines.
+
 ## 2026-11-22: AIPerplex file split, slice 1: telemetry and lifecycle (#990)
 
 ### Changed

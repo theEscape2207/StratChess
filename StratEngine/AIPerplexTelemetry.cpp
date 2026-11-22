@@ -27,7 +27,7 @@ namespace {
 	// helper thread starts. Helper threads run the same search_with_aspiration()
 	// code path as the main thread and reach the same log_* call sites, but
 	// those calls are gated on `td.thread_id == 0` (see search_with_aspiration()
-	// in AIPerplex.cpp), so only the main thread ever actually logs; s_logger remains
+	// in AIPerplexRoot.cpp), so only the main thread ever actually logs; s_logger remains
 	// read-only (already-initialized-or-null) from every thread's perspective.
 	// If a future revision lets helper threads log too, ensure_logger_initialized()
 	// must be made safe to call concurrently (e.g. via std::call_once) first.
