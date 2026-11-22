@@ -8,38 +8,16 @@
 #include "See.h"
 #include "SearchTuningSchema.h"
 #include "Sort.h"
-#include "Utils/Logger.h"
 #include "defines.h"
 #include "MoveHelper.h"
 #include "MoveFormatter.h"
 #include <cmath>
 #include <cstring>
 #include <iterator>
-#include <new>
 #include <spdlog/common.h>
 #include <spdlog/logger.h>
-#include <spdlog/sinks/basic_file_sink.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
 
 namespace {
-	// Lazy SMP thread-safety: s_logger's sinks
-	// (stdout_color_sink_mt, basic_file_sink_mt — see ensure_logger_initialized()
-	// below, and the equivalent _mt sinks in Utils/Logger.cpp's default/perf
-	// loggers) are all spdlog "_mt" thread-safe variants, so concurrent log
-	// calls from multiple threads would be safe at the sink level. That said,
-	// s_logger itself and ensure_logger_initialized()'s lazy-init (a plain
-	// `if (s_logger) return;` check, not a magic static) are NOT safe to race:
-	// initialization only ever happens from the constructor during
-	// single-threaded AIPerplex setup before any search or
-	// helper thread starts. Helper threads run the same search_with_aspiration()
-	// code path as the main thread and reach the same log_* call sites, but
-	// those calls are gated on `td.thread_id == 0` (see search_with_aspiration()
-	// below), so only the main thread ever actually logs; s_logger remains
-	// read-only (already-initialized-or-null) from every thread's perspective.
-	// If a future revision lets helper threads log too, ensure_logger_initialized()
-	// must be made safe to call concurrently (e.g. via std::call_once) first.
-	std::shared_ptr<spdlog::logger> s_logger = nullptr;
-
 	// Both quiescence pruners -- delta and SEE -- assume the evaluation is ADDITIVE IN
 	// MATERIAL: that a child's value is this node's score plus the material the move wins.
 	// The endgame scale is a MULTIPLIER on the whole score, so a capture that
@@ -91,36 +69,6 @@ namespace {
 		Function function_;
 	};
 
-	void ensure_logger_initialized()
-	{
-		// ensure the general default logger is initialized first (no-op if already)
-		Engine::Logger::InitDefault();
-		if (s_logger)
-			return;
-
-		// create AIPerplex specific logger if desired
-		// Use spdlog directly via Engine::Logger utilities
-		if (!Engine::Logger::GetLogger("AIPerplex")) {
-			try {
-				// add both console and file sinks (file sink keeps a record for diagnostics)
-				const auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-				console_sink->set_level(spdlog::level::info);
-				console_sink->set_pattern("%T.%e %^%l%$: %v");
-				const auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/aiperplex.log", true);
-				file_sink->set_level(spdlog::level::debug);
-				file_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
-
-				s_logger =
-				    std::make_shared<spdlog::logger>("AIPerplex", spdlog::sinks_init_list{console_sink, file_sink});
-
-				spdlog::register_logger(s_logger);
-				s_logger->set_level(spdlog::level::debug);
-				s_logger->flush_on(spdlog::level::debug);
-			} catch (...) { // NOLINT(bugprone-empty-catch) - best-effort logger init
-			}
-		}
-	}
-
 	// Whether `move`, read on the board before it is made, puts `side`'s pawn one step from promotion.
 	bool pawn_push_to_seventh(const Board& board, const Move& move, eColor side) noexcept
 	{
@@ -129,215 +77,6 @@ namespace {
 	}
 
 } // namespace
-
-AIPerplex::AIPerplex(AIPerplexConfig config)
-    : control_(config.default_depth, config.default_time), tuning_(config.tuning),
-      threads_(std::clamp(config.threads, 1u, MAX_THREADS)), verbose_logging_(config.verbose_logging)
-{
-	if (const auto error = SearchTuningSchema::Validate(tuning_))
-		throw std::invalid_argument("SearchTuning." + error->field + ": " + error->message);
-	tt_ = std::make_unique<TranspositionTable>(std::clamp(config.hash_mb, MIN_HASH_MB, MAX_HASH_MB));
-	try {
-		if (verbose_logging_) {
-			ensure_logger_initialized();
-			if (s_logger)
-				s_logger->set_level(spdlog::level::debug);
-		}
-	} catch (...) { // NOLINT(bugprone-empty-catch) - best-effort logger setup
-	}
-}
-
-AIPerplex::~AIPerplex() { StopAndWait(); }
-
-void AIPerplex::arm_search_launch() noexcept
-{
-	const std::lock_guard<std::mutex> lock(stop_mutex_);
-	stop_pending_ = false;
-	search_launch_active_ = true;
-}
-
-void AIPerplex::Stop() noexcept
-{
-	{
-		const std::lock_guard<std::mutex> lock(stop_mutex_);
-		if (search_launch_active_)
-			stop_pending_ = true;
-	}
-	control_.Stop();
-}
-
-void AIPerplex::finish_search_launch() noexcept
-{
-	const std::lock_guard<std::mutex> lock(stop_mutex_);
-	search_launch_active_ = false;
-	stop_pending_ = false;
-}
-
-bool AIPerplex::IsSearching() const noexcept
-{
-	const std::lock_guard<std::mutex> lock(stop_mutex_);
-	return search_launch_active_;
-}
-
-// Join before arm: the handshake flags are not per launch, so a previous Search() still unwinding
-// would clear a fresh arm through its launch_guard, losing a stop and misreporting IsSearching().
-void AIPerplex::StartAsync(const Board& root, const SearchLimits& limits, IterationObserver observer,
-                           CompletionHandler on_done)
-{
-	StopAndWait();
-	arm_search_launch();
-	try {
-		launch_thread_ = std::jthread(
-		    [this, root_copy = root, limits, observer = std::move(observer), on_done = std::move(on_done)]() mutable {
-#ifdef STRAT_ENABLE_TEST_ACCESS
-			    if (launch_barrier_)
-				    launch_barrier_();
-#endif
-			    // No catch: an exception escaping Search() terminates, as a lost bestmove would be worse.
-			    const SearchResult result = Search(root_copy, limits, std::move(observer));
-			    // Search() has returned, so IsSearching() is already false here: a client reading the
-			    // bestmove that on_done sends can issue its next position at once.
-			    if (on_done) {
-				    in_completion_handler_ = true;
-				    on_done(result);
-				    in_completion_handler_ = false;
-			    }
-		    });
-	} catch (...) {
-		// Otherwise the engine would refuse commands for the rest of the session.
-		finish_search_launch();
-		throw;
-	}
-}
-
-void AIPerplex::StopAndWait()
-{
-	Stop();
-	Wait();
-}
-
-void AIPerplex::Wait()
-{
-	assert_not_in_completion_handler();
-	if (launch_thread_.joinable())
-		launch_thread_.join();
-}
-
-// Callers must ensure no search is using tt_. Constructing the replacement
-// before assigning it retains the old table if allocation fails.
-AIPerplex::HashConfigurationResult AIPerplex::SetHash(unsigned mb) noexcept
-{
-	assert_not_in_completion_handler();
-	const unsigned requested = std::clamp(mb, MIN_HASH_MB, MAX_HASH_MB);
-	try {
-		auto replacement = std::make_unique<TranspositionTable>(requested);
-		const HashConfigurationResult result{true, requested, replacement->memory_mb(), replacement->bucket_count()};
-		tt_ = std::move(replacement);
-		return result;
-	} catch (const std::bad_alloc&) {
-		return {false, requested, 0, 0};
-	}
-}
-
-std::optional<SearchTuningSchema::TuningError> AIPerplex::SetTuning(const SearchTuning& tuning)
-{
-	assert_not_in_completion_handler();
-	if (auto error = SearchTuningSchema::Validate(tuning))
-		return error;
-	if (tuning != tuning_) {
-		tuning_ = tuning;
-		(void)tt_->clear();
-		// The table is empty, so the contempt context describing its contents is stale. Without
-		// this the next Search() would compare against a pair for entries that no longer exist and
-		// clear an already-empty table. This is also why a contempt MAGNITUDE change cannot reach
-		// Search() with a populated table by any supported route — the guard there covers it as
-		// defence in depth, not as the live path.
-		tt_contempt_context_.reset();
-	}
-	return std::nullopt;
-}
-
-// Resets every piece of per-game state so that a persisting AIPerplex is
-// equivalent to a freshly-constructed one, without paying for a rebuild.
-// What is deliberately NOT reset here:
-//   - threads_    : caller configuration, not per-game state.
-//   - tuning_     : caller configuration, not accumulated search state --
-//                   CreatePlayer() applies game_settings.json's search_tuning
-//                   while constructing this service, then starts its first
-//                   game. Resetting tuning_ here would silently discard those
-//                   configured overrides.
-//   - the evaluator: its one member is the drawn score pair, which Search()
-//                    rewrites before every search, so nothing accumulates
-//                    across games (see the sharing contract in Eval.h).
-//   - each thread's pawn_cache: every entry is a pure function of its key, so
-//                    nothing in it can be stale across games (PawnCache.h).
-void AIPerplex::StartNewGame()
-{
-	assert_not_in_completion_handler();
-	(void)tt_->clear();
-	td_.reset_for_new_game();
-	// Lazily resized in Search() (`if (helper_tds_.size() < threads - 1)`),
-	// so clearing it forces fresh ThreadData construction -- with the
-	// correct thread_id reassigned -- on the next search, rather than
-	// reusing helpers whose killers/history carry over from the last game.
-	helper_tds_.clear();
-	// The table just went away, so the contempt context it was filled under has to go with it —
-	// otherwise the next search matches against a pair describing entries that no longer exist.
-	tt_contempt_context_.reset();
-	++game_generation_;
-}
-
-// Resets td_'s per-search state. Move-ordering state (killers, history) is
-// handled inside iterative_deepening(); history deliberately survives across
-// moves (aged, never cleared).
-void AIPerplex::init_search(const Board& root)
-{
-	td_.board = root; // thread-local copy — the search runs on this
-	// After the copy, which carries root's target. Search() resets it after the helpers join.
-	td_.board.SetPrefetchTarget(tt_->prefetch_target());
-	td_.nodes_searched = 0;
-	td_.qnodes_searched = 0;
-	// Per-call like the node counters: the reported trigger rate belongs to this search.
-	td_.telemetry.reset();
-	td_.pv_table = PVTable{}; // fresh PV for this call
-	td_.root_game_state = GameStates::STILL_PLAYING;
-}
-
-// Every board the search bound goes back to the dummy target. Skips a helper slot a failed
-// allocation left empty.
-void AIPerplex::reset_prefetch_targets() noexcept
-{
-	td_.board.SetPrefetchTarget({});
-	for (const auto& htd : helper_tds_)
-		if (htd)
-			htd->board.SetPrefetchTarget({});
-}
-
-// Lazy SMP helper thread entry point (plain iterative deepening, no quality
-// gates — see the declaration comment in AIPerplex.h). Runs entirely on its
-// own ThreadData; touches nothing shared except the TT (already thread-safe)
-// and the atomic abort flag it reads via IsAborted(). Calls the same
-// search_with_aspiration() aspiration-window logging as the main thread, but
-// those log_* calls are gated on `td.thread_id == 0` inside
-// search_with_aspiration(), so helper threads never actually log. Never
-// reports a move — its result is discarded by design; only the main
-// thread's search result is authoritative.
-void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& tt)
-{
-	// Helpers run plain N = 1 searches; only the main thread ranks root moves.
-	assert(td.root_excluded_count == 0);
-	// On the helper's own thread, so the helpers age their continuation tables in parallel.
-	td.begin_search(tuning_.continuation_history_plies > 0);
-	int seed_score = 0;
-	for (int depth = 1; depth <= max_depth; ++depth) {
-		if (control_.IsAborted())
-			break;
-		const int score = search_with_aspiration(td, depth, seed_score, tt);
-		if (control_.IsAborted())
-			break; // partial iteration — discard score
-		seed_score = score;
-	}
-}
 
 SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, IterationObserver observer)
 {
@@ -492,12 +231,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	if (best_move.is_null())
 		return result;
 
-	// Success logging
-	if (verbose_logging_ && s_logger) {
-		s_logger->info("GetMove complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
-		               MoveFormatter::ToCoord(best_move), result.best_score, result.depth_completed,
-		               result.elapsed.count(), total_nodes, result.search_was_stable ? "yes" : "NO");
-	}
+	log_search_result(result);
 	return result;
 }
 
@@ -601,8 +335,8 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			    Engine::continue_iteration(assessment, control_.ShouldStopIteration(soft_percent));
 			state = continuation.next_state;
 			continue_search = continuation.stop_reason == Engine::IterationStopReason::NONE;
-			if (continuation.stop_reason == Engine::IterationStopReason::MATE && verbose_logging_ && s_logger)
-				s_logger->info("Mate found at depth {}, stopping iteration", depth);
+			if (continuation.stop_reason == Engine::IterationStopReason::MATE)
+				log_mate_stop(depth);
 			break;
 		}
 		case Engine::IterationDisposition::ACCEPTED_INTERRUPTED:
@@ -2035,79 +1769,6 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 // ============================================================================
 // Killer/history/null-flag maintenance lives on ThreadData (ThreadData.h).
 
-void AIPerplex::log_iteration_eval(const Engine::IterationMetrics& metrics, const PVTable& pv_table) const
-{
-	if (!verbose_logging_ || !s_logger)
-		return;
-	if (!s_logger->should_log(spdlog::level::debug))
-		return;
-
-	// Build PV string
-	std::string pv_line;
-	pv_line.reserve(80);
-	const int display_length = std::min(metrics.pv_length, 6);
-	for (int i = 0; i < display_length; ++i) {
-		if (i)
-			pv_line += ", ";
-		pv_line += MoveFormatter::ToCoord(pv_table.get_line(0)[i]);
-	}
-	if (metrics.pv_length > display_length) {
-		pv_line += " ...";
-	}
-
-	s_logger->debug("D{:>2} EVAL: move={:<8} score={:>6} (Δ{:>+5}) nodes={:>8} ({:>3}%) "
-	                "pv={:>2} int={} chg={} PV:[{}]",
-	                metrics.depth,
-	                metrics.current_move.is_null() ? "EMPTY" : MoveFormatter::ToCoord(metrics.current_move),
-	                metrics.current_score, metrics.score_delta, metrics.nodes_searched,
-	                static_cast<int>(metrics.completion_ratio * 100), metrics.pv_length,
-	                metrics.interrupted ? "Y" : "N", metrics.move_changed ? "Y" : "N", pv_line);
-}
-
-void AIPerplex::log_rejection(int depth, Engine::RejectionReason reason, const Engine::IterationMetrics& metrics,
-                              const Engine::IterationState& state) const
-{
-	if (!verbose_logging_ || !s_logger)
-		return;
-
-	switch (reason) {
-	case Engine::RejectionReason::INCOMPLETE:
-		s_logger->debug("Depth {:>2}: REJECTED[R1:INCOMPLETE] (nodes={}, move={}) - Using depth {}", depth,
-		                metrics.nodes_searched, metrics.current_move.is_null() ? "EMPTY" : "ok", state.depth_completed);
-		break;
-
-	case Engine::RejectionReason::TOO_FEW_NODES:
-		s_logger->debug("Depth {:>2}: REJECTED[R2:TOO_FEW_NODES] ({} = {:.0f}% of D{}) - using depth {}", depth,
-		                metrics.nodes_searched, metrics.completion_ratio * 100, state.depth_completed,
-		                state.depth_completed);
-		break;
-
-	case Engine::RejectionReason::SHORT_PV:
-		s_logger->debug("Depth {:>2}: REJECTED[R3:SHORT_PV] (pv={} vs depth={}) - using depth {}", depth,
-		                metrics.pv_length, depth, state.depth_completed);
-		break;
-
-	case Engine::RejectionReason::MOVE_CHANGED:
-		s_logger->debug("Depth {:>2}: REJECTED[R4:MOVE_CHANGED] ({} → {}) - Using depth {}", depth,
-		                MoveFormatter::ToCoord(state.last_iteration_move), MoveFormatter::ToCoord(metrics.current_move),
-		                state.depth_completed);
-		break;
-
-	default:
-		break;
-	}
-}
-
-void AIPerplex::log_acceptance(const Engine::IterationMetrics& metrics) const
-{
-	if (!verbose_logging_ || !s_logger)
-		return;
-
-	// Noteworthy so Info
-	s_logger->info("Depth {:>2}: ACCEPTED[INTERRUPTED] (nodes={}, score={}, pv={})", metrics.depth,
-	               metrics.nodes_searched, metrics.current_score, metrics.pv_length);
-}
-
 bool AIPerplex::has_two_non_pawn_pieces(const Board& board)
 {
 	const eColor side = board.GetCurrentColor();
@@ -2309,91 +1970,4 @@ bool AIPerplex::handle_empty_move_emergency(ThreadData& td, Engine::IterationSta
 
 	log.critical("No legal moves - game is over");
 	return false;
-}
-
-void AIPerplex::log_search_complete(const Engine::IterationState& state, const PVTable& pv_table) const
-{
-	if (!verbose_logging_ || !s_logger)
-		return;
-
-	if (state.best_move.is_null() || pv_table.get_length(0) == 0) {
-		return;
-	}
-
-	s_logger->info("Search complete: depth={}, score={}, move={}, nodes={}, stable={}", state.depth_completed,
-	               state.best_score, MoveFormatter::ToCoord(state.best_move), state.nodes_at_completed_depth,
-	               state.search_was_stable ? "yes" : "NO");
-}
-
-void AIPerplex::log_completed_iteration(const Engine::IterationMetrics& metrics, const PVTable& pv_table) const
-{
-	if (!verbose_logging_ || !s_logger)
-		return;
-	if (!s_logger->should_log(spdlog::level::info))
-		return;
-
-	std::string pv_line;
-	pv_line.reserve(128);
-	const int display_length = std::min(metrics.pv_length, 10);
-	for (int i = 0; i < display_length; ++i) {
-		if (i)
-			pv_line += ", ";
-		pv_line += MoveFormatter::ToCoord(pv_table.get_line(0)[i]);
-	}
-
-	s_logger->info("Depth {:>2}: Score: {:>6} Nodes: {:>8} PV[{}]: {} {}", metrics.depth, metrics.current_score,
-	               metrics.nodes_searched, metrics.pv_length, pv_line,
-	               (metrics.move_changed && metrics.depth > 1) ? "(!)" : "");
-}
-
-void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, uint8_t search_start_age,
-                                    std::span<const RootLine> alternatives, const IterationObserver& observer) const
-{
-	// The PV of an accepted iteration, asserted before anything reads it: a line spliced out
-	// of two different subtrees replays illegally at the ply where the positions diverge.
-	// td.board is back at the search root by the time an iteration is accepted, on the abort
-	// path as much as the completed one. Checked ahead of the observer test because the
-	// accepted line is what the search logs and what its first move is played from, whether
-	// or not a UCI client is listening. Debug only — truncating a bad line in Release would
-	// guarantee no GUI ever complains again while hiding whatever produced it, which is the
-	// opposite of what this is for.
-	assert(pv_replays_legally(td.board, std::span<const Move>(td.pv_table.get_line(0).data(),
-	                                                          static_cast<size_t>(td.pv_table.get_length(0)))));
-
-	if (!observer)
-		return;
-
-	// Main-thread cumulative nodes; see IterationInfo for why this need not equal Search()'s
-	// final total. A progress indicator, not a decision input.
-	const int length = td.pv_table.get_length(0);
-	const auto& line = td.pv_table.get_line(0);
-
-	IterationInfo iter;
-	iter.depth = depth;
-	iter.seldepth = td.seldepth;
-	iter.score = score;
-	iter.nodes = td.nodes_searched + td.qnodes_searched;
-	iter.hashfull = tt_->hashfull(search_start_age);
-	iter.elapsed = control_.Elapsed();
-	iter.pv.assign(line.begin(), line.begin() + length);
-	iter.alternatives.assign(alternatives.begin(), alternatives.end());
-
-	observer(iter);
-}
-
-void AIPerplex::log_aspiration_retry(int depth, int retry, int score, int alpha, int beta, bool fail_low) const
-{
-	if (!verbose_logging_ || !s_logger)
-		return;
-
-	s_logger->debug("D{:>2} ASPIRATION: {} retry {} score={:>6} new window=[{:>7},{:>7}]", depth,
-	                fail_low ? "FAIL-LOW " : "FAIL-HIGH", retry, score, alpha, beta);
-}
-
-void AIPerplex::log_aspiration_full_window(int depth, int max_retries) const
-{
-	if (!verbose_logging_ || !s_logger)
-		return;
-
-	s_logger->debug("D{:>2} ASPIRATION: max retries ({}) reached, opening full window", depth, max_retries);
 }
