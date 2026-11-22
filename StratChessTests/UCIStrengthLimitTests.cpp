@@ -16,8 +16,8 @@
 namespace {
 	constexpr const char* kKiwipete = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
-	// Level 4.0094 under the provisional table: the pick depth is 5.
-	constexpr int kElo = 1590;
+	// The calibrated anchor for level 4.0078: the pick depth is 5.
+	constexpr int kElo = 1315;
 	constexpr int kPickDepth = 5;
 
 	std::string go(UciHandlerTestFixture& fix, const std::string& command)
@@ -109,7 +109,7 @@ TEST_CASE("Strength options: advertised after MultiPV", "[uci][strength]")
 	UciHandlerTestFixture fix;
 	const std::string output = fix.capture([&] { fix.uci(); });
 	const size_t check = output.find("option name UCI_LimitStrength type check default false\n");
-	const size_t spin = output.find("option name UCI_Elo type spin default 1320 min 1320 max 2600\n");
+	const size_t spin = output.find("option name UCI_Elo type spin default 907 min 907 max 2355\n");
 	REQUIRE(check != std::string::npos);
 	REQUIRE(spin != std::string::npos);
 	CHECK(output.find("option name MultiPV ") < check);
@@ -132,7 +132,7 @@ TEST_CASE("Strength options: UCI_Elo clamps, saturates and ignores like MultiPV"
 	set("-1");
 	set("");
 	CHECK(fix.uci_elo() == 2000);
-	set("1000");
+	set("500");
 	CHECK(fix.uci_elo() == StrengthLimit::kMinElo);
 	set("9999");
 	CHECK(fix.uci_elo() == StrengthLimit::kMaxElo);
