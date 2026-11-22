@@ -77,7 +77,7 @@ Dispatch by what the change can alter, not by file name; the same rule routes a 
   `PawnCache.h`, and `defines.h` when it touches `g_Eval_Bitboards` (the PSTs) or `g_iPieceValues`
   (material); other `defines.h` edits do not need it.
 - **The tree searched, the move chosen, or when the search stops** → `search-reviewer`. For example
-  `AIPerplex.cpp/.h`, `ThreadData.h` (killers/history), `Sort.cpp/.h`, `See.cpp`,
+  `AIPerplex*.cpp/.h`, `ThreadData.h` (killers/history), `Sort.cpp/.h`, `See.cpp`,
   `TranspositionTable.*`, `SearchTuning.def` defaults, `IterationPolicy.*`, `SearchControl.*`,
   `SearchLimits.*`.
 - Both, when a change crosses — an eval change aimed at pruning, or a search change reading eval.

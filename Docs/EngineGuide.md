@@ -387,7 +387,7 @@ logs absent. The explicit UCI command-log option reports failure as described ab
 | `logs/uci_commands_<pid>.log` | `uci --log-commands` | Received commands; an explicit path replaces this default |
 
 Implementation: [Logger.cpp](../StratEngine/Utils/Logger.cpp),
-[AIPerplex.cpp](../StratEngine/AIPerplex.cpp), [Game.cpp](../StratEngine/Game.cpp) and
+[AIPerplexTelemetry.cpp](../StratEngine/AIPerplexTelemetry.cpp), [Game.cpp](../StratEngine/Game.cpp) and
 [UCIHandler.cpp](../StratEngine/UCIHandler.cpp).
 
 ## Further reading and maintenance

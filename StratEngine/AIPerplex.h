@@ -306,7 +306,11 @@ class AIPerplex final {
 	// deferred quiet scores equal frame-start ones; see the definition.
 	bool staged_generation_eligible(int depth, bool in_check, const Move& hash_move) const;
 
-	// Logging helpers
+	// Logging helpers, in AIPerplexTelemetry.cpp, which owns the logger. Each is a no-op unless
+	// verbose_logging_ is set. init_logger() creates the logger for the constructor, best effort.
+	void init_logger() noexcept;
+	void log_search_result(const SearchResult& result) const;
+	void log_mate_stop(int depth) const;
 	void log_iteration_eval(const Engine::IterationMetrics& metrics, const PVTable& pv_table) const;
 	void log_rejection(int depth, Engine::RejectionReason reason, const Engine::IterationMetrics& metrics,
 	                   const Engine::IterationState& state) const;
