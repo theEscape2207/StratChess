@@ -9,15 +9,12 @@ namespace StrengthLimit {
 			double level;
 		};
 
-		// Calibrated against Stockfish 19 at UCI_LimitStrength, both sides 60+0.6, Threads=1, 300 games
-		// a level (Measurements/uci-elo-calibration.md, #985). Each anchor is a level's rounded
-		// maximum-likelihood Elo and the fractional level the gauntlet played, reached by setting UCI_Elo
-		// to ceil(inverse(L)) under the previous table; levels between anchors are interpolated, not
-		// measured. Had 14 and 19 tied (a clock-bound plateau), they would be written one Elo apart,
-		// (round(E) - 1, 14.0125) and (round(E), 19.0); they did not. A label means parity with weakened
-		// SF19 under those conditions, not a CCRL rating: SF's own UCI_Elo was fitted at 120+1 in 2023.
-		// Level 0 scored 8.5% against SF's 1320 floor, so kMinElo is an extrapolation. Recalibrating
-		// replaces only this table and the two range ends, keeping it strictly increasing in both columns.
+		// Measured against Stockfish 19 at its own UCI_LimitStrength, both sides 60+0.6 and Threads=1
+		// (Measurements/uci-elo-calibration.md): each anchor is a level's rounded Elo and the fractional
+		// level it played; values between anchors are interpolated. A label means parity with weakened
+		// SF19 under those conditions, not a CCRL rating. kMinElo lies below SF's 1320 floor, an
+		// extrapolation. fit_uci_elo_calibration.py emits this initializer; it must stay strictly
+		// increasing in both columns.
 		constexpr std::array kAnchors{Anchor{kMinElo, 0.0},      Anchor{1103, 2.00390625}, Anchor{1315, 4.0078125},
 		                              Anchor{1535, 7.00625},     Anchor{1767, 10.0046875}, Anchor{2127, 14.0125},
 		                              Anchor{kMaxElo, kMaxLevel}};

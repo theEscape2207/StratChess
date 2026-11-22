@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Fit the UCI_Elo table from a gauntlet against Stockfish 19 (#985).
+"""Fit the UCI_Elo table from a gauntlet against Stockfish 19.
 
-    python fit_uci_elo_calibration.py <attempt dir>...                    # the fit (D5)
+    python fit_uci_elo_calibration.py <attempt dir>...                    # the fit
     python fit_uci_elo_calibration.py <stage-1 attempt dir>... --stage1-report
     python fit_uci_elo_calibration.py <smoke attempt dir> --smoke-check
-    python fit_uci_elo_calibration.py <attempt dir>... --accept-floor     # owner's floor waiver
+    python fit_uci_elo_calibration.py <attempt dir>... --accept-floor     # waive the floor stop
 
 An attempt directory is what Run-UciEloCalibration.ps1 writes for one (UCI_Elo, Stockfish UCI_Elo)
 match: games.pgn, match.log and, on a clean finish only, run.json. An attempt without run.json, with
@@ -14,10 +14,10 @@ the plan names must be covered by exactly one colour-swapped pair; a missing, du
 one-coloured pair is refused. The opening of a game is the attempt's openingStart + Round - 1:
 fastchess numbers both games of a pair with the same Round under -repeat and order=sequential.
 
-Levels are identified by the UCI_Elo the gauntlet set, ceil(provisional inverse(L)), and the level
-played is read back through the provisional table (--table, the table the games ran under).
+Levels are identified by the UCI_Elo the gauntlet set, ceil(inverse(L)), and the level played is
+read back through --table, which must be the table the games ran under.
 
-The fit (design D5):
+The fit:
   1. per level, the Elo R maximising sum s ln E + (1-s) ln(1-E), E = 1/(1+10^((SF-R)/400)), over
      all its games; Stockfish's UCI_Elo is taken as exact;
   2. 95% percentile intervals from a bootstrap over opening IDs, stratified by stage, one resample
@@ -34,7 +34,7 @@ Gates, any failure prints the report but no initializer:
   G3 the emitted table, read back at each level played, gives a label inside that level's interval;
   G4 emitted keys strictly increase, front() is level 0.0, back() the table's top level;
   S1 level 0 below Stockfish's floor (1320) ships only while it scores at least 10% there.
---accept-floor (the owner's 2026-11-22 waiver) prints S1, and G1 on a level whose stage-2 opponent was
+--accept-floor (an owner's decision to ship an extrapolated floor) prints S1, and G1 on a level whose stage-2 opponent was
 clamped at Stockfish's floor, as NOTE instead of FAIL; G2-G4 and G1 on every other level still bind.
 
 Depth per level comes from StratChess's own move comments ({score/depth time}, the format
@@ -58,7 +58,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_TABLE = "1320:0,2600:19"
+# The shipped StrengthLimit.cpp table; the 2026-11-21 gauntlet ran under --table 1320:0,2600:19.
+DEFAULT_TABLE = "907:0,1103:2.00390625,1315:4.0078125,1535:7.00625,1767:10.0046875,2127:14.0125,2355:19"
 DEFAULT_LEVELS = "0,2,4,7,10,14,19"
 DEFAULT_STAGE1 = "1-30"
 DEFAULT_STAGE2 = "31-150"
@@ -105,7 +106,7 @@ def level_for_elo(table: list[tuple[float, float]], elo: float) -> float:
 
 
 def uci_elo_for_level(table: list[tuple[float, float]], level: float) -> int:
-    """ceil(inverse(level)): the smallest UCI_Elo whose level is at least the target (design D3)."""
+    """ceil(inverse(level)): the smallest UCI_Elo whose level is at least the target."""
     for (e0, l0), (e1, l1) in zip(table, table[1:]):
         if level <= l1:
             return math.ceil(e0 + (e1 - e0) * (level - l0) / (l1 - l0) - 1e-9)
@@ -134,6 +135,12 @@ class EngineMoves:
     mates: int = 0
     missing: int = 0
     unparsable: int = 0
+
+    def add(self, other: EngineMoves) -> None:
+        self.depths += other.depths
+        self.mates += other.mates
+        self.missing += other.missing
+        self.unparsable += other.unparsable
 
 
 def side_moves(headers: dict[str, str], body: str) -> dict[str, list[str | None]]:
@@ -446,7 +453,7 @@ def evaluate(
     clamped: list[bool] | None = None,
     accept_floor: bool = False,
 ) -> Fit:
-    """D5 steps 3-5 and the gates, from point estimates and joint bootstrap samples."""
+    """Fit steps 3-5 and the gates, from point estimates and joint bootstrap samples."""
     n = len(targets)
     columns = [[row[k] for row in samples] for k in range(n)]
     intervals = [interval(col) for col in columns]
@@ -535,12 +542,10 @@ def nearest_rank(values: list[int], q: float) -> int:
 
 
 def depth_summary(level: Level) -> dict:
-    depths, mates, missing, unparsable = [], 0, 0, 0
+    total = EngineMoves()
     for g in level.games:
-        depths += g.strat.depths
-        mates += g.strat.mates
-        missing += g.strat.missing
-        unparsable += g.strat.unparsable
+        total.add(g.strat)
+    depths, mates, missing, unparsable = total.depths, total.mates, total.missing, total.unparsable
     if not depths:
         return {"median": "-", "p10": "-", "p90": "-", "reached": 0.0, "mates": mates, "missing": missing, "unparsable": unparsable, "clock_bound": True}
     reached = sum(d >= level.depth for d in depths) / len(depths)
@@ -618,11 +623,8 @@ def smoke_check(attempt: Attempt, table) -> int:
     depth = pick_depth(played)
     strat, sf = EngineMoves(), EngineMoves()
     for g in attempt.games:
-        for total, part in ((strat, g.strat), (sf, g.sf)):
-            total.depths += part.depths
-            total.mates += part.mates
-            total.missing += part.missing
-            total.unparsable += part.unparsable
+        strat.add(g.strat)
+        sf.add(g.sf)
     log = attempt.path / "match.log"
     warnings = log.read_text(encoding="utf-8", errors="replace").count(BESTMOVE_WARNING) if log.is_file() else None
     off_depth = Counter(d for d in strat.depths if d != depth)
@@ -687,7 +689,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--stage1-report", action="store_true")
     mode.add_argument("--smoke-check", action="store_true")
     ap.add_argument("--accept-floor", action="store_true", help="owner waiver: S1 and G1 on floor-clamped levels print as NOTE")
-    ap.add_argument("--table", default=DEFAULT_TABLE, help="provisional elo:level table the games ran under")
+    ap.add_argument("--table", default=DEFAULT_TABLE, help="elo:level table the games ran under (default: the shipped one)")
     ap.add_argument("--levels", default=DEFAULT_LEVELS)
     ap.add_argument("--stage1-openings", default=DEFAULT_STAGE1)
     ap.add_argument("--stage2-openings", default=DEFAULT_STAGE2)

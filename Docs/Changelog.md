@@ -43,7 +43,7 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
 ### Results
 
-- Levels 0/2/4/7/10/14/19 → 907/1103/1315/1535/1767/2127/2355, 95% half-widths 37 to 81
+- Levels 0/2/4/7/10/14/19 → 907/1103/1315/1535/1767/2127/2355, 95% half-widths 36 to 81
   ([`uci-elo-calibration.md`](../Measurements/uci-elo-calibration.md)).
 
 ## 2026-11-21: UCI `UCI_LimitStrength` / `UCI_Elo` (#985)

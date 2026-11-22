@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    UCI_Elo calibration gauntlet (#985): StratChess at UCI_LimitStrength against Stockfish 19 at
+    UCI_Elo calibration gauntlet: StratChess at UCI_LimitStrength against Stockfish 19 at
     its own UCI_LimitStrength, one fastchess match per (UciElo, SfElo) pair.
 
 .DESCRIPTION
@@ -22,30 +22,32 @@
         book {path, sha256}, options {StratChess, Stockfish}, startedAt, finishedAt,
         wallSeconds, pvWarnings, bestmovePvMismatch.
     A failed attempt gets no run.json and is never read by fit_uci_elo_calibration.py: discard it
-    and rerun the pair once (design D4, S3); a second failure stops the calibration.
+    and rerun the pair once; a second failure stops the calibration.
 
-    A level L is reached with UciElo = ceil(provisional inverse(L)) (design D3), so it plays
-    inside the depth band 1 + int(L): 0->1320, 2->1455, 4->1590, 7->1792, 10->1994, 14->2264,
-    19->2600 under the provisional 1320:0, 2600:19 table.
+    A level L is reached with UciElo = ceil(inverse(L)) through -Table, so it plays inside the
+    depth band 1 + int(L). -Table must be the candidate's StrengthLimit.cpp table; its default is
+    the shipped one, under which levels 0, 2, 4, 7, 10, 14, 19 are 907, 1103, 1315, 1535, 1767, 2126,
+    2355. The 2026-11-21 gauntlet ran under -Table 1320:0,2600:19 (1320, 1455, 1590, 1792, 1994,
+    2264, 2600).
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
     Build the shipping exe first (.\build.ps1 main); this script does not build. Then:
     pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Run-UciEloCalibration.ps1 -Smoke
-    pwsh ... Run-UciEloCalibration.ps1 -Stage 1 -UciElo 1320,1455,1590,1792,1994,2264,2600 `
-        -SfElo 1320,1455,1590,1792,1994,2264,2600 -Games 60 -OpeningStart 1
+    pwsh ... Run-UciEloCalibration.ps1 -Stage 1 -UciElo 907,1103,1315,1535,1767,2126,2355 `
+        -SfElo 1320,1320,1320,1535,1767,2126,2355 -Games 60 -OpeningStart 1
     pwsh ... Run-UciEloCalibration.ps1 -Stage 2 -UciElo <same> -SfElo <stage-1 report> -Games 240 -OpeningStart 31
-    Then: python Scripts\fit_uci_elo_calibration.py <attempt dirs> [--stage1-report | --smoke-check]
+    Then: python Scripts\fit_uci_elo_calibration.py <attempt dirs> [--table <same>] [--stage1-report | --smoke-check]
 
 .NOTES
     Must be invoked with -File, not dot-sourced.
-    Concurrency 8 is a benchmark condition (design D2/A3): run.json records it with the machine.
+    Concurrency 8 is a benchmark condition: run.json records it with the machine.
     Do not rebuild the candidate between stages: the fit refuses attempts whose candidate SHA-256
     differs, and a rebuild changes the embedded commit hash.
 #>
 
 [CmdletBinding()]
 param(
-    # 1 or 2 (design D4); a -Smoke run may leave it at 0.
+    # 1 (at each level's own label) or 2 (at the stage-1 estimate); a -Smoke run may leave it at 0.
     [ValidateSet(0, 1, 2)]
     [int]$Stage = 0,
     # StratChess UCI_Elo per attempt. Comma-separated also as one string: pwsh -File passes
@@ -63,30 +65,58 @@ param(
     [switch]$Smoke,
     # Default: this worktree's build\windows-clang-cl\StratChessEvolved.exe, freshness-checked.
     [string]$CandidateExe = '',
-    # Runs the D3 arithmetic and attempt-dir cases and exits. Pure.
+    # elo:level anchors the candidate's UCI_Elo runs through (StrengthLimit.cpp's kAnchors); labels
+    # each attempt's level and prices it. Default: the shipped table.
+    [string]$Table = '907:0,1103:2.00390625,1315:4.0078125,1535:7.00625,1767:10.0046875,2127:14.0125,2355:19',
+    # Runs the ceil(inverse) arithmetic and attempt-dir cases and exits. Pure.
     [switch]$SelfTest
 )
 
 Set-StrictMode -Version Latest
 
-# Provisional table the games run under (StrengthLimit.cpp before calibration).
-$script:TableMinElo = 1320
-$script:TableMaxElo = 2600
-$script:TableMaxLevel = 19
+function ConvertTo-Anchors {
+    <# 'elo:level,...' -> anchors strictly increasing in both columns, as StrengthLimit.cpp requires. #>
+    param([Parameter(Mandatory)][string]$Text)
+    $parsed = @($Text -split ',' | ForEach-Object {
+            $eloText, $levelText = $_ -split ':'
+            [pscustomobject]@{
+                Elo   = [double]::Parse($eloText, [cultureinfo]::InvariantCulture)
+                Level = [double]::Parse($levelText, [cultureinfo]::InvariantCulture)
+            }
+        })
+    for ($i = 1; $i -lt $parsed.Count; $i++) {
+        if ($parsed[$i].Elo -le $parsed[$i - 1].Elo -or $parsed[$i].Level -le $parsed[$i - 1].Level) {
+            throw "-Table must increase strictly in both columns: $Text"
+        }
+    }
+    return $parsed
+}
 
 function Get-UciEloForLevel {
-    <# ceil(inverse(L)) in integer arithmetic: [int] would round half-to-even, and a float ceil can
-       land one above an exact 2600. #>
-    param([Parameter(Mandatory)][int]$Level)
-    $span = $script:TableMaxElo - $script:TableMinElo
-    return $script:TableMinElo + [math]::Floor(($Level * $span + $script:TableMaxLevel - 1) / $script:TableMaxLevel)
+    <# ceil(inverse(L)): the smallest UCI_Elo whose level is at least L. [int] would round
+       half-to-even; the epsilon keeps an exact anchor from ceiling one above itself. #>
+    param([Parameter(Mandatory)][double]$Level, [Parameter(Mandatory)][object[]]$Anchors)
+    for ($i = 1; $i -lt $Anchors.Count; $i++) {
+        $lo = $Anchors[$i - 1]
+        $hi = $Anchors[$i]
+        if ($Level -le $hi.Level) {
+            $from = [math]::Max($Level, $lo.Level)
+            return [int][math]::Ceiling($lo.Elo + ($hi.Elo - $lo.Elo) * ($from - $lo.Level) / ($hi.Level - $lo.Level) - 1e-9)
+        }
+    }
+    throw "level $Level is above the table"
 }
 
 function Get-LevelForElo {
-    param([Parameter(Mandatory)][int]$Elo)
-    if ($Elo -le $script:TableMinElo) { return 0.0 }
-    if ($Elo -ge $script:TableMaxElo) { return [double]$script:TableMaxLevel }
-    return $script:TableMaxLevel * ($Elo - $script:TableMinElo) / [double]($script:TableMaxElo - $script:TableMinElo)
+    <# StrengthLimit.cpp's level_for_elo over the given anchors. #>
+    param([Parameter(Mandatory)][int]$Elo, [Parameter(Mandatory)][object[]]$Anchors)
+    if ($Elo -le $Anchors[0].Elo) { return $Anchors[0].Level }
+    for ($i = 1; $i -lt $Anchors.Count; $i++) {
+        $lo = $Anchors[$i - 1]
+        $hi = $Anchors[$i]
+        if ($Elo -le $hi.Elo) { return $lo.Level + ($hi.Level - $lo.Level) * ($Elo - $lo.Elo) / ($hi.Elo - $lo.Elo) }
+    }
+    return $Anchors[-1].Level
 }
 
 function Get-AttemptDirName {
@@ -108,7 +138,7 @@ function ConvertTo-EloList {
 }
 
 function Get-GameSecondsForecast {
-    <# Design Cost: ~90 s a game at levels 0-4, 115 at 7-10, 155 at 14-19 (game-slot seconds). #>
+    <# Game-slot seconds a game: ~90 at levels 0-4, 115 at 7-10, 155 at 14-19 (the 2026-11-21 forecast). #>
     param([Parameter(Mandatory)][double]$Level)
     if ($Level -lt 5) { return 90 }
     if ($Level -lt 12) { return 115 }
@@ -117,18 +147,17 @@ function Get-GameSecondsForecast {
 
 if ($SelfTest) {
     $failures = 0
+    $old = @(ConvertTo-Anchors -Text '1320:0,2600:19')
+    $shipped = @(ConvertTo-Anchors -Text $Table)
+    $sampled = @(0, 2, 4, 7, 10, 14, 19)
     $cases = @(
-        @{ Name = 'level 0 -> 1320';  Got = { Get-UciEloForLevel -Level 0 };  Expect = 1320 }
-        @{ Name = 'level 2 -> 1455';  Got = { Get-UciEloForLevel -Level 2 };  Expect = 1455 }
-        @{ Name = 'level 4 -> 1590 (rounding would give 1589)'; Got = { Get-UciEloForLevel -Level 4 }; Expect = 1590 }
-        @{ Name = 'level 7 -> 1792';  Got = { Get-UciEloForLevel -Level 7 };  Expect = 1792 }
-        @{ Name = 'level 10 -> 1994'; Got = { Get-UciEloForLevel -Level 10 }; Expect = 1994 }
-        @{ Name = 'level 14 -> 2264'; Got = { Get-UciEloForLevel -Level 14 }; Expect = 2264 }
-        @{ Name = 'level 19 -> 2600 exactly'; Got = { Get-UciEloForLevel -Level 19 }; Expect = 2600 }
+        @{ Name = '1320:0,2600:19 levels -> 1320..2600'; Got = { ($sampled | ForEach-Object { Get-UciEloForLevel -Level $_ -Anchors $old }) -join '/' }; Expect = '1320/1455/1590/1792/1994/2264/2600' }
         @{ Name = 'falsification: [int] of the inverse at level 4 is NOT the answer'; Got = { [int](1320 + 4 * 1280 / 19.0) -ne 1590 }; Expect = $true }
-        @{ Name = '1455 plays level 2.0039'; Got = { [math]::Round((Get-LevelForElo -Elo 1455), 4) }; Expect = 2.0039 }
-        @{ Name = '2264 plays level 14.0125, depth band 15'; Got = { 1 + [math]::Truncate((Get-LevelForElo -Elo 2264)) }; Expect = 15 }
-        @{ Name = 'every D3 point stays in its band'; Got = { @(0, 2, 4, 7, 10, 14, 19 | Where-Object { [math]::Truncate((Get-LevelForElo -Elo (Get-UciEloForLevel -Level $_))) -ne $_ }).Count }; Expect = 0 }
+        @{ Name = '1455 plays level 2.0039'; Got = { [math]::Round((Get-LevelForElo -Elo 1455 -Anchors $old), 4) }; Expect = 2.0039 }
+        @{ Name = '2264 plays level 14.0125, depth band 15'; Got = { 1 + [math]::Truncate((Get-LevelForElo -Elo 2264 -Anchors $old)) }; Expect = 15 }
+        @{ Name = 'default table levels -> 907..2355'; Got = { ($sampled | ForEach-Object { Get-UciEloForLevel -Level $_ -Anchors $shipped }) -join '/' }; Expect = '907/1103/1315/1535/1767/2126/2355' }
+        @{ Name = 'every sampled level stays in its band, both tables'; Got = { @(foreach ($t in @(, $old) + @(, $shipped)) { $sampled | Where-Object { [math]::Truncate((Get-LevelForElo -Elo (Get-UciEloForLevel -Level $_ -Anchors $t) -Anchors $t)) -ne $_ } }).Count }; Expect = 0 }
+        @{ Name = 'a decreasing table is refused'; Got = { try { ConvertTo-Anchors -Text '1500:0,1400:19' | Out-Null; 'accepted' } catch { 'refused' } }; Expect = 'refused' }
         @{ Name = 'attempt dir';       Got = { Get-AttemptDirName -Stamp '20261121-130000' -StageNumber 1 -Candidate 1455 -Opponent 1455 }; Expect = '20261121-130000-s1-elo1455-sf1455' }
         @{ Name = 'smoke attempt dir'; Got = { Get-AttemptDirName -Stamp '20261121-130000' -StageNumber 0 -Candidate 1320 -Opponent 1320 -IsSmoke }; Expect = '20261121-130000-s0-elo1320-sf1320-smoke' }
         @{ Name = 'one -File string splits'; Got = { (ConvertTo-EloList -Item @('1320,1455,2600')) -join '/' }; Expect = '1320/1455/2600' }
@@ -214,8 +243,9 @@ $stockfishHash = (Get-FileHash $stockfish -Algorithm SHA256).Hash
 $bookHash = (Get-FileHash $bookPath -Algorithm SHA256).Hash
 
 # --- Plan ----------------------------------------------------------------------------------------
+$tableAnchors = @(ConvertTo-Anchors -Text $Table)
 $phases = for ($i = 0; $i -lt $UciElo.Count; $i++) {
-    $lvl = Get-LevelForElo -Elo $UciElo[$i]
+    $lvl = Get-LevelForElo -Elo $UciElo[$i] -Anchors $tableAnchors
     @{
         Name    = "elo $($UciElo[$i]) (level $($lvl.ToString('0.####', [cultureinfo]::InvariantCulture))) vs SF $($SfElo[$i]), $Games games"
         Quiet   = $true
@@ -238,7 +268,7 @@ for ($i = 0; $i -lt $UciElo.Count; $i++) {
     $candElo = $UciElo[$i]
     $oppElo = $SfElo[$i]
     $phase = @($phases)[$i]
-    Write-PhaseBanner -Name $phase.Name -Quiet $true -Seconds $phase.Seconds -Rough $true
+    Write-PhaseBanner -Name $phase.Name -Quiet $phase.Quiet -Seconds $phase.Seconds -Rough $phase.Rough
 
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $attemptDir = Join-Path $calibrationRoot (Get-AttemptDirName -Stamp $stamp -StageNumber $Stage -Candidate $candElo -Opponent $oppElo -IsSmoke:$Smoke)
@@ -285,7 +315,7 @@ for ($i = 0; $i -lt $UciElo.Count; $i++) {
     if ($played -ne $Games) { $problems += "games.pgn holds $played of $Games games" }
 
     if ($problems.Count) {
-        Write-Host "FAILED attempt $attemptDir (S3: discard, rerun once):" -ForegroundColor Red
+        Write-Host "FAILED attempt $attemptDir (discard, rerun once):" -ForegroundColor Red
         $problems | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
         $failed += $attemptDir
         continue

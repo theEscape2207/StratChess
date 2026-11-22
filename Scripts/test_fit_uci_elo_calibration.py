@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import fit_uci_elo_calibration as fit  # noqa: E402
 
-TABLE = fit.parse_table(fit.DEFAULT_TABLE)
+TABLE = fit.parse_table("1320:0,2600:19")  # the table the 2026-11-21 gauntlet ran under
 RESULT = {1.0: "1-0", 0.0: "0-1", 0.5: "1/2-1/2"}
 
 
