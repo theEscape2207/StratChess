@@ -23,6 +23,22 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-22: Baseline-tree script and memory notes moved to docs
+
+### Added
+
+- `Scripts/New-BaselineTree.ps1` builds a merge-base baseline the way `build.ps1` builds the
+  candidate, in a detached worktree under `%TEMP%`, for `Compare-Bench.ps1` and
+  `New-OrderedBuildPair.ps1`. It replaces a manual recipe with three traps: the worktree guard,
+  `build.ps1` building the shell's tree, and a stale tree at another commit.
+- `New-OrderedBuildPair.ps1` lists engine functions only one map has. A per-node helper that the
+  baseline inlined and the candidate calls (#990) now shows up there.
+
+### Changed
+
+- Session-memory notes that were procedure moved into `EngineContracts.md`, `TestDesign.md` and
+  the `measure-strength` references.
+
 ## 2026-11-22: AIPerplex file split, slice 2: root driver (#990)
 
 ### Changed

@@ -11,10 +11,11 @@ against the **merge base**:
 
 ## The paired bench series
 
-1. **Build the baseline the way the candidate was built.** Check out the merge base in a detached
-   worktree (`git worktree add --detach <path> <sha>`) and run its own `build.ps1 main`. An exe
-   from any other build path is a different binary: the equivalence cache's baseline read 7.7%
-   slower than a `build.ps1` build of the same commit.
+1. **Build the baseline the way the candidate was built:** `New-BaselineTree.ps1 [-Ref <sha>]`
+   (default `origin/main`). It builds a detached worktree under `%TEMP%` with that tree's own
+   `build.ps1 main` and prints the exe; `-Remove` deletes it afterwards. An exe from any other
+   build path is a different binary: the equivalence cache's baseline read 7.7% slower than a
+   `build.ps1` build of the same commit.
 2. **Quiet the machine.** Finish builds and the code review first, then follow
    [the quiet-window rule](../SKILL.md#before-a-local-measurement-quiet-window) at launch.
    Review subagents running beside a series read one pair −14% (#640).
@@ -44,7 +45,8 @@ placement; #809's −0.60% on a 60-round control read −0.15% relinked. Escalat
 its round count fixed up front:
 
 1. `New-OrderedBuildPair.ps1` on both trees. It fails rather than return a pair whose `pvs` and
-   `quiescence` addresses differ.
+   `quiescence` addresses differ. Read its `only in candidate` lines: a per-node helper there was
+   inlined in the baseline, and the relink cannot remove that call.
 2. `-Control -Rounds 60 -Affinity 4` on the pair it prints, about 35 min. The control arm measures
    the machine's own noise and the relink removes placement, so the one series settles both.
 

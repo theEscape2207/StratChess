@@ -15,7 +15,8 @@
          directory with a /MAP. The result must be byte-identical to the tree's shipping exe,
          which proves the relink is faithful and its map describes what was benchmarked.
       2. pairs the engine's functions across both maps. Anonymous-namespace names carry a
-         per-tree hash (?A0x<hash>@), so names are compared with it normalised.
+         per-tree hash (?A0x<hash>@), so names are compared with it normalised. A function only
+         the candidate has is listed: new code, or one the baseline inlined (#990).
       3. pins every paired function whose size is equal in both maps, in baseline address
          order, through an order file written in each tree's own names. With equal sizes in an
          equal order, every pinned function lands at the same address in both images. A size
@@ -46,7 +47,8 @@
     timestamp, so no relink reproduces it.
 
 .PARAMETER BaselineTree
-    Root of the baseline worktree, normally a detached worktree at the merge base.
+    Root of the baseline worktree, normally New-BaselineTree.ps1's detached worktree at the
+    merge base.
 
 .PARAMETER CandidateTree
     Root of the candidate worktree. It may be the baseline's, for an A/A pair.
@@ -158,6 +160,25 @@ function Get-UniqueEngineSymbol {
     }
     foreach ($key in $duplicate.Keys) { $byKey.Remove($key) }
     return $byKey
+}
+
+function Get-UnpairedEngineFunction {
+    <#
+      .SYNOPSIS
+        Engine functions only one map has. One only in the candidate is new code, or one the
+        baseline inlined and the candidate calls: a per-node helper moved out of its caller's
+        file stops being inlined, and node-identical search cannot show it.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$BaselinePlaced,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$CandidatePlaced
+    )
+    $baselineByKey = Get-UniqueEngineSymbol -Placed $BaselinePlaced
+    $candidateByKey = Get-UniqueEngineSymbol -Placed $CandidatePlaced
+    return [pscustomobject]@{
+        OnlyBaseline  = @($baselineByKey.Keys | Where-Object { -not $candidateByKey.ContainsKey($_) } | ForEach-Object { $baselineByKey[$_].Name } | Sort-Object)
+        OnlyCandidate = @($candidateByKey.Keys | Where-Object { -not $baselineByKey.ContainsKey($_) } | ForEach-Object { $candidateByKey[$_].Name } | Sort-Object)
+    }
 }
 
 function Select-SpacerSet {
@@ -430,6 +451,9 @@ function Invoke-SelfTest {
         (($orderEntries | ForEach-Object { "$($_.BaselineName):$($_.Resized)" }) -join ',') "${pvs}:False,?anon@?A0x11111111@@YAXXZ:False,${qs}:True"
     Assert-Equal "each order file lists the tree's own names" `
         (($orderEntries | ForEach-Object { $_.CandidateName }) -join ',') "$pvs,?anon@?A0x22222222@@YAXXZ,$qs"
+    $unpaired = Get-UnpairedEngineFunction -BaselinePlaced @(Get-SymbolPlacement -Symbol $baseline) -CandidatePlaced @(Get-SymbolPlacement -Symbol $candidate)
+    Assert-Equal 'a function only the baseline has is listed; funclets, labels and duplicates are not' ($unpaired.OnlyBaseline -join ',') '?gone@@YAXXZ'
+    Assert-Equal 'a function only the candidate has is listed' ($unpaired.OnlyCandidate -join ',') '?new@@YAXXZ'
 
     # Both hot functions resized: pvs grows by 0x40 in the candidate, so the baseline lists a cold
     # 0x40-byte spacer before quiescence. ?hot is the right size but on the search path.
@@ -666,6 +690,13 @@ Write-Host "==> Relinking with a shared order ($pinnedOnlyCount of $pairedCount 
 foreach ($spacer in $spacers) {
     Write-Host ('  spacer in {0}: {1} ({2} bytes)' -f $spacer.Spacer, $spacer.BaselineName, $spacer.Size) -ForegroundColor DarkGray
 }
+$unpaired = Get-UnpairedEngineFunction -BaselinePlaced $placed['baseline'] -CandidatePlaced $placed['candidate']
+foreach ($name in $unpaired.OnlyCandidate) {
+    Write-Host "  only in candidate: $name (new, or inlined in the baseline: a per-node one costs a call per node)" -ForegroundColor Yellow
+}
+foreach ($name in $unpaired.OnlyBaseline) {
+    Write-Host "  only in baseline: $name" -ForegroundColor DarkGray
+}
 $ordered = @{}
 foreach ($arm in $arms.Keys) {
     $armDir = Join-Path $outPath $arm
@@ -710,6 +741,8 @@ $metadata = [ordered]@{
     pinnedCount  = $verdict.PinnedCount
     matchedCount = $verdict.MatchedCount
     resizedHot   = @($resizedHot | ForEach-Object { $_.BaselineName })
+    onlyBaseline  = $unpaired.OnlyBaseline
+    onlyCandidate = $unpaired.OnlyCandidate
     spacers      = @($spacers | ForEach-Object { [ordered]@{ name = $_.BaselineName; size = $_.Size; listedIn = $_.Spacer } })
     hotFunction  = @($verdict.HotFunction | ForEach-Object {
             [ordered]@{ label = $_.Label; baselineAddress = $_.BaselineAddress; candidateAddress = $_.CandidateAddress; ok = $_.Ok } })

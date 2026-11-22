@@ -39,3 +39,16 @@ one that wanders will not. An SPRT whose true effect lies strictly inside `[elo0
 *expected* to run to the cap, because neither hypothesis ever accumulates evidence against the
 other — more games buy another inconclusive row. Deciding a change that small needs a fixed-batch
 estimate (size), not an SPRT (decision).
+
+## Before quoting a number
+
+- **State the range before the mean.** Three positions are not a measurement; a node-count delta
+  over three read −22% and over five ranged −44% to +229%. Say which sample a number came from.
+- **Fixed-depth node counts carry aspiration noise.** Two builds that score differently seed
+  different windows, so set `aspiration_enabled = false` before a node delta carries a claim.
+- **Stratify a rate by the gate that produces it.** A depth-gated feature averaged over all depths
+  is diluted by depth 1, and the average can invert the conclusion.
+- **A gate must be able to fail.** State the expected effect and the instrument's error at its
+  budget first; if the interval cannot exclude zero at that effect, the run is indicative.
+- **"Nothing changed" bounds the whole interval** inside a band declared before measuring. An
+  interval spanning zero is unresolved, not equivalent.
