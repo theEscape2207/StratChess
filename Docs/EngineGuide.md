@@ -82,16 +82,42 @@ full root search, so N > 1 costs roughly N times the nodes per depth. Under a cl
 limit cuts is discarded, so N > 1 spends more time per move and reaches less depth; and the search
 stops on rank 1's mate score, so `go depth D` can end below D with every rank at that depth.
 
-`UCI_LimitStrength` (check, default `false`) with `UCI_Elo` (`1320..2600`, default 1320) plays
+`UCI_LimitStrength` (check, default `false`) with `UCI_Elo` (`907..2355`, default 907) plays
 below full strength. `UCI_LimitStrength` takes exactly `true` or `false`; `UCI_Elo` clamps and
 ignores bad input as `MultiPV` does; both are kept by `ucinewgame`. While limiting, the search ranks
 at least four moves (`MultiPV` raised to 4, the user's N still deciding what prints), stops at the
 pick depth `1 + int(level)`, and plays a move drawn from that set with Stockfish's weakened pick, so
 low levels answer almost instantly. `go infinite` is analysis and is not capped at the pick depth; it
-picks from whatever set it ends on, which a `stop` or a mate can leave shallower than the pick depth. The Elo scale is **provisional**: a two-point table from 1320
-(level 0) to 2600 (level 19) until a gauntlet against Stockfish 19's `UCI_Elo` calibrates it, at
-`Threads=1` and the default `MultiPV`. More threads or a higher `MultiPV` change play at the same
-`UCI_Elo`. A mate the search proved is always played, never traded for a slower one.
+picks from whatever set it ends on, which a `stop` or a mate can leave shallower than the pick depth.
+A mate the search proved is always played, never traded for a slower one.
+
+The Elo scale is measured against Stockfish 19 at its own `UCI_LimitStrength`, both engines at
+60+0.6, `Threads=1`, the default `MultiPV`, 300 games a level on the dev machine
+([ledger](../Measurements/uci-elo-calibration.md)). A value means "scores 50% against SF19 set to
+that `UCI_Elo` under those conditions", not a CCRL rating:
+
+| Level (pick depth) | `UCI_Elo` | 95% interval |
+|---|---|---|
+| 0 (1) | 907 | 826-971 |
+| 2 (3) | 1103 | 1049-1149 |
+| 4 (5) | 1315 | 1271-1357 |
+| 7 (8) | 1535 | 1498-1574 |
+| 10 (11) | 1767 | 1726-1808 |
+| 14 (15) | 2127 | 2090-2165 |
+| 19 (20) | 2355 | 2317-2391 |
+
+Read a value with these caveats:
+
+- **Below 1320 it is extrapolated.** Stockfish goes no lower, and level 0 scored 8.5% against its
+  1320; levels 0 and 2 carry the widest intervals.
+- **Values between rows are interpolated**, not measured.
+- **The anchor drifts.** Stockfish's `UCI_Elo` was fitted in 2023 at 120+1; at 60+0.6 it likely
+  plays below its label. The intervals are match sampling only and do not cover that.
+- **Other clocks are uncalibrated**, `go movetime` included. From level 14 up the clock, not the pick
+  depth, bounds the search, so a faster machine or a longer clock shifts the top levels' values.
+- **2355 is the scale's top, not full strength**: limiting always runs the weakened pick. Turn
+  `UCI_LimitStrength` off for full strength.
+- **More threads or a higher `MultiPV`** change play at the same `UCI_Elo`.
 
 **Game mode:** edit [game_settings.json](../StratChessEvolved/game_settings.json). Under
 `game.players.white` and `.black`, `search_limits` supplies per-move constraints (required for a
@@ -315,7 +341,7 @@ The rules cover:
 - the `Threads`, `Hash` and `MultiPV` options: their name, type, range and default as advertised,
   and their `setoption` behaviour;
 - the `UCI_LimitStrength` and `UCI_Elo` options, the same way, except that `UCI_Elo`'s range and
-  what each value plays like are provisional until calibrated;
+  what each value plays like are a measurement a recalibration may revise;
 - the `info` fields that [Interpret search output](#interpret-search-output) defines;
 - the `bestmove` line.
 

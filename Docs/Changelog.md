@@ -23,6 +23,29 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-22: `UCI_Elo` calibrated against Stockfish 19 (#985)
+
+### Changed
+
+- `UCI_Elo`'s range is now 907..2355 (was 1320..2600, provisional), default 907, and the Elo →
+  level table is measured: seven levels played 300 games each against Stockfish 19 at its own
+  `UCI_LimitStrength`, both at 60+0.6 and `Threads=1`. A value means parity with weakened SF19
+  under those conditions, not a CCRL rating. The pick, the forced MultiPV 4 and the depth cap are
+  unchanged; play with limiting off is untouched.
+- Level 0 scored 8.5% against SF's 1320 floor, so 907 is an extrapolation; the owner accepted it, and
+  extending the scale below level 0 stays a separate decision. 2355 is level 19, not full strength:
+  from level 14 up the clock, not the pick depth, bounds the search.
+
+### Added
+
+- `Run-UciEloCalibration.ps1` (the gauntlet) and `fit_uci_elo_calibration.py` (the fit, its gates
+  and the C++ initializer), so a recalibration reruns the same procedure.
+
+### Results
+
+- Levels 0/2/4/7/10/14/19 → 907/1103/1315/1535/1767/2127/2355, 95% half-widths 37 to 81
+  ([`uci-elo-calibration.md`](../Measurements/uci-elo-calibration.md)).
+
 ## 2026-11-21: UCI `UCI_LimitStrength` / `UCI_Elo` (#985)
 
 ### Added
