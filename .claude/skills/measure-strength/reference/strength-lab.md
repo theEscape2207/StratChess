@@ -24,6 +24,10 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
   each pooled alone at about √K times the full run's error bar. Confirm the winner in a
   single-candidate run with its own `opening_offset`. The best of K noisy arms reads high, so the
   screen figure is never the claimed gain.
+- **A ~0 result from `candidate_uci_options` may mean the option never applied.** Preflight proves
+  only that it is advertised and in range. The shard PGNs settle it: each move comment carries the
+  mover's own score (`{-0.20/12 0.313s}`), so compare a score the option should move between the
+  candidate's moves and the reference's.
 - Results go in `Measurements/ci-per-change.md` or `ci-anchor.md`.
 
 ## Batch sizes

@@ -838,7 +838,9 @@ wrong here.
 - **Watch the new test fail.** Revert the fix, rebuild, and see it go red before claiming it guards
   anything. Mutate a real condition — `/W4 /WX` rejects `if (false)` around a block. A test that
   enters below the code under test (a fixture passing the value in by hand) passes against the
-  broken code too; enter through the production path.
+  broken code too; enter through the production path. Restore the fix with a commit or `git
+  checkout`, not `Copy-Item`: a copy keeps the old mtime, ninja skips the rebuild, and the "fixed"
+  run tests the broken code.
 - **Release hides out-of-bounds reads.** `std::countr_zero(0)` returns 64 and indexes past the
   array without a sound. For a change to indexing, bitboard→square conversion or a documented
   precondition, run the affected tags from `.\build.ps1 tests -Config Debug` before pushing.
