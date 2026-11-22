@@ -15,10 +15,10 @@
 #include <span>
 
 namespace StrengthLimit {
-	// The advertised UCI_Elo range; the default is kMinElo. Provisional until calibrated (see the table
-	// in StrengthLimit.cpp).
-	inline constexpr int kMinElo = 1320;
-	inline constexpr int kMaxElo = 2600;
+	// The advertised UCI_Elo range; the default is kMinElo. Both ends are measured levels 0 and 19 (see
+	// the table in StrengthLimit.cpp); kMinElo lies below Stockfish's 1320 floor, an extrapolation.
+	inline constexpr int kMinElo = 907;
+	inline constexpr int kMaxElo = 2355;
 	inline constexpr double kMaxLevel = 19.0;
 
 	// The ranked set the pick chooses from while limiting: MultiPV is raised to at least this.

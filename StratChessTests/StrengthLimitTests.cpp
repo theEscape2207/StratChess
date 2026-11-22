@@ -56,12 +56,21 @@ TEST_CASE("StrengthLimit table: endpoints, clamping and monotonicity", "[strengt
 
 TEST_CASE("StrengthLimit table: the pick depth either side of a depth boundary", "[strength]")
 {
-	// The provisional inverse of level 1 is 1387.37, so a gauntlet setting ceil(inverse(1)) lands on depth 2.
-	CHECK(level_for_elo(1387) < 1.0);
-	CHECK(level_for_elo(1388) > 1.0);
-	CHECK(pick_depth(level_for_elo(1387)) == 1);
-	CHECK(pick_depth(level_for_elo(1388)) == 2);
-	CHECK(pick_depth(level_for_elo(kMinElo)) == 1);
+	// Each depth's first Elo is ceil(inverse(level)): the Elo below it plays the previous depth, so a
+	// gauntlet setting ceil(inverse(L)) lands on depth 1 + L. Found by scanning, so the table may change.
+	int depth = pick_depth(level_for_elo(kMinElo));
+	CHECK(depth == 1);
+	for (int elo = kMinElo + 1; elo <= kMaxElo; ++elo) {
+		const int next = pick_depth(level_for_elo(elo));
+		if (next == depth)
+			continue;
+		INFO("elo " << elo);
+		REQUIRE(next == depth + 1);
+		CHECK(level_for_elo(elo - 1) < depth);
+		CHECK(level_for_elo(elo) >= depth);
+		depth = next;
+	}
+	CHECK(depth == 20);
 	CHECK(pick_depth(level_for_elo(kMaxElo)) == 20);
 }
 
