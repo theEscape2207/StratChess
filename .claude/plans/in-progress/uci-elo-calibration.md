@@ -127,7 +127,9 @@ Each stage is its own quiet window, started on the owner's go. Stage 1 ends with
   stages play Stockfish 1320 if the clamp binds). Level 0 below 1320 is an extrapolation past the
   anchor's floor: the ledger flags it, and it ships as `kMinElo` only while level 0 scores at least
   10% (`400·log10(0.1/0.9) ≈ −382`, so `kMinElo` ≥ about 938). Below that, stop: placing the floor
-  is then the owner's pending floor decision, not this fit's;
+  is then the owner's pending floor decision, not this fit's.
+  **Owner decision 2026-11-22 (after the fit):** level 0 measured 8.5% (907, [826, 971]) and ships
+  as `kMinElo` anyway, flagged as an extrapolation; extending the floor stays a separate decision;
 - **S2, order:** the fit would pool or reverse levels outside the top suffix (D5). Stopping there is
   a policy choice: the non-monotone case design-record A3 left to this slice is worth a human look
   even when noise could explain it;
@@ -156,6 +158,8 @@ Each stage is its own quiet window, started on the owner's go. Stage 1 ends with
 **Gates; any failure prints the report but no initializer:**
 
 - **G1, precision:** each level's interval endpoints lie within 50 Elo of its point estimate.
+  **Owner waiver 2026-11-22:** G1 binds only on levels whose stage-2 opponent was not clamped at
+  Stockfish's 1320 floor; levels 0 and 2 (clamped, about ±70 and ±50) ship with their intervals stated.
 - **G2, order:** no pooling or rounded collision outside {14, 19} (S2); no adjacent difference
   whose interval lies wholly below zero.
 - **G3, fit:** reading the *emitted* integer table back at each level played gives a label inside
@@ -194,6 +198,8 @@ the games ran under), runs D5 and prints the ledger table, the gates and, if the
 
 - `--stage1-report`: the stage-2 opponent per level (D4), each score with saturated ones flagged,
   and game times;
+- `--accept-floor`: the owner's 2026-11-22 waiver. S1 and G1 on floor-clamped levels print as NOTE
+  instead of FAIL, so the initializer is emitted; G2-G4 still bind;
 - `--smoke-check`: on the smoke attempt alone, run at level 0: every StratChess move comment parses
   and shows depth 1 (proof `UCI_LimitStrength`/`UCI_Elo` reached the engine), and no move lacks a
   comment.
@@ -256,7 +262,8 @@ Tier: engine code (a table), plus scripts and a ledger.
   opponent fixture misses G1; a reversed {14, 19} pair emits `(round(E) - 1, 14.0125)`,
   `(round(E), 19.0)`; a rounded tie in the suffix takes the same path; a suffix that would grow
   down to 10 fails G2; a pooled pair whose synthetic onset falls just outside 14's interval fails G3;
-  level 0 under 10% fails S1; a duplicate pair, a smoke attempt, an attempt without `run.json` and a
+  level 0 under 10% fails S1, and passes under `--accept-floor` with the NOTE still printed, while a
+  G1 miss on an unclamped level still fails under it; a duplicate pair, a smoke attempt, an attempt without `run.json` and a
   mixed candidate hash are each refused; a comment-less StratChess move is counted and attributed by
   side. The driver's `-SelfTest` covers the attempt-dir name and the `ceil(inverse)` arithmetic of
   D3's table.
@@ -309,5 +316,5 @@ Tier: engine code (a table), plus scripts and a ledger.
 | D1 TC, D2 machine and concurrency, D4 sizes, the per-level results and depths | `Measurements/uci-elo-calibration.md` (table + Row detail) |
 | D5 fit rule, the `round(E) - 1` onset, A1/A2 anchor caveats | comment on `kAnchors` in `StrengthLimit.cpp`; ledger detail |
 | D6 attempt-dir and `run.json` contract, options, adjudication | `Run-UciEloCalibration.ps1` help; fit script docstring |
-| Calibrated range, TC and conditions it holds for | `Docs/EngineGuide.md` → Configure a run |
+| Calibrated range, TC and conditions it holds for; each measured level's Elo with its 95% interval, and the caveats a player reads a label with (floor extrapolated below SF 1320, levels between points interpolated and unmeasured, A1/A2 anchor drift) | `Docs/EngineGuide.md` → Configure a run |
 | Headline | `Docs/Changelog.md` |
