@@ -6,7 +6,6 @@
 #include "MoveGenerator.h"
 #include "PVIntegrity.h"
 #include "See.h"
-#include "SearchTuningSchema.h"
 #include "Sort.h"
 #include "defines.h"
 #include "MoveHelper.h"
@@ -225,10 +224,8 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	result.hashfull = tt_->hashfull(search_start_age);
 
 	result.elapsed = control_.Elapsed();
-	const Move best_move = result.best_move;
-
 	// Game over at the root: no move to play, and result.game_state carries why.
-	if (best_move.is_null())
+	if (result.best_move.is_null())
 		return result;
 
 	log_search_result(result);

@@ -65,7 +65,7 @@ namespace {
 
 } // namespace
 
-void AIPerplex::init_logger() const noexcept
+void AIPerplex::init_logger() noexcept
 {
 	try {
 		if (verbose_logging_) {

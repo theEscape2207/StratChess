@@ -7,7 +7,7 @@
 #include <new>
 
 // AIPerplex construction, the go/stop launch handshake, configuration, per-game reset and the
-// Lazy SMP helper entry point. Search() and the node search live in AIPerplex.cpp.
+// Lazy SMP helper entry point.
 
 AIPerplex::AIPerplex(AIPerplexConfig config)
     : control_(config.default_depth, config.default_time), tuning_(config.tuning),
