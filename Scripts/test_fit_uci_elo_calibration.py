@@ -90,8 +90,10 @@ TARGETS = [0, 2, 4, 7, 10, 14, 19]
 PLAYED = [fit.level_for_elo(TABLE, fit.uci_elo_for_level(TABLE, L)) for L in TARGETS]
 
 
-def run_eval(points: list[float], sds: list[float], level0_score: float = 0.5) -> fit.Fit:
-    return fit.evaluate(TARGETS, PLAYED, points, normal_samples(points, sds), level0_score, 19.0)
+def run_eval(
+    points: list[float], sds: list[float], level0_score: float = 0.5, clamped: list[bool] | None = None, accept_floor: bool = False
+) -> fit.Fit:
+    return fit.evaluate(TARGETS, PLAYED, points, normal_samples(points, sds), level0_score, 19.0, clamped, accept_floor)
 
 
 class TableTest(unittest.TestCase):
@@ -258,6 +260,21 @@ class GateTest(unittest.TestCase):
         points = [1100.0] + self.POINTS[1:]
         self.assertTrue(any(f.startswith("S1") for f in run_eval(points, self.SDS, level0_score=0.08).failures))
         self.assertFalse(any(f.startswith("S1") for f in run_eval(points, self.SDS, level0_score=0.12).failures))
+
+    def test_accept_floor_waives_s1_with_a_note(self) -> None:
+        points = [1100.0] + self.POINTS[1:]
+        result = run_eval(points, self.SDS, level0_score=0.08, clamped=[True] + [False] * 6, accept_floor=True)
+        self.assertEqual(result.failures, [])
+        self.assertTrue(any(n.startswith("S1 level 0") for n in result.notes), result.notes)
+
+    def test_accept_floor_waives_g1_only_on_clamped_levels(self) -> None:
+        sds = [40.0, 40.0] + self.SDS[2:3] + [40.0] + self.SDS[4:]
+        clamped = [True, True] + [False] * 5
+        result = run_eval(self.POINTS, sds, clamped=clamped, accept_floor=True)
+        self.assertEqual([f[:10] for f in result.failures], ["G1 level 7"])
+        self.assertEqual(sum(n.startswith("G1 level") for n in result.notes), 2, result.notes)
+        without = run_eval(self.POINTS, sds, clamped=clamped)
+        self.assertEqual(sum(f.startswith("G1") for f in without.failures), 3, without.failures)
 
     def test_wide_interval_fails_g1(self) -> None:
         sds = self.SDS[:3] + [40.0] + self.SDS[4:]

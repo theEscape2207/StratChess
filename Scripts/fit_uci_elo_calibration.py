@@ -4,6 +4,7 @@
     python fit_uci_elo_calibration.py <attempt dir>...                    # the fit (D5)
     python fit_uci_elo_calibration.py <stage-1 attempt dir>... --stage1-report
     python fit_uci_elo_calibration.py <smoke attempt dir> --smoke-check
+    python fit_uci_elo_calibration.py <attempt dir>... --accept-floor     # owner's floor waiver
 
 An attempt directory is what Run-UciEloCalibration.ps1 writes for one (UCI_Elo, Stockfish UCI_Elo)
 match: games.pgn, match.log and, on a clean finish only, run.json. An attempt without run.json, with
@@ -33,6 +34,8 @@ Gates, any failure prints the report but no initializer:
   G3 the emitted table, read back at each level played, gives a label inside that level's interval;
   G4 emitted keys strictly increase, front() is level 0.0, back() the table's top level;
   S1 level 0 below Stockfish's floor (1320) ships only while it scores at least 10% there.
+--accept-floor (the owner's 2026-11-22 waiver) prints S1, and G1 on a level whose stage-2 opponent was
+clamped at Stockfish's floor, as NOTE instead of FAIL; G2-G4 and G1 on every other level still bind.
 
 Depth per level comes from StratChess's own move comments ({score/depth time}, the format
 compare_lab_depth.py parses), attributed by side to move while walking the movetext, never by
@@ -440,6 +443,8 @@ def evaluate(
     samples: list[list[float]],
     level0_score: float,
     top_level: float,
+    clamped: list[bool] | None = None,
+    accept_floor: bool = False,
 ) -> Fit:
     """D5 steps 3-5 and the gates, from point estimates and joint bootstrap samples."""
     n = len(targets)
@@ -459,7 +464,11 @@ def evaluate(
     for k in range(n):
         lo, hi = intervals[k]
         if not (math.isfinite(points[k]) and points[k] - lo <= PRECISION and hi - points[k] <= PRECISION):
-            failures.append(f"G1 level {targets[k]}: interval [{lo:.0f}, {hi:.0f}] around {points[k]:.0f} is wider than +-{PRECISION:.0f}")
+            miss = f"G1 level {targets[k]}: interval [{lo:.0f}, {hi:.0f}] around {points[k]:.0f} is wider than +-{PRECISION:.0f}"
+            if accept_floor and clamped is not None and clamped[k] and math.isfinite(points[k]):
+                notes.append(f"{miss} (waived by --accept-floor: stage-2 opponent clamped at {SF_MIN})")
+            else:
+                failures.append(miss)
 
     if not all(math.isfinite(p) for p in points):
         failures.append("fit: a saturated level has no finite estimate")
@@ -508,7 +517,11 @@ def evaluate(
     if points[0] < SF_MIN:
         notes.append(f"level 0 ({points[0]:.0f}) sits below Stockfish's floor {SF_MIN}: an extrapolation")
         if level0_score < S1_MIN_SCORE:
-            failures.append(f"S1 level 0 scores {level0_score:.1%} (< {S1_MIN_SCORE:.0%}): the floor is the owner's decision")
+            miss = f"S1 level 0 scores {level0_score:.1%} (< {S1_MIN_SCORE:.0%})"
+            if accept_floor:
+                notes.append(f"{miss}: shipped as an extrapolation by --accept-floor")
+            else:
+                failures.append(f"{miss}: the floor is the owner's decision")
 
     return Fit(points, intervals, diffs, blocks, anchors, plateau, failures, notes)
 
@@ -638,7 +651,7 @@ def fmt_level(level: float, top: float) -> str:
     return f"{level:.10g}" if level != int(level) else f"{level:.1f}"
 
 
-def fit_report(levels: list[Level], fit: Fit, top_level: float) -> int:
+def fit_report(levels: list[Level], fit: Fit, top_level: float, accept_floor: bool = False) -> int:
     print("| Level | UCI_Elo set | Played | Pick depth | SF | Games | W-D-L | Score | Elo | 95% CI | Next - this, 95% CI | Anchor | Depth med (p10-p90) | Reached | Mates | Missing |")
     print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for k, level in enumerate(levels):
@@ -655,7 +668,8 @@ def fit_report(levels: list[Level], fit: Fit, top_level: float) -> int:
     if fit.failures:
         print("Gates failed: no initializer emitted.")
         return 1
-    print("All gates pass (G1-G4, S1).\n")
+    waived = "; S1 and floor-clamped G1 waived by --accept-floor" if accept_floor else ""
+    print(f"All gates pass (G1-G4, S1{waived}).\n")
     print(f"inline constexpr int kMinElo = {fit.anchors[0][0]};")
     print(f"inline constexpr int kMaxElo = {fit.anchors[-1][0]};")
     body = []
@@ -672,6 +686,7 @@ def main(argv: list[str] | None = None) -> int:
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--stage1-report", action="store_true")
     mode.add_argument("--smoke-check", action="store_true")
+    ap.add_argument("--accept-floor", action="store_true", help="owner waiver: S1 and G1 on floor-clamped levels print as NOTE")
     ap.add_argument("--table", default=DEFAULT_TABLE, help="provisional elo:level table the games ran under")
     ap.add_argument("--levels", default=DEFAULT_LEVELS)
     ap.add_argument("--stage1-openings", default=DEFAULT_STAGE1)
@@ -699,11 +714,15 @@ def main(argv: list[str] | None = None) -> int:
     points = [mle(group(level.games)) for level in levels]
     samples = bootstrap(levels, args.resamples, args.seed)
     level0 = levels[0]
-    fit = evaluate([lv.target for lv in levels], [lv.played for lv in levels], points, samples, score(level0.games), table[-1][1])
+    clamped = [any(g.stage == 2 and g.sf_elo == SF_MIN for g in lv.games) for lv in levels]
+    fit = evaluate(
+        [lv.target for lv in levels], [lv.played for lv in levels], points, samples, score(level0.games), table[-1][1],
+        clamped, args.accept_floor,
+    )
     print(f"Fit: {len(levels)} levels, {sum(len(lv.games) for lv in levels)} games, {args.resamples} opening-pair resamples (seed {args.seed}), TC {attempts[0].run['tc']}, concurrency {attempts[0].run['concurrency']}, machine {attempts[0].run['machine']}")
     print(f"candidate {attempts[0].run['candidate']['commit']} sha256 {attempts[0].run['candidate']['sha256'][:12]}")
     print()
-    return fit_report(levels, fit, table[-1][1])
+    return fit_report(levels, fit, table[-1][1], args.accept_floor)
 
 
 if __name__ == "__main__":
