@@ -23,6 +23,14 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-22: Version 0.10.0
+
+### Changed
+- `project(VERSION)` is 0.10.0, ahead of the `v0.10.0` tag. MINOR, for the new `MultiPV`,
+  `UCI_LimitStrength` and `UCI_Elo` options and the measured strength gains from TT-refined reverse
+  futility, depth-2 frontier futility and depth-2 LMP UPPER stores. Release builds report
+  `id name StratChess 0.10.0`, others `0.10.0+<commit>`.
+
 ## 2026-11-22: `UCI_Elo` calibrated against Stockfish 19 (#985)
 
 ### Changed
