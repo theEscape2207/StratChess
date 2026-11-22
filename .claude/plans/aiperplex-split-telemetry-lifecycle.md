@@ -12,7 +12,7 @@ design document if an anonymous-namespace helper turned out to be shared across 
 
 ## Review focus
 
-- D1: how `s_logger` is shared across three translation units without editing any body that uses it.
+- D1: routing the three non-telemetry logger uses through telemetry members.
 
 ## Scope
 
@@ -23,42 +23,41 @@ design document if an anonymous-namespace helper turned out to be shared across 
   `helper_loop` (current lines 133-340) into `AIPerplexLifecycle.cpp`. This is the triage's
   ~190-line lifecycle seam.
 - Move the seven `log_*` members and `emit_iteration_info` into `AIPerplexTelemetry.cpp`.
-- Add `StratEngine/AIPerplexLogger.h` (D1).
+- Add three private logging members to `AIPerplex.h` (D1).
 - Update the `AIPerplex.cpp` references in `Docs/Architecture.md` and #889's row.
 
 **This change will not:**
 
-- Change `AIPerplex.h`, the test fixture, or any moved body.
+- Change the public interface, the test fixture, or any moved body beyond D1's three call sites.
 - Move the root driver. That is slice 2.
 - Change how the logger is initialised, or its thread-safety contract.
 
 ## Decisions
 
-### D1: share `s_logger` through a small internal header
+### D1: the telemetry file owns the logger
 
-`s_logger` is used by the constructor (lifecycle), by `Search()` and `iterative_deepening()` (they
-stay in `AIPerplex.cpp`), and by every telemetry function. Only the constructor calls
-`ensure_logger_initialized()`.
+`s_logger` was used by the constructor (lifecycle), by `Search()` and `iterative_deepening()`
+(they stay in `AIPerplex.cpp`), and by every telemetry function.
 
-**Chosen:** `AIPerplexLogger.h` declares
-`namespace AIPerplexLog { extern std::shared_ptr<spdlog::logger> s_logger; void ensure_logger_initialized(); }`.
-Both are defined in `AIPerplexTelemetry.cpp`, with the existing thread-safety comment, and its
-reference to `search_with_aspiration()` "below" is corrected. Each of the three `.cpp` files adds
-`using AIPerplexLog::s_logger;`, and `AIPerplexLifecycle.cpp` also adds
-`using AIPerplexLog::ensure_logger_initialized;`. Every body keeps its text, so the line-multiset
-check still applies. A namespace-scope `extern` has precedent in `Board.h:294` (`Zobrist` keys).
+**Chosen (owner, 2026-11-22: prefer the cleaner option over a smaller diff):** `s_logger` and
+`ensure_logger_initialized()` stay in an anonymous namespace, now in `AIPerplexTelemetry.cpp`. The
+three outside uses go through new private members declared with the other `log_*` helpers:
+
+- `init_logger()` carries the constructor's best-effort setup block.
+- `log_search_result(const SearchResult&)` carries `Search()`'s "GetMove complete" line. It reads
+  `result.nodes_searched`, which equals `total_nodes` at that point.
+- `log_mate_stop(int depth)` carries `iterative_deepening()`'s "Mate found" line.
+
+All logging then lives in one file, and no other file can reach the logger.
 
 **Rejected:**
 
-- A private static member of `AIPerplex`. This would edit the header, put an spdlog type in front
-  of every includer, and break "no header change".
-- An accessor function, such as `aiperplex_logger()`. Every call site would change, about 20 lines
-  across moved and staying bodies, which defeats the pure-move check.
-- Moving the constructor into the telemetry file. That files it under the wrong seam, and
-  `Search()` still needs the logger.
+- An `extern` in a shared internal header. The diff is smaller, but it adds a global with external
+  linkage and keeps raw logger calls spread across three files.
+- A private static member. It would put an spdlog type in `AIPerplex.h`.
 
-**Cost of the choice:** `s_logger` changes from internal to external linkage. Every use sits behind
-`verbose_logging_`, off the node path, and `pvs`/`quiescence` never read it.
+**Cost:** two cold call sites now make a member call. One runs once per search, the other once per
+mate stop. `pvs` and `quiescence` are untouched.
 
 ### D2: the other anonymous-namespace helpers stay in `AIPerplex.cpp`
 
@@ -75,13 +74,13 @@ keep their source order and their preceding comments.
 
 - Search behaviour is identical: same nodes, scores and best moves.
 - The lines removed from `AIPerplex.cpp` equal, as a multiset, the moved lines in the new files.
-  The only additions are includes, `using` lines, the logger header and the file preambles.
-- `AIPerplex.h` is unchanged.
+  The only other changes are includes, file preambles and D1's three call sites.
+- `AIPerplex.h` gains only D1's three private declarations.
 
 ## Validation
 
 - Line-multiset diff: lines deleted from `AIPerplex.cpp` minus lines added to the new files is
-  empty, apart from the edits D1 lists.
+  empty, apart from D1's call sites and the thread-safety comment's two cross-references.
 - `Compare-SearchEquivalence.ps1 -After <exe>` against the merge base: IDENTICAL.
 - `Compare-Bench.ps1`: no slowdown. On Unresolved, rerun on a `New-OrderedBuildPair.ps1` pair with
   `-Control -Rounds 60`.
@@ -99,6 +98,6 @@ keep their source order and their preceding comments.
 
 | Decision / rationale | Lands in |
 |---|---|
-| D1 logger sharing and its thread-safety contract | comment in `AIPerplexLogger.h` / `AIPerplexTelemetry.cpp` |
+| D1: the telemetry file owns the logger | header comment above the logging helpers in `AIPerplex.h` |
 | File-to-seam map | `Docs/Architecture.md` navigation |
 | Bench and equivalence result | PR body |
