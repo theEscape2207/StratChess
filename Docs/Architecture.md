@@ -118,17 +118,18 @@ explains the robustness goal.
 
 ### Search mechanism index
 
-`AIPerplex`'s member definitions span three files. [AIPerplex.cpp](../StratEngine/AIPerplex.cpp) holds
-the root driver, node search and pruning predicates.
+`AIPerplex`'s member definitions span four files. [AIPerplex.cpp](../StratEngine/AIPerplex.cpp) holds
+node search, per-node limit polling, pruning predicates and draw/score helpers.
+[AIPerplexRoot.cpp](../StratEngine/AIPerplexRoot.cpp) holds the root driver: `Search`, iterative
+deepening, the multi-PV root set, aspiration windows and the empty-move emergency.
 [AIPerplexLifecycle.cpp](../StratEngine/AIPerplexLifecycle.cpp) holds construction, the async launch
 handshake, configuration, new-game reset and the Lazy SMP helper loop.
 [AIPerplexTelemetry.cpp](../StratEngine/AIPerplexTelemetry.cpp) holds the verbose logger and the
 iteration observer feed.
 
-This is navigation into [AIPerplex.cpp](../StratEngine/AIPerplex.cpp), not a second catalogue of
-defaults or algorithms. Tuning field families below are defined in
-[SearchTuning.def](../StratEngine/SearchTuning.def); eligibility and correctness guards remain in
-the implementation and [search contracts](EngineContracts.md#search-internals).
+This is navigation into those files, not a second catalogue of defaults or algorithms. Tuning field
+families below are defined in [SearchTuning.def](../StratEngine/SearchTuning.def); eligibility and
+correctness guards remain in the implementation and [search contracts](EngineContracts.md#search-internals).
 
 | Mechanism | Implementation entry | Control / related state |
 |---|---|---|

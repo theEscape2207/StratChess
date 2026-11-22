@@ -416,7 +416,7 @@ TEST_CASE("cmd_go: 'go movetime 300' final info line's nodes are >= the last per
 	REQUIRE(last_iteration.score == final_line.score);
 	// <=, not ==: a clocked search typically starts one more iteration that gets
 	// interrupted and then rejected by assess_iteration_quality() -- REJECT_AND_STOP
-	// emits no per-iteration line for it (iterative_deepening(), AIPerplex.cpp), but
+	// emits no per-iteration line for it (iterative_deepening(), AIPerplexRoot.cpp), but
 	// that rejected iteration's nodes are already folded into td.nodes_searched by
 	// the time Search() reports the final total (AIPerplex.h's IterationInfo doc).
 	REQUIRE(last_iteration.nodes <= final_line.nodes);
