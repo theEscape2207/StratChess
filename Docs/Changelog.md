@@ -23,6 +23,24 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-23: Inlining report on the equivalence gate; lab preflight applies options (#997)
+
+### Added
+
+- `Compare-SearchEquivalence.ps1` lists the engine functions only the after build has out of
+  line, read from the map each link writes beside its exe; `-BaselineRef` caches now keep it. On
+  #990 slice 2 it names `poll_search_limits` and four more per-node functions the move
+  un-inlined, all node-identical. The list informs; the exit code is still the node verdict.
+- The strength lab's preflight sends each requested override to its engine and refuses the run
+  when the engine rejects one, closing the cross-field gap the table check left open. An option
+  applied without an echo (MultiPV, UCI_Elo, UCI_LimitStrength) is reported as unproven.
+
+### Changed
+
+- The map pairing moved from `New-OrderedBuildPair.ps1` into `Scripts/LinkerMapPairing.ps1`. Two
+  per-build name parts no longer keep a function from pairing with itself: ThinLTO's `.llvm.<n>`
+  suffix, and an anonymous-namespace hash printed with fewer than 8 digits.
+
 ## 2026-11-22: Baseline-tree script and memory notes moved to docs
 
 ### Added

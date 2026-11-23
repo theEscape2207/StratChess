@@ -18,15 +18,16 @@ import sys
 import tempfile
 
 from plan_arms import PlanError, label, parse_arms
-from validate_uci_options import engine_option_table, resolve_options, SELF_TEST_UCI
+from validate_uci_options import apply_options, engine_option_table, resolve_options, SELF_TEST_UCI
 
 BUILD_INPUTS = ("CMakeLists.txt", "cmake", "StratEngine", "StratChessEvolved")
 DECIMAL = r"(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)"
 TIME_CONTROL = re.compile(rf"({DECIMAL})\+({DECIMAL})")
 LIMITATION = (
     "These are intended configurations validated against advertisement, domains and "
-    "value syntax, not runtime readback or proof that setoption was applied. "
-    "Cross-field engine validation can still reject individually valid settings."
+    "value syntax. Each side's overrides were then sent to its engine, which must not refuse "
+    "them; an override it applies without an echo is noted as unproven. This does not read "
+    "settings back during the games."
 )
 
 
@@ -136,18 +137,22 @@ def compare(args):
     except PlanError as error:
         problems.append(str(error))
 
-    reference = sides["reference"]
-    if reference["table"]:
-        reference["settings"], errors, notices = resolve_options(
-            args.reference_options, reference["table"], "reference", args.threads)
+    def resolve_and_apply(side, options, side_label):
+        """Resolved settings, or None; a resolved side's overrides are then sent to its engine."""
+        settings, errors, notices = resolve_options(options, side["table"], side_label, args.threads)
+        if settings is not None:
+            applied_errors, applied_notices = apply_options(side["engine"], options, side_label)
+            errors, notices = errors + applied_errors, notices + applied_notices
         problems.extend(errors)
         warnings.extend(notices)
+        return settings
+
+    reference = sides["reference"]
+    if reference["table"]:
+        reference["settings"] = resolve_and_apply(reference, args.reference_options, "reference")
     for arm in arms:
         if sides["candidate"]["table"]:
-            arm["settings"], errors, notices = resolve_options(
-                arm["options"], sides["candidate"]["table"], f"arm {arm['label']}", args.threads)
-            problems.extend(errors)
-            warnings.extend(notices)
+            arm["settings"] = resolve_and_apply(sides["candidate"], arm["options"], f"arm {arm['label']}")
     for index, arm in enumerate(arms):
         if arm.get("settings") is not None:
             for previous in arms[:index]:
@@ -317,15 +322,27 @@ def self_test():
             expect(f"{description} changes identity", source_identity(repo, docs)[1] != source_identity(repo, revision)[1])
 
         script = root / "stub.py"
-        script.write_text(
-            "import pathlib, sys\n"
-            "root = pathlib.Path(__file__).parent\n"
-            "side = sys.argv[1]\n"
-            "commands = sys.stdin.read()\n"
-            "assert commands == 'uci\\nquit\\n'\n"
-            "with (root / (side + '.calls')).open('a') as handle: handle.write('query\\n')\n"
-            "print((root / (side + '.uci')).read_text())\n"
-            "sys.exit(int((root / (side + '.status')).read_text()))\n", encoding="utf-8")
+        script.write_text(r'''import pathlib, sys
+root = pathlib.Path(__file__).parent
+side = sys.argv[1]
+commands = sys.stdin.read().splitlines()
+assert commands[0] == 'uci' and commands[-1] == 'quit', commands
+setoptions = [command for command in commands if command.startswith('setoption ')]
+with (root / (side + '.calls')).open('a') as handle: handle.write(('apply' if setoptions else 'query') + '\n')
+print((root / (side + '.uci')).read_text())
+reply = root / (side + '.reply')
+mode = reply.read_text().strip() if reply.exists() else 'echo'
+for command in commands[1:-1]:
+    if command.startswith('setoption '):
+        words = command.split()
+        if mode == 'echo':
+            print('info string ' + words[2] + ' ' + words[4])
+        elif mode == 'refuse':
+            print('info string ' + words[2] + ' not applied: fixture; previous value retained')
+    elif command == 'isready':
+        print('readyok')
+sys.exit(int((root / (side + '.status')).read_text()))
+''', encoding="utf-8")
         engines = {}
         for side in ("candidate", "reference"):
             path = root / (side + (".cmd" if os.name == "nt" else ".sh"))
@@ -368,8 +385,9 @@ def self_test():
         run("default-on vs empty defaults refuses with retained complete comparison", False,
             ("identical intended comparison", "Resolved comparison: **complete**", "Source/build input entries: equal", "Staged binary bytes: different"),
             candidate_options="ReverseFutility=true")
-        expect("both empty/default override sides queried exactly once",
-               all((root / f"{side}.calls").read_text().splitlines() == ["query"] for side in engines))
+        expect("each side's table queried exactly once; only the side with overrides applies them",
+               (root / "candidate.calls").read_text().splitlines() == ["query", "apply"]
+               and (root / "reference.calls").read_text().splitlines() == ["query"])
         run("order, redundant defaults and zero padding cannot defeat equality", False,
             ("identical intended comparison",), candidate_options="ReverseFutility=true Hash=064",
             reference_options="Hash=64 ReverseFutility=true")
@@ -386,8 +404,16 @@ def self_test():
             arms="Hash=65; Hash=065 ReverseFutility=true", calibration=True)
         run("all multi-arm settings and classifications retained", True,
             ("### Arm A", "### Arm B", "| Hash | 65 |", "| Hash | 66 |", "resolved options differ"), arms="Hash=65;Hash=66")
-        expect("multi-arm run queries each side once, not once per arm",
-               all((root / f"{side}.calls").read_text().splitlines() == ["query"] for side in engines))
+        expect("multi-arm run queries each side once, and applies each arm's overrides",
+               (root / "candidate.calls").read_text().splitlines() == ["query", "apply", "apply"]
+               and (root / "reference.calls").read_text().splitlines() == ["query"])
+        (root / "candidate.reply").write_text("refuse", encoding="utf-8")
+        run("FALSIFY: an override the engine refuses fails closed", False,
+            ("the engine refused 'Hash'=65",), candidate_options="Hash=65")
+        (root / "candidate.reply").write_text("silent", encoding="utf-8")
+        run("an override the engine applies without an echo passes as unproven", True,
+            ("application is unproven",), candidate_options="Hash=65")
+        (root / "candidate.reply").unlink()
         run("mixed null and differing arms require calibration", False, ("arm A: identical intended comparison",),
             arms="Hash=64;Hash=65")
         run("mixed calibration classifies each arm separately", True,
@@ -409,7 +435,7 @@ def self_test():
             run(f"unsupported time control {value} fails closed", False, ("time control",), candidate_tc=value)
         run("missing source revision fails closed and retains diagnostics", False,
             ("identity acquisition failed", "Resolved comparison: **incomplete**"), candidate_revision="not-a-revision")
-        run("missing staged binary fails closed", False, ("identity acquisition failed", "could not query"), candidate=root / "missing")
+        run("missing staged binary fails closed", False, ("identity acquisition failed", "could not run"), candidate=root / "missing")
 
         (root / "candidate.status").write_text("7", encoding="utf-8")
         run("nonzero engine exit fails despite complete reply", False, ("exited with status 7", "Unavailable: query or validation failed"))
