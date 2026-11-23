@@ -38,6 +38,8 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
   harness, so when the aggregate code itself is at fault, download the shard artifacts and pool them
   with `main`'s `plan_arms.py verify` and `pool_pentanomial.py` (shard i plays arm i mod K), and
   note the local pooling in the row.
+- **`aggregate` lost its own runner:** `gh run rerun <run> --failed` runs it again from the stored
+  shard artifacts (90 days), with no games replayed.
 - Results go in `Measurements/ci-per-change.md` or `ci-anchor.md`.
 
 ## Batch sizes
