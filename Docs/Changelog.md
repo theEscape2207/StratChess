@@ -23,6 +23,18 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-23: Launch guards for an unreviewed PR and a two-variable match
+
+### Added
+
+- `New-PullRequest.ps1` warns when a PR above Docs tier has no `Review:` line in its body, and an
+  Engine-tier one no `Measurement:` line. It catches a PR opened before its review ran, such as
+  one opened early to host a strength-lab run (#731).
+- `Run-EloMatch.ps1` refuses, before any game, a match between two different binaries at different
+  `option.Threads`: the Elo would mix the code change with the Lazy SMP gain. The same binary at
+  two thread counts stays the documented configuration comparison. The skill rule it enforces is
+  removed.
+
 ## 2026-11-23: Inlining report on the equivalence gate; lab preflight applies options (#997)
 
 ### Added

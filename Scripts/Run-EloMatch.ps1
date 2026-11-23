@@ -42,6 +42,8 @@
     the row says so, since their true difference is zero by construction. Same
     binary with DIFFERENT options is a configuration comparison and a real
     measurement — it is recorded as one.
+    Two DIFFERENT binaries at different option.Threads are refused before any game:
+    the Elo would mix the code change with the Lazy SMP gain.
     A fixed 500-game batch resolves only ±25 Elo on this setup, so anything expected
     to be worth less than that needs -Sprt to be decidable at all. See the
     measure-strength skill, "Sizing the batch".
@@ -228,10 +230,47 @@ function Add-LedgerRow {
     return $true
 }
 
+# The UCI Threads a fastchess option string sets; the engine default is 1.
+function Get-OptionThreadCount {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Options)
+    $m = [regex]::Match($Options, '(?i)(?:^|\s)option\.Threads=(\d+)(?=\s|$)')
+    return $m.Success ? [int]$m.Groups[1].Value : 1
+}
+
+# Two different binaries at two thread counts change two things at once: the Elo mixes the code
+# change with the Lazy SMP gain (+65-77 per doubling). The same binary at two counts is the
+# documented configuration comparison and stays allowed.
+function Test-ThreadsConfounded {
+    param(
+        [Parameter(Mandatory)][bool]$SameBinary,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$CandidateOptions,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$ReferenceOptions
+    )
+    if ($SameBinary) { return $false }
+    return (Get-OptionThreadCount -Options $CandidateOptions) -ne (Get-OptionThreadCount -Options $ReferenceOptions)
+}
 
 if ($SelfTest) {
     Set-StrictMode -Version Latest
     $failures = 0
+
+    $threadCases = @(
+        @{ Name = 'FALSIFY: two binaries, 4 vs default 1 refuse'; Same = $false; Cand = 'option.Threads=4'; Ref = '';                 Expect = $true }
+        @{ Name = 'two binaries, equal threads run';              Same = $false; Cand = 'option.Threads=4'; Ref = 'option.Threads=4'; Expect = $false }
+        @{ Name = 'explicit 1 equals the default';                Same = $false; Cand = 'option.Threads=1'; Ref = '';                 Expect = $false }
+        @{ Name = 'same binary, 4 vs 1 is a config comparison';   Same = $true;  Cand = 'option.Threads=4'; Ref = 'option.Threads=1'; Expect = $false }
+        @{ Name = 'other options do not count as threads';        Same = $false; Cand = 'option.Hash=64';   Ref = '';                 Expect = $false }
+        @{ Name = 'case-insensitive, among other tokens';         Same = $false; Cand = 'option.Hash=64 option.threads=2'; Ref = 'option.Threads=1'; Expect = $true }
+    )
+    foreach ($c in $threadCases) {
+        $got = Test-ThreadsConfounded -SameBinary $c.Same -CandidateOptions $c.Cand -ReferenceOptions $c.Ref
+        if ($got -eq $c.Expect) {
+            Write-Host "  ok    $($c.Name)" -ForegroundColor DarkGray
+        } else {
+            Write-Host "  FAIL  $($c.Name): expected $($c.Expect), got $got" -ForegroundColor Red
+            $failures++
+        }
+    }
 
     # Verdict classification. The falsification cases are the ones that matter:
     # a cap-stopped SPRT and a fixed batch whose error bar spans zero must NOT
@@ -626,6 +665,11 @@ if ($ResumeDir -ne '') {
     $sameBinary = (Get-FileHash $CandidateExe).Hash -eq (Get-FileHash $refExe).Hash
     $sameConfig = $CandidateOptions.Trim() -eq $ReferenceOptions.Trim()
     $noStrengthData = $sameBinary -and $sameConfig
+    if (Test-ThreadsConfounded -SameBinary $sameBinary -CandidateOptions $CandidateOptions -ReferenceOptions $ReferenceOptions) {
+        Write-Host "FAIL: the two sides are different binaries at different Threads (candidate $(Get-OptionThreadCount -Options $CandidateOptions), reference $(Get-OptionThreadCount -Options $ReferenceOptions))." -ForegroundColor Red
+        Write-Host '      That changes two things at once. Give both sides the same option.Threads.' -ForegroundColor Yellow
+        exit 1
+    }
 
     $stamp   = Get-Date -Format 'yyyyMMdd-HHmmss'
     $pgnDir  = Join-Path $GameDir 'logs\elo'

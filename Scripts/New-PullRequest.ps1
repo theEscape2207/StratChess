@@ -163,6 +163,24 @@ function Test-ChangelogMissing {
     return $section.Groups[1].Value -notmatch $escape
 }
 
+# The body lines open-pull-request requires for a tier and this body lacks: a Review line above
+# Docs tier, and a Measurement line on an Engine-tier diff. A line counts when it is visible
+# (not in a comment), starts with the label (a bullet, checkbox and emphasis allowed) and has a
+# value that is not a copied `<placeholder>`.
+function Get-MissingBodyLine {
+    param(
+        [Parameter(Mandatory)][string]$Tier,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$BodyText
+    )
+    $required = @()
+    if ($Tier -ne 'Docs')   { $required += 'Review' }
+    if ($Tier -eq 'Engine') { $required += 'Measurement' }
+    $visible = Remove-HtmlComment -Text $BodyText
+    return @($required | Where-Object {
+        $visible -notmatch "(?im)^[ \t]*(?:[-*][ \t]+)?(?:\[[ xX]\][ \t]+)?[`*_]*$_[`*_]*[ \t]*:[`*_]*[ \t]*(?!<)\S"
+    })
+}
+
 if ($SelfTest) {
     $branchCases = @(
         @{ Name = 'master is refused';               Branch = 'master';                    Expect = $false }
@@ -222,6 +240,17 @@ if ($SelfTest) {
         @{ Name = 'an escape inside a comment warns';              Tier = 'Build';  Files = $code;      Body = "## Changelog`n<!-- none — x -->`n"; Expect = $true }
         @{ Name = 'an escape under another heading warns';         Tier = 'Build';  Files = $code;      Body = "## Changelog`n`n## Notes`nnone — x"; Expect = $true }
     )
+    $bodyLineCases = @(
+        @{ Name = 'FALSIFY: Engine tier, no lines, both missing';  Tier = 'Engine';  Body = "## Test plan`n- [x] tests";                         Expect = 'Review|Measurement' }
+        @{ Name = 'Tooling tier owes only Review';                 Tier = 'Tooling'; Body = "## Test plan`n- [x] tests";                         Expect = 'Review' }
+        @{ Name = 'a Docs-tier diff owes nothing';                 Tier = 'Docs';    Body = '';                                                 Expect = '' }
+        @{ Name = 'plain lines satisfy both';                      Tier = 'Engine';  Body = "Review: inline — x`nMeasurement: bench +0.4%";    Expect = '' }
+        @{ Name = 'bullet, checkbox and bold labels count';        Tier = 'Engine';  Body = "- [x] **Review:** full`n- **Measurement**: SPRT"; Expect = '' }
+        @{ Name = 'a copied placeholder does not count';           Tier = 'Build';   Body = "Review: <mode>, Standards n";                      Expect = 'Review' }
+        @{ Name = 'a line inside a comment does not count';        Tier = 'Build';   Body = "<!-- Review: inline -->";                          Expect = 'Review' }
+        @{ Name = 'a label with no value does not count';          Tier = 'Build';   Body = "Review:`n";                                        Expect = 'Review' }
+        @{ Name = 'a mid-sentence mention does not count';         Tier = 'Build';   Body = "- see the Review: line below";                     Expect = 'Review' }
+    )
 
     $failed = 0
     foreach ($case in $headingCases) {
@@ -238,6 +267,11 @@ if ($SelfTest) {
         $actual = Test-ChangelogMissing -Tier $case.Tier -ChangedFiles $case.Files -BodyText $case.Body
         if ($actual -eq $case.Expect) { Write-Host "  PASS  $($case.Name)" -ForegroundColor Green }
         else { $failed++; Write-Host "  FAIL  $($case.Name): got $actual, expected $($case.Expect)" -ForegroundColor Red }
+    }
+    foreach ($case in $bodyLineCases) {
+        $actual = @(Get-MissingBodyLine -Tier $case.Tier -BodyText $case.Body) -join '|'
+        if ($actual -eq $case.Expect) { Write-Host "  PASS  $($case.Name)" -ForegroundColor Green }
+        else { $failed++; Write-Host "  FAIL  $($case.Name): got '$actual', expected '$($case.Expect)'" -ForegroundColor Red }
     }
     foreach ($case in $editCases) {
         $actual = @(Get-PrEditArgument -Number '7' -NewTitle $case.New -CurrentTitle $case.Current -BodyPath $case.Body) -join ' '
@@ -260,7 +294,7 @@ if ($SelfTest) {
         Write-Host "$failed self-test case(s) FAILED." -ForegroundColor Red
         exit 1
     }
-    $total = $branchCases.Count + $untrackedCases.Count + $editCases.Count + $headingCases.Count + $missingCases.Count + $changelogCases.Count
+    $total = $branchCases.Count + $untrackedCases.Count + $editCases.Count + $headingCases.Count + $missingCases.Count + $changelogCases.Count + $bodyLineCases.Count
     Write-Host "All $total self-test cases passed." -ForegroundColor Green
     exit 0
 }
@@ -468,6 +502,10 @@ if ($bodyPath) {
     $prTier = if ($diffFailed) { 'Engine' } elseif ($prFiles.Count -gt 0) { (& (Join-Path $PSScriptRoot 'Get-ChangeTier.ps1') -Paths $prFiles).Tier } else { 'Docs' }
     if (Test-ChangelogMissing -Tier $prTier -ChangedFiles $prFiles -BodyText $prBody) {
         Write-Host "WARNING: $prTier-tier diff with no Docs/Changelog.md entry -- add one, or write 'none — <reason>' under '## Changelog'." -ForegroundColor Yellow
+    }
+    # Catches a PR opened before its review ran, e.g. early to host a strength-lab run.
+    foreach ($line in @(Get-MissingBodyLine -Tier $prTier -BodyText $prBody)) {
+        Write-Host "WARNING: $prTier-tier diff with no '$($line):' line in the body -- skill open-pull-request, step 3." -ForegroundColor Yellow
     }
 }
 
