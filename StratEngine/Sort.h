@@ -47,6 +47,13 @@ class MoveSorter final {
 	static constexpr int kLosingCaptureTier = 700'000;
 	static_assert(kGoodCaptureTier > kKiller0Score && kKiller0Score > kKiller1Score &&
 	              kKiller1Score > kLosingCaptureTier);
+	// Whether a capture's ScoreMoves score puts it in the losing tier, i.e. SEE < 0. Both killer scores
+	// lie between this tier and kGoodCaptureTier, so the upper bound is kKiller1Score. A quiet can score
+	// nothing in this range, but the caller still tests IsCapture: the tier is a capture's, not a quiet's.
+	static constexpr bool IsLosingCaptureScore(int score) noexcept
+	{
+		return score >= kLosingCaptureTier && score < kKiller1Score;
+	}
 
 	// Score all moves in [0, n) into out_scored_idx as (score, original_index) pairs,
 	// sorted descending by score. Priority: hash move -> SEE >= 0 captures and all promotions

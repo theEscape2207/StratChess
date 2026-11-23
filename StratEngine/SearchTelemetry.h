@@ -114,6 +114,21 @@ struct QuietSeePruningStats {
 	}
 };
 
+// Captures capture SEE pruning skipped; the same kind of work counter, equally absent from the node counts.
+struct CaptureSeePruningStats {
+	static constexpr bool compiled = true;
+
+	int64_t skips = 0;
+
+	void add(const CaptureSeePruningStats& other) noexcept { skips += other.skips; }
+
+	template <class Sink> void append_info(Sink&& sink) const
+	{
+		if (skips != 0)
+			sink("capturesee skips " + std::to_string(skips));
+	}
+};
+
 // Aspiration windows. Written once per window rather than per node, so always compiled. A fail is a
 // pvs() call that completed with a score outside its window; failnodes are the nodes, both trees,
 // spent in those calls. The full-window fallback's own nodes are not in it.
@@ -424,6 +439,7 @@ struct SearchTelemetry {
 	PruningStats pruning{};
 	QSearchStats qsearch{};
 	QuietSeePruningStats quiet_see{};
+	CaptureSeePruningStats capture_see{};
 
 	void reset() noexcept
 	{
@@ -435,6 +451,8 @@ struct SearchTelemetry {
 			lmp = LateMovePruningStats{};
 		if constexpr (QuietSeePruningStats::compiled)
 			quiet_see = QuietSeePruningStats{};
+		if constexpr (CaptureSeePruningStats::compiled)
+			capture_see = CaptureSeePruningStats{};
 		if constexpr (TTStats::compiled)
 			tt = TTStats{};
 		if constexpr (AspirationStats::compiled)
@@ -463,6 +481,8 @@ struct SearchTelemetry {
 			lmp.add(other.lmp);
 		if constexpr (QuietSeePruningStats::compiled)
 			quiet_see.add(other.quiet_see);
+		if constexpr (CaptureSeePruningStats::compiled)
+			capture_see.add(other.capture_see);
 		if constexpr (TTStats::compiled)
 			tt.add(other.tt);
 		if constexpr (AspirationStats::compiled)
@@ -492,6 +512,8 @@ struct SearchTelemetry {
 			lmp.append_info(sink);
 		if constexpr (QuietSeePruningStats::compiled)
 			quiet_see.append_info(sink);
+		if constexpr (CaptureSeePruningStats::compiled)
+			capture_see.append_info(sink);
 		if constexpr (TTStats::compiled)
 			tt.append_info(sink);
 		if constexpr (AspirationStats::compiled)

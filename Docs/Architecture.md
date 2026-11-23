@@ -144,6 +144,7 @@ correctness guards remain in the implementation and [search contracts](EngineCon
 | Frontier futility | `frontier_futility_eligible`, `pvs` | `frontier_futility_*` |
 | Late move pruning | `late_move_pruning_eligible`, `pvs` | `late_move_pruning_enabled`, `late_move_pruning_min_index`, `late_move_pruning_depth3_enabled`, `late_move_pruning_depth3_min_index`; depths in [AIPerplex.h](../StratEngine/AIPerplex.h) |
 | Quiet SEE pruning | `quiet_see_pruning_eligible`, `pvs` | `quiet_see_pruning_*`; `See::see_ge`, UPPER at alpha on a fail-low |
+| Capture SEE pruning | `capture_see_pruning_eligible`, `pvs` | `capture_see_pruning_*`; `MoveSorter::IsLosingCaptureScore`, `See::see_ge`, UPPER at alpha on a fail-low |
 | Internal iterative reduction | `iir_eligible`, `pvs` | `iir_enabled`, `iir_min_depth` |
 | Late move reduction | `pvs` reduced search and re-search; `lmr_reduction` in [AIPerplex.h](../StratEngine/AIPerplex.h) | `lmr_*`, including history adjustment through `lmr_history_divisor`; move classification and ordering |
 | Quiescence delta / SEE pruning | `quiescence` | `delta_pruning_margin`, `see_pruning_enabled`, `see_pruning_margin`; material and check guards |

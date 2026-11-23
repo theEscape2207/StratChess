@@ -194,6 +194,7 @@ These payloads follow `info string`; zero-only categories can be absent:
 | `frontier skips N` | Moves skipped by frontier futility |
 | `lmp skips N` | Moves skipped by late move pruning, at depth 2 and depth 3 (`LateMovePruningDepth3`). It takes precedence over quiet SEE pruning, so most depth-3 skips count here, not under `quietsee skips` |
 | `quietsee skips N` | Moves skipped by quiet SEE pruning (`QuietSeePruning`, on by default; `QuietSeePruningMinDepth`, `QuietSeePruningMaxDepth` and `QuietSeePruningMargin` shape it) |
+| `capturesee skips N` | Captures skipped by capture SEE pruning (`CaptureSeePruning`, off by default; `CaptureSeePruningMaxDepth` and `CaptureSeePruningMargin` shape it) |
 | `aspiration iterations N faillow N failhigh N fullwindow N failnodes N` | Iterations, failed windows, full-window fallbacks and nodes spent in failed windows |
 
 For node units and comparisons across revisions, see [Workflow](Workflow.md#speed-and-nps).
