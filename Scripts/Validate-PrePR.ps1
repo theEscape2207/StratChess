@@ -217,6 +217,10 @@ $script:SelfTestCoverers = @{
     # Test-CodeAlignment.ps1 -SelfTest asserts its row parsing.
     'Scripts/LinkerMap.ps1'      = 'Scripts/Test-CodeAlignment.ps1'
 
+    # Cross-map function pairing, dot-sourced by New-OrderedBuildPair.ps1 and
+    # Compare-SearchEquivalence.ps1. New-OrderedBuildPair.ps1 -SelfTest asserts the pairing.
+    'Scripts/LinkerMapPairing.ps1' = 'Scripts/New-OrderedBuildPair.ps1'
+
     # The quiet-machine plan and banners, dot-sourced by measuring scripts.
     # Measure-CpuProfile.ps1 -SelfTest asserts their formatting and ETA arithmetic.
     'Scripts/QuietWindow.ps1'    = 'Scripts/Measure-CpuProfile.ps1'

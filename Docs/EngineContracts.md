@@ -171,8 +171,8 @@ repeats the aborted-frame tripwire; change both together.
   singular extension reach depth 1, changes nodes — `[search]`'s on/off test catches the depth-3 case.
 - **A per-node callee of `pvs()` or `quiescence()` stays in `AIPerplex.cpp`.** Release ThinLTO
   stopped inlining `poll_search_limits()` once it moved to another file (#990), which adds a call on
-  every node. Node-identical equivalence cannot see that. `New-OrderedBuildPair.ps1` lists a function
-  only the candidate's map has.
+  every node. Node-identical equivalence cannot see that, so `Compare-SearchEquivalence.ps1` and
+  `New-OrderedBuildPair.ps1` list each function only the candidate's map has.
 
 ## Configuration
 

@@ -36,6 +36,15 @@
     clock out, so anything about what an interrupted search stores or reports is
     outside it (that is what #299's SPRT was for).
 
+    INLINING. Identical node counts cannot show a function the compiler stopped
+    inlining: #990 moved a per-node callee of pvs() to another file, and Release
+    ThinLTO began calling it on every node. So when both binaries have the linker
+    map their own link wrote beside them (<exe>.map), the run also lists the engine
+    functions only the after build has out of line. Each is new code or a call the
+    before build inlined; one on the per-node path costs nps. The list informs and
+    never changes the exit code. A map whose time is not the exe's is another
+    link's and is not read.
+
 .PARAMETER After
     The candidate binary. Required.
 
@@ -146,6 +155,12 @@ $ErrorActionPreference = 'Stop'
 # non-deterministic, so at Threads>1 there is no equivalence to check and a
 # reported difference would mean nothing.
 $ThreadCount = 1
+
+# How far apart a map's and its exe's write times may be and still be one link (Test-MapFromSameLink).
+$MapLinkToleranceSeconds = 10
+
+. (Join-Path $PSScriptRoot 'LinkerMap.ps1')
+. (Join-Path $PSScriptRoot 'LinkerMapPairing.ps1')
 
 # Issue #330's set: two positions reached by a move list and four FENs spanning
 # middlegame, endgame and a sharp tactical position. Every FEN carries its
@@ -302,6 +317,37 @@ function Get-BuildFlavour {
     return $null
 }
 
+function Test-MapFromSameLink {
+    <#
+      .SYNOPSIS
+        Whether a map's write time places it in the exe's link. lld-link writes both within
+        milliseconds; a map minutes away is a previous link's, left behind by a link that wrote none.
+    #>
+    param(
+        [Parameter(Mandatory)][datetime]$ExeTime,
+        [Parameter(Mandatory)][datetime]$MapTime
+    )
+    return [math]::Abs(($MapTime - $ExeTime).TotalSeconds) -le $MapLinkToleranceSeconds
+}
+
+function Get-OutOfLineVerdict {
+    <#
+      .SYNOPSIS
+        Engine functions only the after map has, from each map's Get-UniqueEngineSymbol table.
+        Compared is false with a Reason when a table is empty: a Debug or non-ThinLTO map names
+        no '.lto.' object, and an empty list there would read as "nothing changed".
+    #>
+    param(
+        [Parameter(Mandatory)][hashtable]$BeforeByKey,
+        [Parameter(Mandatory)][hashtable]$AfterByKey
+    )
+    if ($BeforeByKey.Count -eq 0 -or $AfterByKey.Count -eq 0) {
+        return [pscustomobject]@{ Compared = $false; Reason = 'a map names no ThinLTO engine object (not a Release clang-cl link)'; OnlyAfter = @() }
+    }
+    $unpaired = Get-UnpairedEngineFunction -BaselineByKey $BeforeByKey -CandidateByKey $AfterByKey
+    return [pscustomobject]@{ Compared = $true; Reason = ''; OnlyAfter = @($unpaired.OnlyCandidate) }
+}
+
 # ---------------------------------------------------------------------------
 # Self-test
 # ---------------------------------------------------------------------------
@@ -415,6 +461,28 @@ if ($SelfTest) {
     $f = Get-BuildFlavour 'C:/repo/build/windows-clang-cl-debug/StratChessEvolved.exe'
     Assert-Case 'Debug inferred' ($null -ne $f -and $f.Config -eq 'Debug')
     Assert-Case 'unknown path infers nothing' ($null -eq (Get-BuildFlavour 'C:\tmp\before.exe'))
+
+    $linkTime = [datetime]'2026-11-22T18:09:40.266'
+    Assert-Case 'a map written with its exe is that link''s' (Test-MapFromSameLink -ExeTime $linkTime -MapTime $linkTime.AddMilliseconds(17))
+    Assert-Case 'FALSIFY: a map minutes older is a previous link''s' (-not (Test-MapFromSameLink -ExeTime $linkTime -MapTime $linkTime.AddMinutes(-5)))
+    Assert-Case 'FALSIFY: a map minutes newer is another link''s' (-not (Test-MapFromSameLink -ExeTime $linkTime -MapTime $linkTime.AddMinutes(5)))
+
+    $engineObject = 'StratChessEvolved.exe.lto.AIPerplex.cpp.obj'
+    function New-MapTable {
+        param([string[]]$Name)
+        $records = @(for ($i = 0; $i -lt $Name.Count; $i++) {
+            [pscustomobject]@{ Name = $Name[$i]; Address = [uint64](0x1000 + 0x40 * $i); Object = $engineObject }
+        })
+        return Get-UniqueEngineSymbol -Placed @(Get-SymbolPlacement -Symbol $records)
+    }
+    $pvsName = '?pvs@AIPerplex@@AEAAHXZ'
+    $pollName = '?poll_search_limits@AIPerplex@@AEAAXXZ'
+    $verdict = Get-OutOfLineVerdict -BeforeByKey (New-MapTable @($pvsName)) -AfterByKey (New-MapTable @($pvsName, $pollName))
+    Assert-Case 'FALSIFY: a function only the after map has is listed (#990)' ($verdict.Compared -and ($verdict.OnlyAfter -join ',') -eq $pollName) "got '$($verdict.OnlyAfter -join ',')'"
+    $verdict = Get-OutOfLineVerdict -BeforeByKey (New-MapTable @($pvsName, $pollName)) -AfterByKey (New-MapTable @($pvsName))
+    Assert-Case 'a function only the before map has is not listed' ($verdict.Compared -and $verdict.OnlyAfter.Count -eq 0)
+    $verdict = Get-OutOfLineVerdict -BeforeByKey @{} -AfterByKey (New-MapTable @($pvsName))
+    Assert-Case 'FALSIFY: a map with no ThinLTO object is not compared, never an empty pass' ((-not $verdict.Compared) -and $verdict.Reason)
 
     Write-Host ''
     if ($failures -gt 0) {
@@ -538,6 +606,12 @@ function New-BaselineBinary {
 
         New-Item -ItemType Directory -Force -Path (Split-Path $cached -Parent) | Out-Null
         Copy-Item $built $cached -Force
+        # The map rides along for the inlining report. Copy-Item keeps its time, which is
+        # how Get-LinkMap tells it is this exe's own.
+        $builtMap = [System.IO.Path]::ChangeExtension($built, '.map')
+        if (Test-Path -LiteralPath $builtMap) {
+            Copy-Item -LiteralPath $builtMap ([System.IO.Path]::ChangeExtension($cached, '.map')) -Force
+        }
     }
     finally {
         Pop-Location
@@ -547,6 +621,51 @@ function New-BaselineBinary {
     }
 
     return $cached
+}
+
+function Get-LinkMap {
+    <# The map the exe's own link wrote beside it as Path, or a null Path and the Reason. #>
+    param([Parameter(Mandatory)][string]$ExePath)
+
+    $mapPath = [System.IO.Path]::ChangeExtension($ExePath, '.map')
+    if (-not (Test-Path -LiteralPath $mapPath)) {
+        return [pscustomobject]@{ Path = $null; Reason = "no $(Split-Path -Leaf $mapPath) beside $ExePath" }
+    }
+    if (-not (Test-MapFromSameLink -ExeTime (Get-Item -LiteralPath $ExePath).LastWriteTimeUtc -MapTime (Get-Item -LiteralPath $mapPath).LastWriteTimeUtc)) {
+        return [pscustomobject]@{ Path = $null; Reason = "$mapPath was not written by the link that wrote its exe" }
+    }
+    return [pscustomobject]@{ Path = $mapPath; Reason = '' }
+}
+
+function Write-OutOfLineReport {
+    <# Prints the engine functions only the after build has out of line; see INLINING above. #>
+    param(
+        [Parameter(Mandatory)][string]$BeforeExe,
+        [Parameter(Mandatory)][string]$AfterExe
+    )
+
+    $linkMaps = @((Get-LinkMap -ExePath $BeforeExe), (Get-LinkMap -ExePath $AfterExe))
+    $missing = @($linkMaps | Where-Object { -not $_.Path })
+    if ($missing.Count -gt 0) {
+        Write-Host "INLINING: not checked -- $(($missing | ForEach-Object { $_.Reason }) -join '; ')." -ForegroundColor Yellow
+        return
+    }
+    $tables = foreach ($linkMap in $linkMaps) {
+        , (Get-UniqueEngineSymbol -Placed @(Get-SymbolPlacement -Symbol @(Get-MapCodeSymbol -Line @(Get-Content -LiteralPath $linkMap.Path))))
+    }
+    $verdict = Get-OutOfLineVerdict -BeforeByKey $tables[0] -AfterByKey $tables[1]
+    if (-not $verdict.Compared) {
+        Write-Host "INLINING: not checked -- $($verdict.Reason)." -ForegroundColor Yellow
+        return
+    }
+    if ($verdict.OnlyAfter.Count -eq 0) {
+        Write-Host 'INLINING: no engine function is out of line only in the after build.' -ForegroundColor Green
+        return
+    }
+    Write-Host ("INLINING: $($verdict.OnlyAfter.Count) engine function(s) out of line only in the after build: new code, or" +
+                ' a call the before build inlined. A per-node callee of pvs() or quiescence() among them costs' +
+                ' nps that node counts cannot show (Docs/EngineContracts.md).') -ForegroundColor Yellow
+    foreach ($name in $verdict.OnlyAfter) { Write-Host "          $name" -ForegroundColor Yellow }
 }
 
 # ---------------------------------------------------------------------------
@@ -639,6 +758,7 @@ if ($droppedKeys.Count -gt 0) {
     Write-Host ("NOTE    : only one build emits 'info string' $($droppedKeys -join ', '); excluded from both" +
                 " sides rather than counted as a difference.") -ForegroundColor Yellow
 }
+Write-OutOfLineReport -BeforeExe $beforePath -AfterExe $afterPath
 
 if ($differing.Count -eq 0) {
     Write-Host "IDENTICAL across $totalCompared compared lines, $($positionList.Count) positions at depth $Depth." -ForegroundColor Green
