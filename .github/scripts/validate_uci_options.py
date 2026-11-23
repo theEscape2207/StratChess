@@ -10,15 +10,17 @@ failure the strength lab's header calls worse than no measurement at all, so
 the options are checked against the engine's own advertised option table before
 any shard starts.
 
-The check is necessary, not sufficient. It reproduces two of the engine's three
-gates: the advertised per-option domain, and the unsigned-decimal value syntax
-`SearchTuningSchema::read_uci` enforces. It does NOT reproduce the whole-struct
-`Validate()` that `ParseUci` runs afterwards, which can still reject a value
-that is individually in range for a cross-field reason
-(`Code::InvalidCombination`, `SearchTuningSchema.cpp:139-152`). No UCI-exposed
-field takes part in such a constraint today, so nothing can currently pass here
-and be rejected there -- but a green check means "advertised, well-formed and in
-range", not "certain to be applied".
+The table check reproduces two of the engine's three gates: the advertised
+per-option domain, and the unsigned-decimal value syntax
+`SearchTuningSchema::read_uci` enforces. The third, the whole-struct `Validate()`
+that `ParseUci` runs afterwards, can still reject a value that is individually in
+range for a cross-field reason. So the options are then sent to a fresh engine,
+in order, as fastchess sends them, and the engine's own reply decides: a
+tuning option or Hash it applied is echoed as `info string <name> ...`, one it
+refused says "not applied" or "previous value retained" (`UCIHandler.cpp`). A
+refusal fails the check. An option the engine applies without an echo
+(MultiPV, UCI_Elo, UCI_LimitStrength) passes with a warning that its
+application is unproven.
 
 Usage:
     validate_uci_options.py --engine <binary> --label candidate --options "A=1 B=true"
@@ -138,6 +140,71 @@ def resolve_options(options, table, label, threads=1):
         resolved[name] = normalize_value(table[name][0], value)
     resolved["Threads"] = threads
     return resolved, [], warnings
+
+
+# What the engine prints when it refuses a setoption whose name it knows.
+_REFUSED = ("not applied", "previous value retained")
+
+
+def classify_replies(options, replies, label):
+    """(problems, warnings) from the engine's reply lines to each setoption, in order.
+
+    options must already have passed validate(), so every item is Name=Value.
+    """
+    problems = []
+    warnings = []
+    items = [item.split("=", 1) for item in options.split()]
+    if len(replies) < len(items):
+        problems.append(f"{label}: the engine answered {len(replies)} of {len(items)} setoption commands")
+        return problems, warnings
+    for (name, value), reply in zip(items, replies):
+        infos = [line for line in reply if line.startswith("info string ")]
+        refused = [line for line in infos if any(marker in line for marker in _REFUSED)]
+        if refused:
+            problems.append(f"{label}: the engine refused '{name}'={value}: {refused[0]}")
+        elif not any(line.lower().startswith(f"info string {name.lower()} ") for line in infos):
+            warnings.append(f"{label}: the engine confirms no '{name}' setting, so its application is unproven")
+    return problems, warnings
+
+
+def apply_options(engine, options, label):
+    """(problems, warnings) from sending options, already validated, to a fresh engine.
+
+    Each setoption is followed by isready, so the engine's replies split at each readyok.
+    """
+    items = options.split()
+    if not items:
+        return [], []
+    commands = ["uci"]
+    for item in items:
+        name, value = item.split("=", 1)
+        commands += [f"setoption name {name} value {value}", "isready"]
+    commands.append("quit")
+    try:
+        result = subprocess.run(
+            [engine, "uci"],
+            input="\n".join(commands) + "\n",
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, UnicodeError, subprocess.SubprocessError) as problem:
+        return [f"{label}: could not apply options on {engine}: {problem}"], []
+    if result.returncode:
+        return [f"{label}: the setoption run exited with status {result.returncode}"], []
+    lines = [line.strip() for line in result.stdout.splitlines()]
+    if "uciok" not in lines:
+        return [f"{label}: the setoption run did not return a complete uciok reply"], []
+    replies = []
+    current = []
+    for line in lines[lines.index("uciok") + 1:]:
+        if line == "readyok":
+            replies.append(current)
+            current = []
+        else:
+            current.append(line)
+    return classify_replies(options, replies, label)
 
 
 def engine_option_table(engine, label):
@@ -260,6 +327,21 @@ def self_test():
     expect("a harness-owned Threads=4 is resolved", not errors and resolved["Threads"] == 4)
     resolved, errors, _ = resolve_options("", table, "candidate", threads=33)
     expect("a harness-owned Threads above the advertised max is refused", resolved is None and bool(errors))
+    reply_cases = [
+        ("Contempt=20", [["info string Contempt 20"]], 0, 0, "an echoed tuning option is confirmed"),
+        ("Hash=128", [["info string hash 128 MiB (4194304 buckets)"]], 0, 0, "Hash's own echo confirms it"),
+        ("Contempt=20", [["info string Contempt not applied: invalid combination; previous value retained"]], 1, 0,
+         "FALSIFY: a refused option fails"),
+        ("ReverseFutility=false", [["info string UCI_LimitStrength: value must be true or false; previous value retained"]],
+         1, 0, "a 'previous value retained' reply is a refusal"),
+        ("Contempt=20", [[]], 0, 1, "FALSIFY: an option the engine never echoes is unproven, not confirmed"),
+        ("Contempt=20", [["info string ContemptX 20"]], 0, 1, "an echo of a longer name does not confirm this one"),
+        ("Contempt=20 Hash=128", [["info string Contempt 20"]], 1, 0, "FALSIFY: a missing reply fails"),
+    ]
+    for options, replies, want_problems, want_warnings, description in reply_cases:
+        problems, warnings = classify_replies(options, replies, "candidate")
+        expect(description, len(problems) == want_problems and len(warnings) == want_warnings)
+
     print(f"\n{len(cases) + 2 + extra_checks} checks, {failures} failed")
     return 1 if failures else 0
 
@@ -289,8 +371,15 @@ def main():
         print(f"::error::{problem}")
     if problems:
         return 1
+    problems, warnings = apply_options(args.engine, args.options, args.label)
+    for warning in warnings:
+        print(f"::warning::{warning}")
+    for problem in problems:
+        print(f"::error::{problem}")
+    if problems:
+        return 1
 
-    print(f"{args.label}: every requested option is advertised and in range -- {args.options}")
+    print(f"{args.label}: every requested option is advertised, in range and accepted -- {args.options}")
     return 0
 
 

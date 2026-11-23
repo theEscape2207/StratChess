@@ -446,9 +446,10 @@ definitions, time controls and every resolved arm with its differences. It is re
 summary even after null refusal, then copied into the aggregate summary and PR comment. The
 `strength-<run>-comparison` artifact retains it and the pinned book for 90 days, so an aggregate
 rerun does not depend on the one-day executable toolkit. Missing evidence prevents a result.
-These are **intended settings**, validated by advertisement, syntax and domain, not runtime readback
-or proof that `setoption` took effect. Cross-field engine constraints remain outside this check;
-`readyok` would not acknowledge individual settings. New measurement rows link this evidence.
+These are **intended settings**, validated by advertisement, syntax and domain. Each side's overrides
+are then sent to its engine in order, and one the engine refuses, a cross-field constraint included,
+fails preflight. One applied without an echo (MultiPV, UCI_Elo, UCI_LimitStrength) is noted as
+unproven. Nothing reads settings back during the games. New measurement rows link this evidence.
 
 **Shard slices are disjoint by arithmetic.** With `order=sequential`, shard *i* playing *R* pairs
 starts at opening `offset + i*R + 1` (one-based nonblank EPD lines). The verifier requires exactly
