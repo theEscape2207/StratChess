@@ -155,8 +155,7 @@ running one is skill `analyze-games`.
 **Never compare binaries from different compilers.** Both run, both look healthy; the compiler gap
 alone is worth tens of Elo and gets credited to whatever change is under test. The MSVC-built
 `elo-reference-v1` is the one Windows exception: its delta includes the compiler change, and
-`Run-EloMatch.ps1` warns. Never read a GCC-built CI-lab row against a local clang-cl row. Match Lazy
-SMP thread count across candidate and reference too.
+`Run-EloMatch.ps1` warns. Never read a GCC-built CI-lab row against a local clang-cl row.
 
 ## Speed
 
