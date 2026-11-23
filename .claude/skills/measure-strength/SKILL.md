@@ -38,7 +38,10 @@ start rather than arriving at it after two inconclusive sessions.
 
 Once a candidate is correct and its comparison valid, its lab run comes first; cost attribution
 (profile, wall clock) runs alongside or after, never as a prerequisite. A run deferred for budget or
-capacity is recorded as unmeasured. **Before dispatch, state the keep/delete rule** in the issue,
+capacity is recorded as unmeasured. A probe asked for "first" is there to inform the next decision:
+when it cannot change that decision, say so and run it conditionally or alongside. A follow-up whose
+whole work is one small lab run (a tuning arm, a 0–3 Elo probe) is filed with "(idle-lab candidate)"
+in its title and a Priority line to run it only when the lab would otherwise sit idle. **Before dispatch, state the keep/delete rule** in the issue,
 design doc or PR body: the lab's ship rule
 ([`reference/strength-lab.md`](reference/strength-lab.md#the-ship-rule)), quoted as it stands.
 

@@ -19,6 +19,10 @@ Read `CLAUDE.md`, then:
 Fetch the issue body, comments, state, and labels, plus the live label catalog. Search current code,
 tests, docs, issues, PRs, and relevant history far enough to establish whether the problem still
 exists, who owns it, what blocks it, and whether each claim is measured, estimated, or speculative.
+An issue's evidence is a claim until you open it: read every cited `file:line` and re-count every
+stated finding count before building on it (#571's cited guard did not exist; #283's 349 findings
+were 20). For "no reachable path", check every function that changes the state, not only the ones
+that construct it (#163's `DoMove` bypassed FEN validation).
 
 Four ways to replace speculation, separated by how the work is packaged and by who pays for it. A
 **probe** is cheap enough to run inside this triage: record its command, input, result, and

@@ -113,8 +113,9 @@ pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\New-PullRequest.ps1 -Title "…
 Sync → validate → push → create/update, stopping at the first failure. When the PR's claim changes
 (a flipped default, a dropped arm), re-run with the new `-Title`: it retitles an open PR. Its validation step scopes
 itself to the change tier, so there is no judgement call to make (tier table and fail-closed
-guarantees: `Docs/Workflow.md` → Validation tiers). Engine tier runs ~2 min warm, ~5 min cold; a
-*failed* run exits early, not late.
+guarantees: `Docs/Workflow.md` → Validation tiers). Engine tier runs ~2 min warm, ~5 min cold. Only
+the text-only gates and clang-format stop it early; any later failure still runs the remaining
+checks, so read the exit code and the summary block, never the elapsed time.
 
 **Never bypass it with a bare `git push`** to update an open PR: the push succeeds but
 `Validate-PrePR.ps1` never runs, leaving the merged state covered only by the pre-commit hook (this
