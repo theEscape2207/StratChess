@@ -330,6 +330,9 @@ function Invoke-SelfTest {
     Assert-Equal 'names outside an anonymous namespace are unchanged' (Get-NormalizedSymbolName $pvs) $pvs
     Assert-Equal 'ThinLTO promotion suffixes normalise to one key' `
         (Get-NormalizedSymbolName '?f@@YAXXZ.llvm.4031942949246127702') (Get-NormalizedSymbolName '?f@@YAXXZ.llvm.8841633549022577414')
+    Assert-Equal 'an anonymous-namespace hash printed without its leading zero still normalises' `
+        (Get-NormalizedSymbolName '??__Fs_logger@?A0x85C32FB@@YAXXZ') (Get-NormalizedSymbolName '??__Fs_logger@?A0x1234abcd@@YAXXZ')
+    Assert-Equal 'a function ThinLTO promotes in one build only pairs with itself' (Get-NormalizedSymbolName '?f@@YAXXZ.llvm.4031942949246127702') '?f@@YAXXZ'
 
     $placed = @(Get-SymbolPlacement -Symbol @(
             (New-Symbol 'c' 0x1100), (New-Symbol 'a' 0x1000), (New-Symbol 'a2' 0x1000), (New-Symbol 'b' 0x1040)))

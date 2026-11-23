@@ -20,10 +20,11 @@ function Get-NormalizedSymbolName {
       .SYNOPSIS
         The name with per-build hashes removed, so the same function pairs across trees: the
         anonymous-namespace one (?A0x<hash>@), and the '.llvm.<n>' suffix ThinLTO gives a local it
-        promotes across modules.
+        promotes across modules. The suffix goes entirely, so a function promoted in one build only
+        still pairs with itself.
     #>
     param([Parameter(Mandatory)][string]$Name)
-    return [regex]::Replace([regex]::Replace($Name, '\?A0x[0-9a-fA-F]{8}@', '?A0x@'), '\.llvm\.\d+$', '.llvm')
+    return [regex]::Replace([regex]::Replace($Name, '\?A0x[0-9a-fA-F]{1,8}@', '?A0x@'), '\.llvm\.\d+$', '')
 }
 
 function Test-SectionLeader {

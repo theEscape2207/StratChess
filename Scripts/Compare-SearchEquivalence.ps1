@@ -37,8 +37,8 @@
     outside it (that is what #299's SPRT was for).
 
     INLINING. Identical node counts cannot show a function the compiler stopped
-    inlining: #990 moved a per-node callee of pvs() to another file, and Release
-    ThinLTO began calling it on every node. So when both binaries have the linker
+    inlining: a per-node callee of pvs() moved to another file stops being inlined
+    by Release ThinLTO and costs a call on every node. So when both binaries have the linker
     map their own link wrote beside them (<exe>.map), the run also lists the engine
     functions only the after build has out of line. Each is new code or a call the
     before build inlined; one on the per-node path costs nps. The list informs and
@@ -478,7 +478,7 @@ if ($SelfTest) {
     $pvsName = '?pvs@AIPerplex@@AEAAHXZ'
     $pollName = '?poll_search_limits@AIPerplex@@AEAAXXZ'
     $verdict = Get-OutOfLineVerdict -BeforeByKey (New-MapTable @($pvsName)) -AfterByKey (New-MapTable @($pvsName, $pollName))
-    Assert-Case 'FALSIFY: a function only the after map has is listed (#990)' ($verdict.Compared -and ($verdict.OnlyAfter -join ',') -eq $pollName) "got '$($verdict.OnlyAfter -join ',')'"
+    Assert-Case 'FALSIFY: a function only the after map has is listed' ($verdict.Compared -and ($verdict.OnlyAfter -join ',') -eq $pollName) "got '$($verdict.OnlyAfter -join ',')'"
     $verdict = Get-OutOfLineVerdict -BeforeByKey (New-MapTable @($pvsName, $pollName)) -AfterByKey (New-MapTable @($pvsName))
     Assert-Case 'a function only the before map has is not listed' ($verdict.Compared -and $verdict.OnlyAfter.Count -eq 0)
     $verdict = Get-OutOfLineVerdict -BeforeByKey @{} -AfterByKey (New-MapTable @($pvsName))
@@ -566,6 +566,9 @@ function New-BaselineBinary {
     $cached = Join-Path $Root "$short\build\$preset\StratChessEvolved.exe"
     if (Test-Path $cached) {
         Write-Host "Baseline: reusing cached build of $Ref ($short)" -ForegroundColor DarkGray
+        if (-not (Test-Path -LiteralPath ([System.IO.Path]::ChangeExtension($cached, '.map')))) {
+            Write-Host "Baseline: cached before maps were kept; delete $(Join-Path $Root $short) to rebuild it with one" -ForegroundColor DarkGray
+        }
         return $cached
     }
 
@@ -651,7 +654,7 @@ function Write-OutOfLineReport {
         return
     }
     $tables = foreach ($linkMap in $linkMaps) {
-        , (Get-UniqueEngineSymbol -Placed @(Get-SymbolPlacement -Symbol @(Get-MapCodeSymbol -Line @(Get-Content -LiteralPath $linkMap.Path))))
+        (Get-UniqueEngineSymbol -Placed @(Get-SymbolPlacement -Symbol @(Get-MapCodeSymbol -Line @(Get-Content -LiteralPath $linkMap.Path))))
     }
     $verdict = Get-OutOfLineVerdict -BeforeByKey $tables[0] -AfterByKey $tables[1]
     if (-not $verdict.Compared) {
@@ -758,7 +761,12 @@ if ($droppedKeys.Count -gt 0) {
     Write-Host ("NOTE    : only one build emits 'info string' $($droppedKeys -join ', '); excluded from both" +
                 " sides rather than counted as a difference.") -ForegroundColor Yellow
 }
-Write-OutOfLineReport -BeforeExe $beforePath -AfterExe $afterPath
+# The report informs; an unreadable map must not cost the node verdict below.
+try {
+    Write-OutOfLineReport -BeforeExe $beforePath -AfterExe $afterPath
+} catch {
+    Write-Host "INLINING: not checked -- $($_.Exception.Message)" -ForegroundColor Yellow
+}
 
 if ($differing.Count -eq 0) {
     Write-Host "IDENTICAL across $totalCompared compared lines, $($positionList.Count) positions at depth $Depth." -ForegroundColor Green

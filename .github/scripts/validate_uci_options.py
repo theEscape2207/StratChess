@@ -1,8 +1,8 @@
 """Validate intended per-engine UCI options against the advertised domains.
 
 The engine follows the usual UCI convention and ignores an unknown `setoption`
-name, a malformed value and an out-of-domain value alike, in silence
-(`UCIHandler.cpp:552-555`). fastchess passes `option.X=Y` through without
+name in silence; a malformed or out-of-domain value gets an `info string` that no
+one reads during a match. fastchess passes `option.X=Y` through without
 knowing what the engine supports, so a typo or an out-of-range value produces a
 measurement that ran for three hours against an engine configured exactly like
 its reference -- a null result indistinguishable from a real one. That is the
@@ -135,11 +135,38 @@ def resolve_options(options, table, label, threads=1):
         return None, problems, warnings
     resolved = {name: normalize_value(kind, default)
                 for name, (kind, _lo, _hi, default) in table.items()}
-    for token in options.split():
-        name, value = token.split("=", 1)
+    for name, value in option_pairs(options):
         resolved[name] = normalize_value(table[name][0], value)
     resolved["Threads"] = threads
     return resolved, [], warnings
+
+
+def option_pairs(options):
+    """[name, value] pairs of an option string that has passed validate()."""
+    return [item.split("=", 1) for item in options.split()]
+
+
+def run_engine(engine, commands):
+    """(output lines, failure) for commands sent to `engine uci`; failure says what went wrong, else None."""
+    try:
+        result = subprocess.run(
+            [engine, "uci"],
+            input="\n".join(commands) + "\n",
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, UnicodeError, subprocess.SubprocessError) as problem:
+        # A missing, non-executable or hung binary is an engine problem; without this it would
+        # surface as a Python traceback with no annotation and read as a defect in this script.
+        return [], f"could not run {engine}: {problem}"
+    if result.returncode:
+        return [], f"exited with status {result.returncode}"
+    lines = [line.strip() for line in result.stdout.splitlines()]
+    if "uciok" not in lines:
+        return [], "did not return a complete uciok reply"
+    return lines, None
 
 
 # What the engine prints when it refuses a setoption whose name it knows.
@@ -153,7 +180,7 @@ def classify_replies(options, replies, label):
     """
     problems = []
     warnings = []
-    items = [item.split("=", 1) for item in options.split()]
+    items = option_pairs(options)
     if len(replies) < len(items):
         problems.append(f"{label}: the engine answered {len(replies)} of {len(items)} setoption commands")
         return problems, warnings
@@ -172,30 +199,15 @@ def apply_options(engine, options, label):
 
     Each setoption is followed by isready, so the engine's replies split at each readyok.
     """
-    items = options.split()
-    if not items:
+    if not options.split():
         return [], []
     commands = ["uci"]
-    for item in items:
-        name, value = item.split("=", 1)
+    for name, value in option_pairs(options):
         commands += [f"setoption name {name} value {value}", "isready"]
     commands.append("quit")
-    try:
-        result = subprocess.run(
-            [engine, "uci"],
-            input="\n".join(commands) + "\n",
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-    except (OSError, UnicodeError, subprocess.SubprocessError) as problem:
-        return [f"{label}: could not apply options on {engine}: {problem}"], []
-    if result.returncode:
-        return [f"{label}: the setoption run exited with status {result.returncode}"], []
-    lines = [line.strip() for line in result.stdout.splitlines()]
-    if "uciok" not in lines:
-        return [f"{label}: the setoption run did not return a complete uciok reply"], []
+    lines, failure = run_engine(engine, commands)
+    if failure:
+        return [f"{label}: the setoption run {failure}"], []
     replies = []
     current = []
     for line in lines[lines.index("uciok") + 1:]:
@@ -209,25 +221,11 @@ def apply_options(engine, options, label):
 
 def engine_option_table(engine, label):
     """(table, error). A non-None error means query or advertisement validation failed."""
+    lines, failure = run_engine(engine, ["uci", "quit"])
+    if failure:
+        return {}, f"{label}: UCI query {failure}"
     try:
-        result = subprocess.run(
-            [engine, "uci"],
-            input="uci\nquit\n",
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-    except (OSError, UnicodeError, subprocess.SubprocessError) as problem:
-        # A missing, non-executable or hung binary is an engine problem; without this it would
-        # surface as a Python traceback with no annotation and read as a defect in this script.
-        return {}, f"{label}: could not query {engine}: {problem}"
-    if result.returncode:
-        return {}, f"{label}: UCI query exited with status {result.returncode}"
-    if "uciok" not in (line.strip() for line in result.stdout.splitlines()):
-        return {}, f"{label}: UCI query did not return a complete uciok reply"
-    try:
-        table = parse_option_table(result.stdout)
+        table = parse_option_table("\n".join(lines))
     except ValueError as problem:
         return {}, f"{label}: {problem}"
     if not table:
@@ -332,7 +330,7 @@ def self_test():
         ("Hash=128", [["info string hash 128 MiB (4194304 buckets)"]], 0, 0, "Hash's own echo confirms it"),
         ("Contempt=20", [["info string Contempt not applied: invalid combination; previous value retained"]], 1, 0,
          "FALSIFY: a refused option fails"),
-        ("ReverseFutility=false", [["info string UCI_LimitStrength: value must be true or false; previous value retained"]],
+        ("UCI_LimitStrength=yes", [["info string UCI_LimitStrength: value must be true or false; previous value retained"]],
          1, 0, "a 'previous value retained' reply is a refusal"),
         ("Contempt=20", [[]], 0, 1, "FALSIFY: an option the engine never echoes is unproven, not confirmed"),
         ("Contempt=20", [["info string ContemptX 20"]], 0, 1, "an echo of a longer name does not confirm this one"),
@@ -344,6 +342,15 @@ def self_test():
 
     print(f"\n{len(cases) + 2 + extra_checks} checks, {failures} failed")
     return 1 if failures else 0
+
+
+def report(problems, warnings):
+    """Print problems and warnings as workflow annotations; True when there are problems."""
+    for warning in warnings:
+        print(f"::warning::{warning}")
+    for problem in problems:
+        print(f"::error::{problem}")
+    return bool(problems)
 
 
 def main():
@@ -364,19 +371,8 @@ def main():
     if error:
         print(f"::error::{error}")
         return 1
-    problems, warnings = validate(args.options, table, args.label)
-    for warning in warnings:
-        print(f"::warning::{warning}")
-    for problem in problems:
-        print(f"::error::{problem}")
-    if problems:
-        return 1
-    problems, warnings = apply_options(args.engine, args.options, args.label)
-    for warning in warnings:
-        print(f"::warning::{warning}")
-    for problem in problems:
-        print(f"::error::{problem}")
-    if problems:
+    # Options reach the engine only once they pass the table check.
+    if report(*validate(args.options, table, args.label)) or report(*apply_options(args.engine, args.options, args.label)):
         return 1
 
     print(f"{args.label}: every requested option is advertised, in range and accepted -- {args.options}")

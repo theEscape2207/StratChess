@@ -137,26 +137,22 @@ def compare(args):
     except PlanError as error:
         problems.append(str(error))
 
-    reference = sides["reference"]
-    if reference["table"]:
-        reference["settings"], errors, notices = resolve_options(
-            args.reference_options, reference["table"], "reference", args.threads)
+    def resolve_and_apply(side, options, side_label):
+        """Resolved settings, or None; a resolved side's overrides are then sent to its engine."""
+        settings, errors, notices = resolve_options(options, side["table"], side_label, args.threads)
+        if settings is not None:
+            applied_errors, applied_notices = apply_options(side["engine"], options, side_label)
+            errors, notices = errors + applied_errors, notices + applied_notices
         problems.extend(errors)
         warnings.extend(notices)
-        if reference["settings"] is not None:
-            errors, notices = apply_options(reference["engine"], args.reference_options, "reference")
-            problems.extend(errors)
-            warnings.extend(notices)
+        return settings
+
+    reference = sides["reference"]
+    if reference["table"]:
+        reference["settings"] = resolve_and_apply(reference, args.reference_options, "reference")
     for arm in arms:
         if sides["candidate"]["table"]:
-            arm["settings"], errors, notices = resolve_options(
-                arm["options"], sides["candidate"]["table"], f"arm {arm['label']}", args.threads)
-            problems.extend(errors)
-            warnings.extend(notices)
-            if arm["settings"] is not None:
-                errors, notices = apply_options(sides["candidate"]["engine"], arm["options"], f"arm {arm['label']}")
-                problems.extend(errors)
-                warnings.extend(notices)
+            arm["settings"] = resolve_and_apply(sides["candidate"], arm["options"], f"arm {arm['label']}")
     for index, arm in enumerate(arms):
         if arm.get("settings") is not None:
             for previous in arms[:index]:
@@ -439,7 +435,7 @@ sys.exit(int((root / (side + '.status')).read_text()))
             run(f"unsupported time control {value} fails closed", False, ("time control",), candidate_tc=value)
         run("missing source revision fails closed and retains diagnostics", False,
             ("identity acquisition failed", "Resolved comparison: **incomplete**"), candidate_revision="not-a-revision")
-        run("missing staged binary fails closed", False, ("identity acquisition failed", "could not query"), candidate=root / "missing")
+        run("missing staged binary fails closed", False, ("identity acquisition failed", "could not run"), candidate=root / "missing")
 
         (root / "candidate.status").write_text("7", encoding="utf-8")
         run("nonzero engine exit fails despite complete reply", False, ("exited with status 7", "Unavailable: query or validation failed"))

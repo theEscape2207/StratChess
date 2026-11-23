@@ -37,9 +37,9 @@ GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
 ### Changed
 
-- The map pairing moved from `New-OrderedBuildPair.ps1` into `Scripts/LinkerMapPairing.ps1`. It
-  now also normalises ThinLTO's per-build `.llvm.<n>` suffix, which listed unchanged functions
-  as new.
+- The map pairing moved from `New-OrderedBuildPair.ps1` into `Scripts/LinkerMapPairing.ps1`. Two
+  per-build name parts no longer keep a function from pairing with itself: ThinLTO's `.llvm.<n>`
+  suffix, and an anonymous-namespace hash printed with fewer than 8 digits.
 
 ## 2026-11-22: Baseline-tree script and memory notes moved to docs
 
