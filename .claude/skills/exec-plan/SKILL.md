@@ -13,13 +13,17 @@ Treat the approved plan as the contract.
    or `Scripts/New-TaskBranch.ps1`. Resuming: continue on the plan's existing branch.
 2. Read the complete plan, `.claude/plans/TEMPLATE.md` and `Docs/Workflow.md` → Design document
    lifecycle before changing files.
-3. Confirm the plan is approved. Do not execute a draft or a plan with an unresolved decision. An
+3. Re-check the plan against `main`: each issue it references (`gh issue view N </dev/null`), each
+   "preserve existing behaviour" step against the code, and each count or scope it states. A sibling
+   may have landed since it was written. Rewrite a superseded step in the plan, saying what
+   superseded it.
+4. Confirm the plan is approved. Do not execute a draft or a plan with an unresolved decision. An
    unverified assumption is allowed when the plan states how it affects the work and how it will be
    verified.
-4. Capture a compact working baseline: Scope ("will" and "will not"), numbered Decisions and rejected
+5. Capture a compact working baseline: Scope ("will" and "will not"), numbered Decisions and rejected
    alternatives, unverified assumptions and their verification, Invariants, Validation, Harvest.
-5. Note and preserve pre-existing workspace changes.
-6. Move the plan to `.claude/plans/in-progress/` when implementation begins or resumes; a
+6. Note and preserve pre-existing workspace changes.
+7. Move the plan to `.claude/plans/in-progress/` when implementation begins or resumes; a
    `not-started` plan may stay where `Docs/Workflow.md` permits. Repair references affected by a move.
 
 ## Track progress

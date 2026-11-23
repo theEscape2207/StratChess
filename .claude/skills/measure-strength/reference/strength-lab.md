@@ -23,12 +23,21 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
 - **Screening several settings in one run:** `candidate_arms` splits the shards among K option sets,
   each pooled alone at about √K times the full run's error bar. Confirm the winner in a
   single-candidate run with its own `opening_offset`. The best of K noisy arms reads high, so the
-  screen figure is never the claimed gain.
+  screen figure is never the claimed gain. Size the confirmation from the winner's lead over the
+  runner-up (σ = error bar / 1.96): past 2σ it holds, and arms tied within ~1σ lose about 0.6σ (two
+  tied) or 0.85σ (three).
 - **A ~0 result from `candidate_uci_options`:** preflight already refused any override the engine
   rejected. MultiPV, UCI_Elo and UCI_LimitStrength apply without an echo, so preflight marks them
   unproven; for those the shard PGNs settle it: each move comment carries the mover's own score
   (`{-0.20/12 0.313s}`), so compare a score the option should move between the candidate's moves
   and the reference's.
+- **Runners are 2 physical cores × 2 SMT threads.** A `threads=4` run understates real 4-core Lazy
+  SMP scaling; say so beside the result, and read the report's "Runner CPU use" table before
+  changing `concurrency` or `threads`.
+- **`aggregate` failed with every shard green:** the games are valid. A rerun replays the run's own
+  harness, so when the aggregate code itself is at fault, download the shard artifacts and pool them
+  with `main`'s `plan_arms.py verify` and `pool_pentanomial.py` (shard i plays arm i mod K), and
+  note the local pooling in the row.
 - Results go in `Measurements/ci-per-change.md` or `ci-anchor.md`.
 
 ## Batch sizes
