@@ -53,3 +53,10 @@ estimate (size), not an SPRT (decision).
   that effect, the run is indicative.
 - **"Nothing changed" bounds the whole interval** inside a band declared before measuring. An
   interval spanning zero is unresolved, not equivalent.
+- **Interleave any hand-run A/B timing**: one round of every build, then repeat, and quote the
+  median of the per-round ratios. This box drifts several percent over minutes, so running one
+  build's repeats before the next charges the drift to whichever owned the slow minutes. Absolute
+  figures from such a session are not quotable; the ratios are. `Compare-Bench.ps1` does this for nps.
+- **A corrected number is fixed once it is on `origin/main`.** `gh pr edit` changes only the PR
+  body; check with `git show origin/main:<file>` before reporting the record corrected (#160 merged
+  with the retracted claim still in two documents).
