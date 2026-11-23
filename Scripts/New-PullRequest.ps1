@@ -165,8 +165,9 @@ function Test-ChangelogMissing {
 
 # The body lines open-pull-request requires for a tier and this body lacks: a Review line above
 # Docs tier, and a Measurement line on an Engine-tier diff. A line counts when it is visible
-# (not in a comment), starts with the label (a bullet, checkbox and emphasis allowed) and has a
-# value that is not a copied `<placeholder>`.
+# (not in a comment), starts with the label (a quote, list marker, checkbox and emphasis allowed)
+# and has a value that is not a copied `<placeholder>`. A compiler-flag change also owes a
+# Measurement line, but its Build tier cannot tell it apart, so that case stays the skill's.
 function Get-MissingBodyLine {
     param(
         [Parameter(Mandatory)][string]$Tier,
@@ -177,7 +178,7 @@ function Get-MissingBodyLine {
     if ($Tier -eq 'Engine') { $required += 'Measurement' }
     $visible = Remove-HtmlComment -Text $BodyText
     return @($required | Where-Object {
-        $visible -notmatch "(?im)^[ \t]*(?:[-*][ \t]+)?(?:\[[ xX]\][ \t]+)?[`*_]*$_[`*_]*[ \t]*:[`*_]*[ \t]*(?!<)\S"
+        $visible -notmatch "(?im)^[ \t]*(?:>[ \t]*)?(?:(?:[-*]|\d+\.)[ \t]+)?(?:\[[ xX]\][ \t]+)?[``*_]*$_[``*_]*[ \t]*:[``*_]*[ \t]*(?![``*_]*<)\S"
     })
 }
 
@@ -247,6 +248,8 @@ if ($SelfTest) {
         @{ Name = 'plain lines satisfy both';                      Tier = 'Engine';  Body = "Review: inline — x`nMeasurement: bench +0.4%";    Expect = '' }
         @{ Name = 'bullet, checkbox and bold labels count';        Tier = 'Engine';  Body = "- [x] **Review:** full`n- **Measurement**: SPRT"; Expect = '' }
         @{ Name = 'a copied placeholder does not count';           Tier = 'Build';   Body = "Review: <mode>, Standards n";                      Expect = 'Review' }
+        @{ Name = 'a backticked placeholder does not count';       Tier = 'Build';   Body = "Review: ``<mode>``";                               Expect = 'Review' }
+        @{ Name = 'numbered and quoted labels count';              Tier = 'Engine';  Body = "1. Review: full`n> Measurement: bench";           Expect = '' }
         @{ Name = 'a line inside a comment does not count';        Tier = 'Build';   Body = "<!-- Review: inline -->";                          Expect = 'Review' }
         @{ Name = 'a label with no value does not count';          Tier = 'Build';   Body = "Review:`n";                                        Expect = 'Review' }
         @{ Name = 'a mid-sentence mention does not count';         Tier = 'Build';   Body = "- see the Review: line below";                     Expect = 'Review' }

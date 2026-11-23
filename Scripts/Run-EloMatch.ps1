@@ -233,21 +233,21 @@ function Add-LedgerRow {
 # The UCI Threads a fastchess option string sets; the engine default is 1.
 function Get-OptionThreadCount {
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Options)
-    $m = [regex]::Match($Options, '(?i)(?:^|\s)option\.Threads=(\d+)(?=\s|$)')
-    return $m.Success ? [int]$m.Groups[1].Value : 1
+    $found = @([regex]::Matches($Options, '(?i)(?:^|\s)option\.Threads=(\d+)(?=\s|$)'))
+    # The last token wins, as when fastchess applies them in order.
+    return ($found.Count -gt 0) ? [int]$found[-1].Groups[1].Value : 1
 }
 
 # Two different binaries at two thread counts change two things at once: the Elo mixes the code
-# change with the Lazy SMP gain (+65-77 per doubling). The same binary at two counts is the
+# change with the Lazy SMP gain. The same binary at two counts is the
 # documented configuration comparison and stays allowed.
 function Test-ThreadsConfounded {
     param(
         [Parameter(Mandatory)][bool]$SameBinary,
-        [Parameter(Mandatory)][AllowEmptyString()][string]$CandidateOptions,
-        [Parameter(Mandatory)][AllowEmptyString()][string]$ReferenceOptions
+        [Parameter(Mandatory)][int]$CandidateThreads,
+        [Parameter(Mandatory)][int]$ReferenceThreads
     )
-    if ($SameBinary) { return $false }
-    return (Get-OptionThreadCount -Options $CandidateOptions) -ne (Get-OptionThreadCount -Options $ReferenceOptions)
+    return -not $SameBinary -and $CandidateThreads -ne $ReferenceThreads
 }
 
 if ($SelfTest) {
@@ -260,10 +260,12 @@ if ($SelfTest) {
         @{ Name = 'explicit 1 equals the default';                Same = $false; Cand = 'option.Threads=1'; Ref = '';                 Expect = $false }
         @{ Name = 'same binary, 4 vs 1 is a config comparison';   Same = $true;  Cand = 'option.Threads=4'; Ref = 'option.Threads=1'; Expect = $false }
         @{ Name = 'other options do not count as threads';        Same = $false; Cand = 'option.Hash=64';   Ref = '';                 Expect = $false }
+        @{ Name = 'a repeated token: the last one wins';          Same = $false; Cand = 'option.Threads=4 option.Threads=1'; Ref = ''; Expect = $false }
         @{ Name = 'case-insensitive, among other tokens';         Same = $false; Cand = 'option.Hash=64 option.threads=2'; Ref = 'option.Threads=1'; Expect = $true }
     )
     foreach ($c in $threadCases) {
-        $got = Test-ThreadsConfounded -SameBinary $c.Same -CandidateOptions $c.Cand -ReferenceOptions $c.Ref
+        $got = Test-ThreadsConfounded -SameBinary $c.Same -CandidateThreads (Get-OptionThreadCount -Options $c.Cand) `
+            -ReferenceThreads (Get-OptionThreadCount -Options $c.Ref)
         if ($got -eq $c.Expect) {
             Write-Host "  ok    $($c.Name)" -ForegroundColor DarkGray
         } else {
@@ -665,8 +667,10 @@ if ($ResumeDir -ne '') {
     $sameBinary = (Get-FileHash $CandidateExe).Hash -eq (Get-FileHash $refExe).Hash
     $sameConfig = $CandidateOptions.Trim() -eq $ReferenceOptions.Trim()
     $noStrengthData = $sameBinary -and $sameConfig
-    if (Test-ThreadsConfounded -SameBinary $sameBinary -CandidateOptions $CandidateOptions -ReferenceOptions $ReferenceOptions) {
-        Write-Host "FAIL: the two sides are different binaries at different Threads (candidate $(Get-OptionThreadCount -Options $CandidateOptions), reference $(Get-OptionThreadCount -Options $ReferenceOptions))." -ForegroundColor Red
+    $candidateThreads = Get-OptionThreadCount -Options $CandidateOptions
+    $referenceThreads = Get-OptionThreadCount -Options $ReferenceOptions
+    if (Test-ThreadsConfounded -SameBinary $sameBinary -CandidateThreads $candidateThreads -ReferenceThreads $referenceThreads) {
+        Write-Host "FAIL: the two sides are different binaries at different Threads (candidate $candidateThreads, reference $referenceThreads)." -ForegroundColor Red
         Write-Host '      That changes two things at once. Give both sides the same option.Threads.' -ForegroundColor Yellow
         exit 1
     }
