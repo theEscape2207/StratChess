@@ -23,6 +23,19 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-11-24: Capture SEE pruning, default on (#944)
+
+### Added
+
+- `CaptureSeePruning` (default true) skips a capture at a non-PV node of depth 1 to
+  `CaptureSeePruningMaxDepth` (4) when SEE says it loses more than `CaptureSeePruningMargin * depth`
+  (100). `pvs()` previously never pruned a capture: a probe put 4.64% of the depth-12 tree under
+  such captures at depth 1 alone. Linear, not quiet SEE's depth squared, because SEE moves in 100 cp
+  steps. Recaptures, checking captures, promotions and sides below `MATERIAL_PRUNING_MIN_PIECES` men
+  are exempt; a frame with a skip claims alpha and stores UPPER, as quiet SEE pruning does.
+  `capturesee skips N` counts the skips. Strength lab, one 20,088-game batch per margin: 100
+  +5.50 ± 3.54 Elo, 200 +3.55 ± 3.47; margin 100 ships.
+
 ## 2026-11-23: Launch guards for an unreviewed PR and a two-variable match
 
 ### Added

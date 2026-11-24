@@ -130,6 +130,7 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	fired.frontier.skips = 5;
 	fired.lmp.skips = 6;
 	fired.quiet_see.skips = 8;
+	fired.capture_see.skips = 10;
 	fired.aspiration = {.iterations = 1, .fail_lows = 2, .fail_highs = 3, .full_windows = 4, .fail_nodes = 5};
 	fired.tt = {.main_probes = 1,
 	            .main_hits = 2,
@@ -174,15 +175,15 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	const std::string fired_nodetypes = "nodetypes pv 1/2/3 cut 4/5/6 all 7/8/9 cutfaillow 10/11/12";
 	CHECK(payloads_of(fired) ==
 	      std::vector<std::string>{"singular eligible 1 verified 2 extended 3 verifynodes 4", "singular multicut 9",
-	                               "frontier skips 5", "lmp skips 6", "quietsee skips 8", fired_tt,
-	                               "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5",
+	                               "frontier skips 5", "lmp skips 6", "quietsee skips 8", "capturesee skips 10",
+	                               fired_tt, "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5",
 	                               fired_ordering,
 	                               "lmr reduced 1 reducednodes 2 researched 3 confirmed 4 researchnodes 5",
 	                               "lmrhistory capped 6 less 7 more 8 killer 9", fired_nodetypes,
 	                               "nullmove tried 1 cutoffs 2 failed 3 failnodes 4",
 	                               "pruning rfp 1/2/3/4/5/6 floorbinds 7", "qsearch roots 1 delta 2 see 3 maxdepth 4"});
 
-	// Singular, frontier, lmp and quietsee stay silent when they did not fire; ttstats prints whenever compiled.
+	// Singular, frontier, lmp, quietsee and capturesee stay silent when they did not fire; ttstats prints whenever compiled.
 	const std::string zero_tt = "ttstats mainprobes 0 mainhits 0 maincutoffs 0 qsprobes 0 qshits 0 qscutoffs 0 "
 	                            "stores 0 declined 0 filled 0 refreshed 0 evictstale 0 evictcurrent 0 "
 	                            "evalserved 0 evalcomputed 0";
@@ -200,6 +201,10 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	SearchTelemetry quiet_see_only;
 	quiet_see_only.quiet_see.skips = 8;
 	CHECK(payloads_of(quiet_see_only) == std::vector<std::string>{"quietsee skips 8", zero_tt});
+
+	SearchTelemetry capture_see_only;
+	capture_see_only.capture_see.skips = 10;
+	CHECK(payloads_of(capture_see_only) == std::vector<std::string>{"capturesee skips 10", zero_tt});
 
 	// Singular prints on eligibility, even with no verification run.
 	SearchTelemetry singular_eligible_only;

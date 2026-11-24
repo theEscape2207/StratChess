@@ -8,6 +8,8 @@ class Board;
 // by 64 squares.
 inline constexpr int kPieceSquares = 12 * 64;
 constexpr int continuation_index(ePiece piece, int to) noexcept { return static_cast<int>(piece) * 64 + to; }
+// The destination square continuation_index() encoded.
+constexpr int continuation_to(int index) noexcept { return index % 64; }
 
 // The continuation-history rows a pvs() node reads and updates, nullptr when absent.
 struct ContinuationRows {
@@ -47,6 +49,13 @@ class MoveSorter final {
 	static constexpr int kLosingCaptureTier = 700'000;
 	static_assert(kGoodCaptureTier > kKiller0Score && kKiller0Score > kKiller1Score &&
 	              kKiller1Score > kLosingCaptureTier);
+	// Whether a capture's ScoreMoves score puts it in the losing tier, i.e. SEE < 0. Both killer scores
+	// lie between this tier and kGoodCaptureTier, so the upper bound is kKiller1Score. A quiet can score
+	// nothing in this range, but the caller still tests IsCapture: the tier is a capture's, not a quiet's.
+	static constexpr bool IsLosingCaptureScore(int score) noexcept
+	{
+		return score >= kLosingCaptureTier && score < kKiller1Score;
+	}
 
 	// Score all moves in [0, n) into out_scored_idx as (score, original_index) pairs,
 	// sorted descending by score. Priority: hash move -> SEE >= 0 captures and all promotions

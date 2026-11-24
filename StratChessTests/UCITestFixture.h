@@ -163,6 +163,13 @@ class UciHandlerTestFixture {
 		REQUIRE_FALSE(set_tuning(tuning).has_value());
 	}
 
+	void set_capture_see_pruning(bool enabled) const
+	{
+		auto tuning = ai_tuning();
+		tuning.capture_see_pruning_enabled = enabled;
+		REQUIRE_FALSE(set_tuning(tuning).has_value());
+	}
+
 	void set_late_move_pruning(bool enabled) const
 	{
 		auto tuning = ai_tuning();

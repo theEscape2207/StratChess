@@ -52,6 +52,29 @@ namespace {
 	// the extra quiescence edges -- both measured in the bench, not assumed.
 	constexpr int MATERIAL_PRUNING_MIN_PIECES = 4;
 
+	// Whether both sides keep MATERIAL_PRUNING_MIN_PIECES men, the floor below which a SEE-pruned move may
+	// be an endgame-scale change SEE cannot see. Shared by quiescence's pruners and capture SEE pruning.
+	bool enough_men_for_see_pruning(const Board& board) noexcept
+	{
+		const auto boards = board.GetBitBoards();
+		return std::min(std::popcount(boards[ePiece::ALL_WHITE_PIECES]),
+		                std::popcount(boards[ePiece::ALL_BLACK_PIECES])) >= MATERIAL_PRUNING_MIN_PIECES;
+	}
+
+	// The node-level terms quiet and capture SEE pruning share; each adds its own flag and depth band.
+	bool see_pruning_node_eligible(int alpha, bool is_pv_node, bool in_check, bool is_exclusion_frame,
+	                               bool zugzwang_safe) noexcept
+	{
+		// A verification search's fail-low grants a singular extension, so it must come from a search.
+		if (is_exclusion_frame || is_pv_node || in_check)
+			return false;
+		// With few pieces the key move is often a SEE-negative push, sacrifice or deflection, and no eval
+		// margin or late index stands behind these guards to catch it.
+		if (!zugzwang_safe)
+			return false;
+		return std::abs(alpha) < GameValues::Mate_Threshold;
+	}
+
 	// Whether `move`, read on the board before it is made, puts `side`'s pawn one step from promotion.
 	bool pawn_push_to_seventh(const Board& board, const Move& move, eColor side) noexcept
 	{
@@ -522,6 +545,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	    quiet_see_pruning_eligible(depth, alpha, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe);
 	bool quiet_see_skipped = false;
 
+	// Capture SEE pruning: a shallow non-PV capture that SEE says loses more than margin * depth is skipped.
+	const bool capture_see_node =
+	    capture_see_pruning_eligible(td.board, depth, alpha, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe);
+	bool capture_see_skipped = false;
+
 	// Search profile: a late cut's cost is the nodes spent since the loop began up to the cutting
 	// move, minus the late-cut nodes already counted by nodes nested in that span.
 	const int64_t profile_loop_nodes = td.nodes_searched + td.qnodes_searched;
@@ -606,6 +634,19 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		    move != td.killers[ply][0] && move != td.killers[ply][1] && move != hash_move &&
 		    !See::see_ge(td.board, move, -tuning_.quiet_see_pruning_margin * depth * depth);
 
+		// The pre-move half of the capture-SEE guards; the other guards all exclude captures. A capture landing
+		// where the opponent's last move did is kept: such recaptures beat alpha far more often than other
+		// SEE-losing captures. Below a null move there is no last move, so nothing is kept for it. The
+		// losing-tier read only filters the SEE call: a capture outside it has SEE >= 0 and would pass. The
+		// threshold is linear in depth, so a capture skipped here is SEE-losing at every shallower eligible
+		// depth, which the fail-low store below relies on.
+		const bool capture_see_candidate =
+		    capture_see_node && legal_moves_searched >= 1 && best_value > -GameValues::Mate_Threshold &&
+		    MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) && move != hash_move &&
+		    MoveSorter::IsLosingCaptureScore(scored_idx[si].first) &&
+		    (td.cont_key[ply] == ThreadData::kNoContinuation || continuation_to(td.cont_key[ply]) != move.to()) &&
+		    !See::see_ge(td.board, move, -tuning_.capture_see_pruning_margin * depth);
+
 		// In check the list is ComputeEvasions(), legal by construction, so DoMove() never rejects
 		// there. DoMove() tests legality regardless: on the few moves of an in-check node that costs too
 		// little to justify a second, unchecked DoMove entry point.
@@ -640,6 +681,16 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				td.board.UndoMove(move);
 				td.telemetry.quiet_see.skips++;
 				quiet_see_skipped = true;
+				continue;
+			}
+
+			// The post-move half: no checking move, since a losing capture that checks recovers more often. No
+			// draw test: a capture resets the halfmove clock, so the child is neither a repetition nor a
+			// fifty-move draw.
+			if (capture_see_candidate && !td.board.InCheck()) {
+				td.board.UndoMove(move);
+				td.telemetry.capture_see.skips++;
+				capture_see_skipped = true;
 				continue;
 			}
 
@@ -822,7 +873,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// would remove the entry and the IIR-blocking best move from nearly all of them. A depth-1 frame or
 	// quiescence reuses the bound without a matching skip, the same exposure as quiet SEE pruning's.
 	// The optional depth-2 LMP store makes the same selective alpha claim, using the common store.
-	if (quiet_see_skipped ||
+	//
+	// A capture SEE skip claims alpha for the same reason and on the same terms: its linear threshold keeps
+	// the depth-monotonic argument, and the bound is reused, without a matching skip, by a visit where the
+	// capture is a recapture or the hash move, and by quiescence.
+	if (quiet_see_skipped || capture_see_skipped ||
 	    (lmp_skipped && (depth == kLateMovePruningDepth3 ||
 	                     (depth == kLateMovePruningDepth && tuning_.late_move_pruning_depth2_store_upper))))
 		best_value = std::max(best_value, original_alpha);
@@ -1208,11 +1263,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	//
 	// Short-circuited on `!in_check` because both pruners already are, so an evasion node pays
 	// nothing for a count it cannot read.
-	const bool material_bounds_hold = !in_check && [&] {
-		const auto qboards = td.board.GetBitBoards();
-		return std::min(std::popcount(qboards[ePiece::ALL_WHITE_PIECES]),
-		                std::popcount(qboards[ePiece::ALL_BLACK_PIECES])) >= MATERIAL_PRUNING_MIN_PIECES;
-	}();
+	const bool material_bounds_hold = !in_check && enough_men_for_see_pruning(td.board);
 
 	for (const auto& move : move_list) {
 		// Promotions stay: their tactical value is not bounded by immediate material gain.
@@ -1418,20 +1469,21 @@ bool AIPerplex::late_move_pruning_eligible(int depth, int alpha, int beta, bool 
 bool AIPerplex::quiet_see_pruning_eligible(int depth, int alpha, bool is_pv_node, bool in_check,
                                            bool is_exclusion_frame, bool zugzwang_safe) const
 {
-	if (!tuning_.quiet_see_pruning_enabled)
+	return tuning_.quiet_see_pruning_enabled && depth >= tuning_.quiet_see_pruning_min_depth &&
+	       depth <= tuning_.quiet_see_pruning_max_depth &&
+	       see_pruning_node_eligible(alpha, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe);
+}
+
+bool AIPerplex::capture_see_pruning_eligible(const Board& board, int depth, int alpha, bool is_pv_node, bool in_check,
+                                             bool is_exclusion_frame, bool zugzwang_safe) const
+{
+	if (!tuning_.capture_see_pruning_enabled || depth < 1 || depth > tuning_.capture_see_pruning_max_depth)
 		return false;
-	// A verification search's fail-low grants a singular extension, so it must come from a search.
-	if (is_exclusion_frame)
+	if (!see_pruning_node_eligible(alpha, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe))
 		return false;
-	if (is_pv_node || in_check)
-		return false;
-	if (depth < tuning_.quiet_see_pruning_min_depth || depth > tuning_.quiet_see_pruning_max_depth)
-		return false;
-	// With few pieces the key move is often a SEE-negative push or deflection, and no eval margin or
-	// late index stands behind this guard to catch it.
-	if (!zugzwang_safe)
-		return false;
-	return std::abs(alpha) < GameValues::Mate_Threshold;
+	// Quiescence's gate, for its reason: SEE discards the sacrifices whose value is an endgame-scale change.
+	// zugzwang_safe already excludes most such nodes, so this is insurance; last, as the one popcount here.
+	return enough_men_for_see_pruning(board);
 }
 
 // No hash move also covers a MAIN entry stored without one, such as a fail-low, and a quiescence

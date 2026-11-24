@@ -144,10 +144,18 @@ repeats the aborted-frame tripwire; change both together.
   within each. Moving the losing tier below the quiets is the tempting change and costs tens of
   percent in nodes: captures are never LMR-reduced, so it only lowers the move number of every quiet
   it steps over.
+- **Capture SEE pruning reads the losing tier as a pre-filter.** `MoveSorter::IsLosingCaptureScore`
+  (`[kLosingCaptureTier, kKiller1Score)`) picks the captures `pvs()` sends to `see_ge(-margin * depth)`;
+  a capture outside it has SEE >= 0 and would pass that call anyway, so the read decides nothing. That
+  holds only while `ScoreUnordered` is the one scoring path and a capture's tier is `see_ge(mv, 0)` on
+  the board the loop reads. A change that scores captures some other way (capture history, #871) must
+  keep every SEE < 0 capture in the tier, or the guard silently stops pruning it.
 - **`See::see_ge` takes quiet moves but not castling.** A quiet's gain is 0, so the answer is whether
   the opponent can profitably take the piece on `to`. Castling is a precondition, because the rook's
   move is invisible to the swap list. Quiet SEE pruning excludes it, and its fail-low stores UPPER at
-  alpha because it fires from the second legal move.
+  alpha because it fires from the second legal move. Capture SEE pruning (`CaptureSeePruning`) claims
+  alpha and stores the same way; its threshold is linear in depth, so a skipped capture is SEE-losing
+  at every shallower eligible depth.
   Depth-3 late move pruning (`LateMovePruningDepth3`) takes over those skips, so it stores
   UPPER at alpha too. The default-on `LateMovePruningDepth2StoreUpper` gives completed effective-depth-2
   LMP fail-lows the same selective alpha floor and common MAIN/UPPER/ALL_NODE store with a searched

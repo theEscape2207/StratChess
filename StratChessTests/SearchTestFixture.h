@@ -358,6 +358,81 @@ class AIPerlexTestFixture {
 	{
 		return ai->quiet_see_pruning_eligible(depth, alpha, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe);
 	}
+
+	// --- Capture SEE pruning pokes ---
+	void set_capture_see_pruning(bool enabled, int max_depth = 4, int margin = 100) const
+	{
+		ai->tuning_.capture_see_pruning_enabled = enabled;
+		ai->tuning_.capture_see_pruning_max_depth = max_depth;
+		ai->tuning_.capture_see_pruning_margin = margin;
+	}
+	int64_t capture_see_skips() const { return ai->td_.telemetry.capture_see.skips; }
+
+	// What the guard should do at this node, worked out independently of the search, from SEE itself
+	// rather than the losing-tier score: `candidates` must equal its skip count, and each other field is a
+	// SEE-losing capture an exemption keeps searched.
+	struct CaptureSeeTally {
+		int candidates = 0;
+		int losing_first = 0;
+		int losing_recaptures = 0;
+		int losing_checks = 0;
+	};
+
+	CaptureSeeTally tally_capture_see(int ply, int threshold) const
+	{
+		Board copy = board_;
+		MoveList list;
+		MoveGenerator::ComputeLegalMoves(copy, list);
+
+		const Move k0 = ai->td_.killers[ply][0];
+		const Move k1 = ai->td_.killers[ply][1];
+		ScoredMoves scored{};
+		const int n = static_cast<int>(list.size());
+		MoveSorter::ScoreMoves(list, n, {copy, k0, k1, ai->td_.history, {}}, Move::EmptyMove(), scored);
+
+		const uint16_t previous = ai->td_.cont_key[ply];
+		CaptureSeeTally tally;
+		int legal_index = 0;
+		for (int i = 0; i < n; ++i) {
+			const Move move = list[scored[i].second];
+			const bool losing =
+			    MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) && !See::see_ge(copy, move, threshold);
+			if (!copy.DoMove(move))
+				continue;
+			const bool gives_check = copy.InCheck();
+			copy.UndoMove(move);
+
+			const bool first = legal_index++ == 0;
+			if (!losing)
+				continue;
+
+			if (first)
+				++tally.losing_first;
+			else if (previous != ThreadData::kNoContinuation && continuation_to(previous) == move.to())
+				++tally.losing_recaptures;
+			else if (gives_check)
+				++tally.losing_checks;
+			else
+				++tally.candidates;
+		}
+		return tally;
+	}
+
+	// Sets cont_key[ply] as if the opponent's last move had landed on the destination of `uci`, a move
+	// on the fixture's board, with the piece standing there now.
+	void set_previous_move_to(int ply, std::string_view uci) const
+	{
+		const Move move = MoveFormatter::FromUCI(uci, board_);
+		REQUIRE_FALSE(move.is_null());
+		ai->td_.cont_key[ply] = static_cast<uint16_t>(continuation_index(board_.GetPiece(move.to()), move.to()));
+	}
+
+	bool capture_see_pruning_eligible(int depth, int alpha, bool is_pv_node, bool in_check, bool is_exclusion_frame,
+	                                  bool zugzwang_safe) const
+	{
+		return ai->capture_see_pruning_eligible(board_, depth, alpha, is_pv_node, in_check, is_exclusion_frame,
+		                                        zugzwang_safe);
+	}
 	const LmrStats& lmr_profile() const { return ai->td_.telemetry.lmr; }
 	bool late_move_pruning_eligible(int depth, int alpha, int beta, bool is_pv_node, bool in_check,
 	                                bool is_exclusion_frame) const

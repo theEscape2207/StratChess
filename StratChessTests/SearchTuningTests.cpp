@@ -51,6 +51,8 @@ namespace {
 		int quiet_see_pruning_min_depth;
 		int quiet_see_pruning_max_depth;
 		int quiet_see_pruning_margin;
+		int capture_see_pruning_max_depth;
+		int capture_see_pruning_margin;
 		int iir_min_depth;
 		int continuation_history_plies;
 		int contempt;
@@ -68,6 +70,7 @@ namespace {
 		bool late_move_pruning_depth2_store_upper;
 		bool late_move_pruning_depth3_enabled;
 		bool quiet_see_pruning_enabled;
+		bool capture_see_pruning_enabled;
 		bool iir_enabled;
 		bool staged_generation_enabled;
 	};
@@ -114,6 +117,9 @@ namespace {
 	SAME_MEMBER(quiet_see_pruning_min_depth)
 	SAME_MEMBER(quiet_see_pruning_max_depth)
 	SAME_MEMBER(quiet_see_pruning_margin)
+	SAME_MEMBER(capture_see_pruning_enabled)
+	SAME_MEMBER(capture_see_pruning_max_depth)
+	SAME_MEMBER(capture_see_pruning_margin)
 	SAME_MEMBER(iir_enabled)
 	SAME_MEMBER(iir_min_depth)
 	SAME_MEMBER(staged_generation_enabled)
@@ -184,6 +190,9 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.quiet_see_pruning_min_depth == 1);
 	CHECK(tuning.quiet_see_pruning_max_depth == 3);
 	CHECK(tuning.quiet_see_pruning_margin == 20);
+	CHECK(tuning.capture_see_pruning_enabled);
+	CHECK(tuning.capture_see_pruning_max_depth == 4);
+	CHECK(tuning.capture_see_pruning_margin == 100);
 	CHECK(tuning.iir_enabled);
 	CHECK(tuning.iir_min_depth == 4);
 	CHECK(tuning.staged_generation_enabled);
@@ -504,6 +513,23 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(uci_rejection("QuietSeePruningMargin", "1001") == Code::OutOfRange);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("CaptureSeePruning", "false", tuning));
+	expected.capture_see_pruning_enabled = false;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("CaptureSeePruningMaxDepth", "3", tuning));
+	expected.capture_see_pruning_max_depth = 3;
+	CHECK(tuning == expected);
+	CHECK(uci_rejection("CaptureSeePruningMaxDepth", "0") == Code::OutOfRange);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("CaptureSeePruningMargin", "200", tuning));
+	expected.capture_see_pruning_margin = 200;
+	CHECK(tuning == expected);
+	CHECK(uci_rejection("CaptureSeePruningMargin", "1001") == Code::OutOfRange);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("InternalIterativeReduction", "false", tuning));
 	expected.iir_enabled = false;
 	CHECK(tuning == expected);
@@ -675,6 +701,9 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name QuietSeePruningMinDepth type spin default 1 min 1 max 256",
 	    "option name QuietSeePruningMaxDepth type spin default 3 min 1 max 256",
 	    "option name QuietSeePruningMargin type spin default 20 min 0 max 1000",
+	    "option name CaptureSeePruning type check default true",
+	    "option name CaptureSeePruningMaxDepth type spin default 4 min 1 max 256",
+	    "option name CaptureSeePruningMargin type spin default 100 min 0 max 1000",
 	    "option name InternalIterativeReduction type check default true",
 	    "option name IirMinDepth type spin default 4 min 2 max 256",
 	    // No negative half: SearchTuningSchema's read_uci() accepts unsigned decimal digits only,
