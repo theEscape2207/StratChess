@@ -44,11 +44,15 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
 
 ## Batch sizes
 
-| Use | `games` | Shards x pairs | Time | Error bar |
+| Use | Dispatch | Shards x pairs | Time | Error bar |
 |---|---|---|---|---|
-| Normal (the default) | 20088 | 18 x 558 | ~3 h | ±3.48 |
-| Full, the ship gate with `sprt=true` | 26568 | 18 x 738, as 4 waves | ~1–4 h; ~4 h fixed | ±3.02 at the cap |
-| Night only, CI unused | 36000 | 20 x 900 | ~4 h 55 (estimated, worst shard ~292 of the job's 340 min) | ±2.60 |
+| Normal (the default) | `-f games=20088` | 18 x 558 | ~3 h | ±3.48 |
+| Full, the ship gate | `-f games=26568 -f sprt=true` | 18 x 738, as 4 waves | ~1–4 h; ~4 h fixed | ±3.02 at the cap |
+| Night only, CI unused | `-f games=36000 -f shards=20` | 20 x 900 | ~4 h 55 (estimated, worst shard ~292 of the job's 340 min) | ±2.60 |
+
+**A Night run is the owner's call**, for a window with no other CI: 20 shards hold every
+concurrent-job slot for ~5 h. When the owner asks for one, the plan's Validation and the dispatch
+both name Night and carry its flags.
 
 ## The ship rule
 

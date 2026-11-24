@@ -98,7 +98,8 @@ gh workflow run strength.yml --ref <branch> -f reference_ref=<merge-base|tag|sha
 ```
 
 That is the ship gate: a Full run that stops at the first SPRT decision. Drop `sprt` when the size
-matters, such as an anchor step or a choice between two candidates.
+matters, such as an anchor step or a choice between two candidates. A requested **Night run** is the
+Night batch, not Normal: [`reference/strength-lab.md`](reference/strength-lab.md) → Batch sizes.
 `reference_ref` defaults to `merge-base`, which attributes the result to **this change alone**; a
 tag like `elo-reference-v2` measures cumulative strength instead. A feature that ships default-off is
 measured with `-f candidate_uci_options="Name=Value"` rather than a probe branch, so the binary that
