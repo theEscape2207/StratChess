@@ -8,6 +8,8 @@ class Board;
 // by 64 squares.
 inline constexpr int kPieceSquares = 12 * 64;
 constexpr int continuation_index(ePiece piece, int to) noexcept { return static_cast<int>(piece) * 64 + to; }
+// The destination square continuation_index() encoded.
+constexpr int continuation_to(int index) noexcept { return index % 64; }
 
 // The continuation-history rows a pvs() node reads and updates, nullptr when absent.
 struct ContinuationRows {

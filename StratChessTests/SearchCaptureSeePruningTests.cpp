@@ -1,15 +1,15 @@
-// SearchCaptureSeePruningTests.cpp — capture SEE pruning in pvs() (#944).
+// SearchCaptureSeePruningTests.cpp — capture SEE pruning in pvs().
 //
 // As for quiet SEE pruning: the eligibility tests move one node-level guard at a time off a passing
 // baseline, and the node tests hold the engine's skip count against the fixture's independent tally,
 // after requiring that the position puts a SEE-losing capture behind the exemption under test.
 //
 // The PV and in-check guards: zugzwang_safe also excludes both nodes, so only the direct eligibility
-// test falsifies them.
+// test falsifies them. The first-legal-move, hash-move and capture-promotion exemptions are defence in
+// depth behind the mated-score term, hash ordering and see_ge(0), and have no isolating case.
 //
 // Node tests search at depth 1 or 2: the band starts at depth 1, so a deeper node would add its nested
-// White frames' skips, and Black, with no piece in these positions, never prunes. The first-legal-move, hash-move and capture-promotion exemptions are defence in
-// depth behind the mated-score term, hash ordering and see_ge(0), and have no isolating case.
+// White frames' skips. Black, with no piece in these positions, never prunes.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>

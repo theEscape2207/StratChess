@@ -408,7 +408,7 @@ class AIPerlexTestFixture {
 
 			if (first)
 				++tally.losing_first;
-			else if (previous != ThreadData::kNoContinuation && previous % 64 == move.to())
+			else if (previous != ThreadData::kNoContinuation && continuation_to(previous) == move.to())
 				++tally.losing_recaptures;
 			else if (gives_check)
 				++tally.losing_checks;
