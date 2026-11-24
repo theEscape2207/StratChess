@@ -122,7 +122,7 @@ TUNING_FIELD(int,     quiet_see_pruning_margin,    20, 0,     1000,    true, "Qu
 // Capture SEE pruning: a losing capture whose SEE falls below -margin * depth is skipped, at depths
 // 1..max. Linear, not quiet SEE's depth squared: SEE moves in 100 cp steps, so a quadratic margin small
 // enough for depth 4 would read as 0 at depths 1-2.
-TUNING_FLAG(capture_see_pruning_enabled,   false, false, true, true, "CaptureSeePruning",         true)
+TUNING_FLAG(capture_see_pruning_enabled,   true, false, true, true, "CaptureSeePruning",         true)
 TUNING_FIELD(int,     capture_see_pruning_max_depth, 4,   1,     MAX_PLY, true, "CaptureSeePruningMaxDepth", true)
 TUNING_FIELD(int,     capture_see_pruning_margin,    100, 0,     1000,    true, "CaptureSeePruningMargin",   true)
 

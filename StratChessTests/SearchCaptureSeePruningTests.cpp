@@ -82,12 +82,12 @@ namespace {
 // Eligibility
 // ============================================================================
 
-TEST_CASE("Capture SEE pruning: the runtime flag starts off, and on makes a node eligible", "[search][capturesee]")
+TEST_CASE("Capture SEE pruning: the runtime flag starts on, and off makes a node ineligible", "[search][capturesee]")
 {
 	AIPerlexTestFixture fix(kLosingCaptureFen);
-	CHECK_FALSE(eligible(fix));
-	fix.set_capture_see_pruning(true);
 	CHECK(eligible(fix));
+	fix.set_capture_see_pruning(false);
+	CHECK_FALSE(eligible(fix));
 }
 
 TEST_CASE("Capture SEE pruning: the depth band is 1 to the inclusive maximum", "[search][capturesee]")
@@ -395,6 +395,7 @@ TEST_CASE("Capture SEE pruning: the search result reports the skip count, and of
 	CHECK(on_result.telemetry.capture_see.skips == on.capture_see_skips());
 
 	AIPerlexTestFixture off(kiwipete);
+	off.set_capture_see_pruning(false);
 	const SearchResult off_result = off.result_to_depth(5);
 	CHECK(off_result.telemetry.capture_see.skips == 0);
 }

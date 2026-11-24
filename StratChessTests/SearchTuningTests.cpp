@@ -190,7 +190,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.quiet_see_pruning_min_depth == 1);
 	CHECK(tuning.quiet_see_pruning_max_depth == 3);
 	CHECK(tuning.quiet_see_pruning_margin == 20);
-	CHECK_FALSE(tuning.capture_see_pruning_enabled);
+	CHECK(tuning.capture_see_pruning_enabled);
 	CHECK(tuning.capture_see_pruning_max_depth == 4);
 	CHECK(tuning.capture_see_pruning_margin == 100);
 	CHECK(tuning.iir_enabled);
@@ -513,8 +513,8 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(uci_rejection("QuietSeePruningMargin", "1001") == Code::OutOfRange);
 
 	expected = SearchTuning{};
-	REQUIRE_FALSE(parse_uci("CaptureSeePruning", "true", tuning));
-	expected.capture_see_pruning_enabled = true;
+	REQUIRE_FALSE(parse_uci("CaptureSeePruning", "false", tuning));
+	expected.capture_see_pruning_enabled = false;
 	CHECK(tuning == expected);
 
 	expected = SearchTuning{};
@@ -701,7 +701,7 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name QuietSeePruningMinDepth type spin default 1 min 1 max 256",
 	    "option name QuietSeePruningMaxDepth type spin default 3 min 1 max 256",
 	    "option name QuietSeePruningMargin type spin default 20 min 0 max 1000",
-	    "option name CaptureSeePruning type check default false",
+	    "option name CaptureSeePruning type check default true",
 	    "option name CaptureSeePruningMaxDepth type spin default 4 min 1 max 256",
 	    "option name CaptureSeePruningMargin type spin default 100 min 0 max 1000",
 	    "option name InternalIterativeReduction type check default true",
