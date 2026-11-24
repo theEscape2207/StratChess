@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-11-24 | 25f419b, `CaptureSeePruning=true CaptureSeePruningMargin=200`, arm B (#944; run `45389189332`; PR #1004) | 25f419b (same commit, flag false) | 20088 | 10+0.1 | **+3.55 +/- 3.47** | pass (fixed batch, owner gate exception); lower point estimate than arm A |
 | 2026-11-24 | 25f419b, `CaptureSeePruning=true CaptureSeePruningMargin=100`, arm A (#944; run `45298012345`; PR #1004) | 25f419b (same commit, flag false) | 20088 | 10+0.1 | **+5.50 +/- 3.54** | pass (fixed batch, owner gate exception); arm B (margin 200) picks the default |
 | 2026-11-12 | 118d6ea, `ReverseFutilityTtRefine=true`: reverse futility compares `max(static eval, TT lower bound)` (#545; run `43297598872`; PR #982) | 7f16db4 | 19944 | 10+0.1 | **+5.07 +/- 3.49** (at stop) | gain (SPRT H1 [0, 3]); default set to true |
 | 2026-11-12 | 23ed0a0, `FrontierFutilityMaxDepth=2` (#634; run `43231859344`; PR #980) | 0ec5048 | 19944 | 10+0.1 | **+4.77 +/- 3.47** (at stop) | gain (SPRT H1 [0, 3]); default set to 2 |
@@ -123,6 +124,12 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-11-24 -- 25f419b, capture SEE pruning, margin 200, arm B (#944) (20088 games)
+
+Ptnml [708, 2247, 3982, 2346, 761], interval [+0.08, +7.01]; 13 of 18 shards favour the candidate.
+Same binary on both sides; rules as arm A. Both arms pass, and A's higher point estimate picks it.
+A - B = +1.95 is well inside the noise, so the pick is weak.
 
 ### 2026-11-24 -- 25f419b, capture SEE pruning, margin 100, arm A (#944) (20088 games)
 
